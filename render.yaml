@@ -1,0 +1,52 @@
+services:
+  # ─── Backend (Express + SQLite) ─────────────────────────
+  - type: web
+    name: databank-backend
+    runtime: node
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm run seed-prod && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      - key: DB_PATH
+        value: /var/data/databank.db
+      - key: SOLIDES_API_URL
+        sync: false
+      - key: SOLIDES_API_TOKEN
+        sync: false
+      - key: SOLIDES_COMPANY_ID
+        sync: false
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+      - key: SLACK_APP_TOKEN
+        sync: false
+      - key: SLACK_TEST_USER_ID
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+    disk:
+      name: databank-db
+      mountPath: /var/data
+      sizeGB: 1
+
+  # ─── Frontend (Next.js) ────────────────────────────────
+  - type: web
+    name: databank-frontend
+    runtime: node
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: NEXT_PUBLIC_API_URL
+        sync: false

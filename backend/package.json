@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "seed-prod": "tsx scripts/seed-prod.ts"
   },
   "dependencies": {
     "@slack/bolt": "^4.1.0",

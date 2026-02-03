@@ -16,7 +16,10 @@ import authRouter from './routes/auth';
 const app = express();
 
 // Middleware
-app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+app.use(cors({
+  origin: env.FRONTEND_URL ? env.FRONTEND_URL.split(',') : '*',
+  credentials: true,
+}));
 app.use(express.json());
 
 // API Routes
