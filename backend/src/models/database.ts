@@ -15,7 +15,14 @@ export function getDb(): Firestore {
         const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
         initializeApp({ credential: cert(serviceAccount) });
       } else if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+        // Render may convert \n inside the JSON to real newlines, breaking JSON.parse.
+        // Fix: escape real newlines inside string values before parsing.
+        const raw = env.FIREBASE_SERVICE_ACCOUNT_JSON.replace(/\n/g, '\\n');
+        const serviceAccount = JSON.parse(raw);
+        // Restore real newlines in private_key for PEM format
+        if (serviceAccount.private_key) {
+          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        }
         initializeApp({ credential: cert(serviceAccount) });
       } else {
         initializeApp({
