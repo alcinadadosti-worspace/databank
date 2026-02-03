@@ -1,93 +1,144 @@
-import { fetchClockPunches } from '../services/solides-api';
+import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
 import { calculateDailyHours, shouldAlert } from '../services/hours-calculator';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
+import { env } from '../config/env';
+
+/**
+ * Convert epoch milliseconds to "HH:MM" time string (Sao Paulo -3).
+ */
+function millisToTime(millis: number): string {
+  const date = new Date(millis);
+  // Tangerino stores in UTC, display in Sao Paulo (-3)
+  const hours = date.getUTCHours() - 3;
+  const adjustedHours = hours < 0 ? hours + 24 : hours;
+  const minutes = date.getUTCMinutes();
+  return `${String(adjustedHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
 
 /**
  * Sync clock punches from Sólides API (READ-ONLY).
- * Calculates hours and triggers alerts when needed.
  *
- * Runs every 5 minutes during work hours.
+ * Tangerino structure: each record = 1 entry/exit pair.
+ * A full day = 2 records (morning + afternoon).
+ *
+ * Record 1: dateIn = entrada, dateOut = saida almoco
+ * Record 2: dateIn = retorno almoco, dateOut = saida final
  */
 export async function syncPunches(): Promise<void> {
   const today = new Date().toISOString().split('T')[0];
   console.log(`[sync] Starting punch sync for ${today}`);
 
   try {
-    const punchData = await fetchClockPunches(today, today);
+    const punchData = await fetchPunches(today, today);
 
     if (!punchData || punchData.length === 0) {
       console.log('[sync] No punch data received');
       return;
     }
 
-    const employees = queries.getAllEmployees();
-    const employeeMap = new Map<string, typeof employees[0]>();
-
-    // Map by solides_employee_id and by name (fuzzy)
-    for (const emp of employees) {
-      if (emp.solides_employee_id) {
-        employeeMap.set(emp.solides_employee_id, emp);
+    // Group punches by employee + date
+    const grouped = new Map<string, SolidesPunchRecord[]>();
+    for (const punch of punchData) {
+      const key = `${punch.employeeId}_${punch.date}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
       }
-      employeeMap.set(emp.name.toLowerCase(), emp);
+      grouped.get(key)!.push(punch);
     }
 
-    for (const punch of punchData) {
-      // Try to match employee
-      let employee = employeeMap.get(punch.employee_id);
-      if (!employee && punch.employee_name) {
-        employee = employeeMap.get(punch.employee_name.toLowerCase());
+    // Get all employees for matching
+    const employees = queries.getAllEmployees();
+    const employeeBySolidesId = new Map<string, typeof employees[0]>();
+    const employeeByName = new Map<string, typeof employees[0]>();
+
+    for (const emp of employees) {
+      if (emp.solides_employee_id) {
+        employeeBySolidesId.set(emp.solides_employee_id, emp);
+      }
+      employeeByName.set(emp.name.toLowerCase().trim(), emp);
+    }
+
+    let processed = 0;
+
+    for (const [key, punches] of grouped) {
+      const [solidesEmpId, date] = key.split('_');
+      const firstPunch = punches[0];
+
+      // Match employee
+      let employee = employeeBySolidesId.get(solidesEmpId);
+      if (!employee && firstPunch.employeeName) {
+        employee = employeeByName.get(firstPunch.employeeName.toLowerCase().trim());
       }
       if (!employee) continue;
 
-      // Extract individual punches
-      const punches = punch.punches || [];
-      const sortedPunches = punches
-        .map(p => p.time)
-        .filter(Boolean)
-        .sort();
+      // Link Sólides ID if not yet linked
+      if (!employee.solides_employee_id) {
+        queries.updateEmployeeSolidesId(employee.id, solidesEmpId);
+      }
 
-      const punchSet = {
-        punch1: sortedPunches[0] || null,
-        punch2: sortedPunches[1] || null,
-        punch3: sortedPunches[2] || null,
-        punch4: sortedPunches[3] || null,
-      };
+      // Sort punches by dateIn
+      punches.sort((a, b) => a.dateIn - b.dateIn);
 
-      // Calculate hours (only when 4 punches exist)
-      const result = calculateDailyHours(punchSet);
+      // Extract 4 times from the 2 pairs
+      let punch1: string | null = null; // Entrada
+      let punch2: string | null = null; // Saida almoco
+      let punch3: string | null = null; // Retorno almoco
+      let punch4: string | null = null; // Saida final
+
+      if (punches.length >= 1) {
+        punch1 = millisToTime(punches[0].dateIn);
+        punch2 = punches[0].dateOut ? millisToTime(punches[0].dateOut) : null;
+      }
+      if (punches.length >= 2) {
+        punch3 = millisToTime(punches[1].dateIn);
+        punch4 = punches[1].dateOut ? millisToTime(punches[1].dateOut) : null;
+      }
+
+      // Calculate only with all 4 punches
+      const result = calculateDailyHours({ punch1, punch2, punch3, punch4 });
 
       queries.upsertDailyRecord(
         employee.id,
-        today,
-        punchSet.punch1,
-        punchSet.punch2,
-        punchSet.punch3,
-        punchSet.punch4,
+        date,
+        punch1,
+        punch2,
+        punch3,
+        punch4,
         result?.totalWorkedMinutes ?? null,
         result?.differenceMinutes ?? null,
         result?.classification ?? null
       );
 
-      // Send alert if threshold exceeded and not already sent
-      if (result && shouldAlert(result.differenceMinutes)) {
-        const record = queries.getDailyRecord(employee.id, today);
-        if (record && !record.alert_sent && result.classification !== 'normal') {
-          await sendEmployeeAlert(
-            employee.slack_id,
-            employee.name,
-            today,
-            result.totalWorkedMinutes,
-            result.differenceMinutes,
-            result.classification as 'late' | 'overtime',
-            record.id
-          );
+      // Send alert if threshold exceeded
+      if (result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
+        const record = queries.getDailyRecord(employee.id, date);
+        if (record && !record.alert_sent) {
+          // Only send if Slack is configured
+          if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+            await sendEmployeeAlert(
+              employee.slack_id,
+              employee.name,
+              date,
+              result.totalWorkedMinutes,
+              result.differenceMinutes,
+              result.classification as 'late' | 'overtime',
+              record.id
+            );
+          } else {
+            // Mark alert as sent anyway to avoid re-processing
+            queries.markAlertSent(record.id);
+            console.log(`[sync] ALERT (no Slack): ${employee.name} - ${result.classification} ${result.differenceMinutes}min`);
+          }
         }
       }
+
+      processed++;
     }
 
-    queries.logAudit('SYNC_COMPLETED', 'system', undefined, `Synced ${punchData.length} records for ${today}`);
-    console.log(`[sync] Completed. Processed ${punchData.length} records`);
+    queries.logAudit('SYNC_COMPLETED', 'system', undefined,
+      `Synced ${punchData.length} punches for ${processed} employees on ${today}`);
+    console.log(`[sync] Completed. ${punchData.length} punches, ${processed} employees`);
   } catch (error) {
     console.error('[sync] Error syncing punches:', error);
     queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));

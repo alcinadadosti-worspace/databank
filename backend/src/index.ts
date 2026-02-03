@@ -46,11 +46,15 @@ async function start(): Promise<void> {
   // Start cron jobs
   startScheduler();
 
-  // Start Slack bot
-  try {
-    await startSlackBot();
-  } catch (error) {
-    console.error('[slack] Failed to start bot (will continue without Slack):', error);
+  // Start Slack bot (only if tokens are configured)
+  if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+    try {
+      await startSlackBot();
+    } catch (error) {
+      console.error('[slack] Failed to start bot (will continue without Slack):', error);
+    }
+  } else {
+    console.log('[slack] Bot disabled — no valid tokens configured');
   }
 }
 

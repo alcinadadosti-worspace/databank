@@ -6,7 +6,13 @@ import { formatMinutes, classificationLabel } from '../services/hours-calculator
 
 let slackApp: App | null = null;
 
-export function getSlackApp(): App {
+function isSlackConfigured(): boolean {
+  return Boolean(env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-'));
+}
+
+export function getSlackApp(): App | null {
+  if (!isSlackConfigured()) return null;
+
   if (!slackApp) {
     slackApp = new App({
       token: env.SLACK_BOT_TOKEN,
@@ -23,6 +29,10 @@ export function getSlackApp(): App {
 
 export async function startSlackBot(): Promise<void> {
   const app = getSlackApp();
+  if (!app) {
+    console.log('[slack] Bot disabled — no valid tokens');
+    return;
+  }
   await app.start();
   console.log('[slack] Bot started in socket mode');
 }
@@ -48,6 +58,7 @@ export async function sendEmployeeAlert(
   dailyRecordId: number
 ): Promise<void> {
   const app = getSlackApp();
+  if (!app) return;
   const targetUser = getTargetUserId(employeeSlackId);
 
   const isLate = classification === 'late';
@@ -132,6 +143,7 @@ export async function sendManagerDailySummary(
   }>
 ): Promise<void> {
   const app = getSlackApp();
+  if (!app) return;
   const targetUser = getTargetUserId(leaderSlackId);
 
   const alertRecords = records.filter(

@@ -9,9 +9,9 @@ const envSchema = z.object({
   SOLIDES_API_TOKEN: z.string().min(1),
   SOLIDES_COMPANY_ID: z.string().min(1),
 
-  SLACK_BOT_TOKEN: z.string().startsWith('xoxb-'),
-  SLACK_SIGNING_SECRET: z.string().min(1),
-  SLACK_APP_TOKEN: z.string().startsWith('xapp-'),
+  SLACK_BOT_TOKEN: z.string().default(''),
+  SLACK_SIGNING_SECRET: z.string().default(''),
+  SLACK_APP_TOKEN: z.string().default(''),
   SLACK_TEST_USER_ID: z.string().default('U0895CZ8HU7'),
 
   PORT: z.string().default('3001'),
