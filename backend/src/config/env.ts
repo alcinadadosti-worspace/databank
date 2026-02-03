@@ -1,0 +1,25 @@
+import { config } from 'dotenv';
+import { z } from 'zod';
+import path from 'path';
+
+config({ path: path.resolve(__dirname, '../../.env') });
+
+const envSchema = z.object({
+  SOLIDES_API_URL: z.string().url(),
+  SOLIDES_API_TOKEN: z.string().min(1),
+  SOLIDES_COMPANY_ID: z.string().min(1),
+
+  SLACK_BOT_TOKEN: z.string().startsWith('xoxb-'),
+  SLACK_SIGNING_SECRET: z.string().min(1),
+  SLACK_APP_TOKEN: z.string().startsWith('xapp-'),
+  SLACK_TEST_USER_ID: z.string().default('U0895CZ8HU7'),
+
+  PORT: z.string().default('3001'),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
+});
+
+export const env = envSchema.parse(process.env);
+
+export const isProduction = env.NODE_ENV === 'production';
+export const isDevelopment = env.NODE_ENV === 'development';

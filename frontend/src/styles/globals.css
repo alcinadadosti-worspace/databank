@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary font-sans antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border-focus;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-secondary border border-border rounded-lg p-5;
+  }
+
+  .card-elevated {
+    @apply bg-bg-elevated border border-border rounded-lg p-5;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-2xs font-medium;
+  }
+
+  .badge-normal {
+    @apply badge bg-status-success/10 text-status-success;
+  }
+
+  .badge-late {
+    @apply badge bg-status-danger/10 text-status-danger;
+  }
+
+  .badge-overtime {
+    @apply badge bg-status-warning/10 text-status-warning;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded transition-colors;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 bg-bg-elevated hover:bg-bg-hover text-text-secondary text-sm font-medium rounded border border-border transition-colors;
+  }
+
+  .input {
+    @apply w-full bg-bg-tertiary border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-colors;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors;
+  }
+
+  .sidebar-link-active {
+    @apply sidebar-link text-text-primary bg-bg-hover;
+  }
+}
