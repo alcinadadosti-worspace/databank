@@ -37,8 +37,8 @@ services:
     runtime: node
     region: oregon
     rootDir: frontend
-    buildCommand: npm install && npm run build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
-    startCommand: node .next/standalone/server.js
+    buildCommand: npm install && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
