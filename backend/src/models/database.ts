@@ -9,17 +9,20 @@ let db: Firestore;
 export function getDb(): Firestore {
   if (!db) {
     if (getApps().length === 0) {
-      // Try loading from JSON file first (local dev), fall back to env vars (Render)
+      // Priority: 1) JSON file (local dev), 2) JSON env var (Render), 3) individual env vars
       const keyPath = path.resolve(__dirname, '../../firebase-key.json');
       if (fs.existsSync(keyPath)) {
         const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
         initializeApp({ credential: cert(serviceAccount) });
+      } else if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+        initializeApp({ credential: cert(serviceAccount) });
       } else {
         initializeApp({
           credential: cert({
-            projectId: env.FIREBASE_PROJECT_ID,
-            clientEmail: env.FIREBASE_CLIENT_EMAIL,
-            privateKey: env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+            projectId: env.FIREBASE_PROJECT_ID!,
+            clientEmail: env.FIREBASE_CLIENT_EMAIL!,
+            privateKey: env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
           }),
         });
       }

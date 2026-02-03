@@ -9,10 +9,11 @@ const envSchema = z.object({
   SOLIDES_API_TOKEN: z.string().min(1),
   SOLIDES_COMPANY_ID: z.string().min(1),
 
-  // Firebase
-  FIREBASE_PROJECT_ID: z.string().min(1),
-  FIREBASE_CLIENT_EMAIL: z.string().min(1),
-  FIREBASE_PRIVATE_KEY: z.string().min(1),
+  // Firebase — use JSON or individual vars
+  FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  FIREBASE_PRIVATE_KEY: z.string().optional(),
 
   SLACK_BOT_TOKEN: z.string().default(''),
   SLACK_SIGNING_SECRET: z.string().default(''),
