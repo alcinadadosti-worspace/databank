@@ -12,11 +12,7 @@ services:
         value: production
       - key: PORT
         value: "3001"
-      - key: FIREBASE_PROJECT_ID
-        sync: false
-      - key: FIREBASE_CLIENT_EMAIL
-        sync: false
-      - key: FIREBASE_PRIVATE_KEY
+      - key: FIREBASE_SERVICE_ACCOUNT_BASE64
         sync: false
       - key: SOLIDES_API_URL
         sync: false
@@ -41,8 +37,8 @@ services:
     runtime: node
     region: oregon
     rootDir: frontend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: npm install && npm run build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/
+    startCommand: node .next/standalone/server.js
     envVars:
       - key: NODE_ENV
         value: production
