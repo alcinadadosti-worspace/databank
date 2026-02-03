@@ -190,18 +190,14 @@ export async function getDailyRecordsByLeaderRange(
   const empIds = employees.map(e => e.id);
   if (empIds.length === 0) return [];
 
-  // Firestore 'in' supports max 30 values per query
-  const chunks = chunkArray(empIds, 30);
-  const allRecords: DailyRecord[] = [];
-
-  for (const chunk of chunks) {
-    const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
-      .where('employee_id', 'in', chunk)
-      .where('date', '>=', startDate)
-      .where('date', '<=', endDate)
-      .get();
-    allRecords.push(...docsToArray<DailyRecord>(snap));
-  }
+  // Query by date range only, then filter by employee IDs in memory
+  // (avoids Firestore composite index requirement for 'in' + range)
+  const empIdSet = new Set(empIds);
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '>=', startDate)
+    .where('date', '<=', endDate)
+    .get();
+  const allRecords = docsToArray<DailyRecord>(snap).filter(r => empIdSet.has(r.employee_id));
 
   // Get justifications
   const recordIds = allRecords.map(r => r.id);
