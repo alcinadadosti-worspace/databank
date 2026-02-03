@@ -9,29 +9,20 @@ let db: Firestore;
 export function getDb(): Firestore {
   if (!db) {
     if (getApps().length === 0) {
-      // Priority: 1) JSON file (local dev), 2) JSON env var (Render), 3) individual env vars
+      // Priority: 1) JSON file (local dev), 2) Base64 env var (Render), 3) raw JSON env var
       const keyPath = path.resolve(__dirname, '../../firebase-key.json');
       if (fs.existsSync(keyPath)) {
         const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
         initializeApp({ credential: cert(serviceAccount) });
+      } else if (env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+        const json = Buffer.from(env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+        const serviceAccount = JSON.parse(json);
+        initializeApp({ credential: cert(serviceAccount) });
       } else if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-        // Render may convert \n inside the JSON to real newlines, breaking JSON.parse.
-        // Fix: escape real newlines inside string values before parsing.
-        const raw = env.FIREBASE_SERVICE_ACCOUNT_JSON.replace(/\n/g, '\\n');
-        const serviceAccount = JSON.parse(raw);
-        // Restore real newlines in private_key for PEM format
-        if (serviceAccount.private_key) {
-          serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-        }
+        const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
         initializeApp({ credential: cert(serviceAccount) });
       } else {
-        initializeApp({
-          credential: cert({
-            projectId: env.FIREBASE_PROJECT_ID!,
-            clientEmail: env.FIREBASE_CLIENT_EMAIL!,
-            privateKey: env.FIREBASE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
-          }),
-        });
+        throw new Error('No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 or provide firebase-key.json');
       }
     }
     db = getFirestore();
