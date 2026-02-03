@@ -1,5 +1,5 @@
 services:
-  # ─── Backend (Express + SQLite) ─────────────────────────
+  # ─── Backend (Express + Firestore) ─────────────────────────
   - type: web
     name: databank-backend
     runtime: node
@@ -12,8 +12,12 @@ services:
         value: production
       - key: PORT
         value: "3001"
-      - key: DB_PATH
-        value: /var/data/databank.db
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
       - key: SOLIDES_API_URL
         sync: false
       - key: SOLIDES_API_TOKEN
@@ -30,12 +34,8 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
-    disk:
-      name: databank-db
-      mountPath: /var/data
-      sizeGB: 1
 
-  # ─── Frontend (Next.js) ────────────────────────────────
+  # ─── Frontend (Next.js) ────────────────────────────────────
   - type: web
     name: databank-frontend
     runtime: node

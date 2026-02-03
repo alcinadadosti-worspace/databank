@@ -48,7 +48,7 @@ export async function syncPunches(): Promise<void> {
     }
 
     // Get all employees for matching
-    const employees = queries.getAllEmployees();
+    const employees = await queries.getAllEmployees();
     const employeeBySolidesId = new Map<string, typeof employees[0]>();
     const employeeByName = new Map<string, typeof employees[0]>();
 
@@ -74,7 +74,7 @@ export async function syncPunches(): Promise<void> {
 
       // Link Sólides ID if not yet linked
       if (!employee.solides_employee_id) {
-        queries.updateEmployeeSolidesId(employee.id, solidesEmpId);
+        await queries.updateEmployeeSolidesId(employee.id, solidesEmpId);
       }
 
       // Sort punches by dateIn
@@ -98,7 +98,7 @@ export async function syncPunches(): Promise<void> {
       // Calculate only with all 4 punches
       const result = calculateDailyHours({ punch1, punch2, punch3, punch4 });
 
-      queries.upsertDailyRecord(
+      await queries.upsertDailyRecord(
         employee.id,
         date,
         punch1,
@@ -112,7 +112,7 @@ export async function syncPunches(): Promise<void> {
 
       // Send alert if threshold exceeded
       if (result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
-        const record = queries.getDailyRecord(employee.id, date);
+        const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
           // Only send if Slack is configured
           if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
@@ -127,7 +127,7 @@ export async function syncPunches(): Promise<void> {
             );
           } else {
             // Mark alert as sent anyway to avoid re-processing
-            queries.markAlertSent(record.id);
+            await queries.markAlertSent(record.id);
             console.log(`[sync] ALERT (no Slack): ${employee.name} - ${result.classification} ${result.differenceMinutes}min`);
           }
         }
@@ -136,11 +136,11 @@ export async function syncPunches(): Promise<void> {
       processed++;
     }
 
-    queries.logAudit('SYNC_COMPLETED', 'system', undefined,
+    await queries.logAudit('SYNC_COMPLETED', 'system', undefined,
       `Synced ${punchData.length} punches for ${processed} employees on ${today}`);
     console.log(`[sync] Completed. ${punchData.length} punches, ${processed} employees`);
   } catch (error) {
     console.error('[sync] Error syncing punches:', error);
-    queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));
+    await queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));
   }
 }

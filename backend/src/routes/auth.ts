@@ -7,7 +7,7 @@ const router = Router();
  * POST /api/auth/identify - Identify user by Slack ID
  * Returns user role and associated data.
  */
-router.post('/identify', (req: Request, res: Response) => {
+router.post('/identify', async (req: Request, res: Response) => {
   try {
     const { slack_id } = req.body;
     if (!slack_id) {
@@ -16,26 +16,26 @@ router.post('/identify', (req: Request, res: Response) => {
     }
 
     // Check if user exists
-    let user = queries.getUserBySlackId(slack_id);
+    let user = await queries.getUserBySlackId(slack_id);
     if (user) {
       res.json({ user });
       return;
     }
 
     // Try to find as employee
-    const employee = queries.getEmployeeBySlackId(slack_id);
+    const employee = await queries.getEmployeeBySlackId(slack_id);
     if (employee) {
-      queries.upsertUser(slack_id, employee.name, 'employee', employee.id, undefined);
-      user = queries.getUserBySlackId(slack_id);
+      await queries.upsertUser(slack_id, employee.name, 'employee', employee.id, undefined);
+      user = await queries.getUserBySlackId(slack_id);
       res.json({ user });
       return;
     }
 
     // Try to find as leader
-    const leader = queries.getLeaderBySlackId(slack_id);
+    const leader = await queries.getLeaderBySlackId(slack_id);
     if (leader) {
-      queries.upsertUser(slack_id, leader.name, 'manager', undefined, leader.id);
-      user = queries.getUserBySlackId(slack_id);
+      await queries.upsertUser(slack_id, leader.name, 'manager', undefined, leader.id);
+      user = await queries.getUserBySlackId(slack_id);
       res.json({ user });
       return;
     }

@@ -13,7 +13,7 @@ export async function sendDailyManagerAlerts(): Promise<void> {
   console.log(`[daily-alert] Sending manager alerts for ${date}`);
 
   try {
-    const records = queries.getDailyRecordsByDate(date);
+    const records = await queries.getDailyRecordsByDate(date);
 
     if (!records || records.length === 0) {
       console.log('[daily-alert] No records for yesterday');
@@ -54,11 +54,11 @@ export async function sendDailyManagerAlerts(): Promise<void> {
       );
     }
 
-    queries.markManagerAlertSent(date);
-    queries.logAudit('MANAGER_ALERTS_SENT', 'system', undefined, `Alerts for ${date}`);
+    await queries.markManagerAlertSent(date);
+    await queries.logAudit('MANAGER_ALERTS_SENT', 'system', undefined, `Alerts for ${date}`);
     console.log(`[daily-alert] Completed for ${date}`);
   } catch (error) {
     console.error('[daily-alert] Error:', error);
-    queries.logAudit('MANAGER_ALERT_ERROR', 'system', undefined, String(error));
+    await queries.logAudit('MANAGER_ALERT_ERROR', 'system', undefined, String(error));
   }
 }

@@ -24,7 +24,7 @@ async function readOnlyFetch(baseUrl: string, endpoint: string, params?: Record<
     Object.entries(params).forEach(([key, value]) => url.searchParams.append(key, value));
   }
 
-  logAudit('API_READ', 'solides', undefined, `GET ${baseUrl}${endpoint}`);
+  await logAudit('API_READ', 'solides', undefined, `GET ${baseUrl}${endpoint}`);
 
   const response = await fetch(url.toString(), {
     method: 'GET',

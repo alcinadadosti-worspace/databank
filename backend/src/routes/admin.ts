@@ -4,11 +4,11 @@ import * as queries from '../models/queries';
 const router = Router();
 
 /** GET /api/admin/audit-logs?limit=100&offset=0 */
-router.get('/audit-logs', (req: Request, res: Response) => {
+router.get('/audit-logs', async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string, 10) || 100;
     const offset = parseInt(req.query.offset as string, 10) || 0;
-    const logs = queries.getAuditLogs(limit, offset);
+    const logs = await queries.getAuditLogs(limit, offset);
     res.json({ logs });
   } catch (error) {
     console.error('[admin] Error fetching audit logs:', error);
@@ -17,7 +17,7 @@ router.get('/audit-logs', (req: Request, res: Response) => {
 });
 
 /** GET /api/admin/export?start=YYYY-MM-DD&end=YYYY-MM-DD - Export records as CSV */
-router.get('/export', (req: Request, res: Response) => {
+router.get('/export', async (req: Request, res: Response) => {
   try {
     const { start, end } = req.query;
     if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
@@ -25,7 +25,7 @@ router.get('/export', (req: Request, res: Response) => {
       return;
     }
 
-    const records = queries.getAllRecordsRange(start, end);
+    const records = await queries.getAllRecordsRange(start, end);
 
     const csvHeader = 'Data,Colaborador,Líder,Entrada,Saída Almoço,Retorno Almoço,Saída,Total(min),Diferença(min),Classificação,Justificativa\n';
     const csvRows = records.map((r: any) =>
@@ -54,28 +54,10 @@ router.get('/export', (req: Request, res: Response) => {
 });
 
 /** GET /api/admin/dashboard - Overview stats */
-router.get('/dashboard', (_req: Request, res: Response) => {
+router.get('/dashboard', async (_req: Request, res: Response) => {
   try {
-    const db = require('../models/database').getDb();
-
-    const today = new Date().toISOString().split('T')[0];
-    const totalEmployees = db.prepare('SELECT COUNT(*) as count FROM employees').get() as any;
-    const totalLeaders = db.prepare('SELECT COUNT(*) as count FROM leaders').get() as any;
-    const todayRecords = db.prepare('SELECT COUNT(*) as count FROM daily_records WHERE date = ?').get(today) as any;
-    const todayAlerts = db.prepare(
-      "SELECT COUNT(*) as count FROM daily_records WHERE date = ? AND classification IN ('late', 'overtime') AND ABS(difference_minutes) >= 11"
-    ).get(today) as any;
-    const pendingJustifications = db.prepare(
-      "SELECT COUNT(*) as count FROM daily_records dr WHERE dr.classification IN ('late', 'overtime') AND ABS(dr.difference_minutes) >= 11 AND NOT EXISTS (SELECT 1 FROM justifications j WHERE j.daily_record_id = dr.id)"
-    ).get() as any;
-
-    res.json({
-      total_employees: totalEmployees.count,
-      total_leaders: totalLeaders.count,
-      today_records: todayRecords.count,
-      today_alerts: todayAlerts.count,
-      pending_justifications: pendingJustifications.count,
-    });
+    const stats = await queries.getDashboardStats();
+    res.json(stats);
   } catch (error) {
     console.error('[admin] Error fetching dashboard:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard' });

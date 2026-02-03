@@ -119,8 +119,8 @@ export async function sendEmployeeAlert(
       blocks,
     });
 
-    queries.markAlertSent(dailyRecordId);
-    queries.logAudit('SLACK_EMPLOYEE_ALERT', 'daily_record', dailyRecordId,
+    await queries.markAlertSent(dailyRecordId);
+    await queries.logAudit('SLACK_EMPLOYEE_ALERT', 'daily_record', dailyRecordId,
       `Alert sent to ${targetUser} for ${employeeName}`);
 
     console.log(`[slack] Employee alert sent for ${employeeName} (${date})`);
@@ -209,13 +209,13 @@ function registerInteractions(app: App): void {
         const { daily_record_id, employee_name, type, reason } = payload;
 
         // Find the employee
-        const records = queries.getDailyRecordsByDate(new Date().toISOString().split('T')[0]);
+        const records = await queries.getDailyRecordsByDate(new Date().toISOString().split('T')[0]);
         const record = records.find((r: any) => r.id === daily_record_id);
         const employeeId = record ? (record as any).employee_id : null;
 
         if (employeeId) {
-          queries.insertJustification(daily_record_id, employeeId, type, reason);
-          queries.logAudit('JUSTIFICATION_VIA_SLACK', 'justification', undefined,
+          await queries.insertJustification(daily_record_id, employeeId, type, reason);
+          await queries.logAudit('JUSTIFICATION_VIA_SLACK', 'justification', undefined,
             `${employee_name}: ${type} - ${reason}`);
         }
 

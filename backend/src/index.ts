@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { env } from './config/env';
-import { getDb, closeDb } from './models/database';
+import { getDb } from './models/database';
 import { startScheduler, stopScheduler } from './jobs/scheduler';
 import { startSlackBot } from './slack/bot';
 
@@ -36,9 +36,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 async function start(): Promise<void> {
-  // Initialize database
+  // Initialize Firestore connection
   getDb();
-  console.log('[db] Database initialized');
+  console.log('[db] Firestore initialized');
 
   // Start Express server
   const port = parseInt(env.PORT, 10);
@@ -65,13 +65,11 @@ async function start(): Promise<void> {
 process.on('SIGINT', () => {
   console.log('\n[server] Shutting down...');
   stopScheduler();
-  closeDb();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   stopScheduler();
-  closeDb();
   process.exit(0);
 });
 

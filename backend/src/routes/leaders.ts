@@ -4,9 +4,9 @@ import * as queries from '../models/queries';
 const router = Router();
 
 /** GET /api/leaders - List all leaders */
-router.get('/', (_req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
-    const leaders = queries.getAllLeaders();
+    const leaders = await queries.getAllLeaders();
     res.json({ leaders });
   } catch (error) {
     console.error('[leaders] Error fetching leaders:', error);
@@ -15,19 +15,19 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 /** GET /api/leaders/:id - Get single leader with their employees */
-router.get('/:id', (req: Request, res: Response) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid leader ID' });
       return;
     }
-    const leader = queries.getLeaderById(id);
+    const leader = await queries.getLeaderById(id);
     if (!leader) {
       res.status(404).json({ error: 'Leader not found' });
       return;
     }
-    const employees = queries.getEmployeesByLeaderId(id);
+    const employees = await queries.getEmployeesByLeaderId(id);
     res.json({ leader, employees });
   } catch (error) {
     console.error('[leaders] Error fetching leader:', error);

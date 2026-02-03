@@ -1,133 +1,261 @@
-import { getDb } from './database';
+import { getDb, COLLECTIONS, getNextId } from './database';
+import { FieldValue } from 'firebase-admin/firestore';
+
+// Helper: convert Firestore doc to plain object with id
+function docToObj<T>(doc: FirebaseFirestore.DocumentSnapshot): T | undefined {
+  if (!doc.exists) return undefined;
+  return { ...doc.data(), _docId: doc.id } as unknown as T;
+}
+
+function docsToArray<T>(snapshot: FirebaseFirestore.QuerySnapshot): T[] {
+  return snapshot.docs.map(doc => ({ ...doc.data(), _docId: doc.id }) as unknown as T);
+}
+
+// In-memory caches for leaders/employees (refreshed on insert)
+let leadersCache: Leader[] | null = null;
+let employeesCache: EmployeeWithLeader[] | null = null;
+
+function invalidateCaches() {
+  leadersCache = null;
+  employeesCache = null;
+}
 
 // ─── Leaders ───────────────────────────────────────────────────
 
-export function getAllLeaders() {
-  return getDb().prepare('SELECT * FROM leaders ORDER BY name').all() as Leader[];
+export async function getAllLeaders(): Promise<Leader[]> {
+  if (leadersCache) return leadersCache;
+  const snap = await getDb().collection(COLLECTIONS.LEADERS).orderBy('name').get();
+  leadersCache = docsToArray<Leader>(snap);
+  return leadersCache;
 }
 
-export function getLeaderById(id: number) {
-  return getDb().prepare('SELECT * FROM leaders WHERE id = ?').get(id) as Leader | undefined;
+export async function getLeaderById(id: number): Promise<Leader | undefined> {
+  const leaders = await getAllLeaders();
+  return leaders.find(l => l.id === id);
 }
 
-export function getLeaderBySlackId(slackId: string) {
-  return getDb().prepare('SELECT * FROM leaders WHERE slack_id = ?').get(slackId) as Leader | undefined;
+export async function getLeaderBySlackId(slackId: string): Promise<Leader | undefined> {
+  const leaders = await getAllLeaders();
+  return leaders.find(l => l.slack_id === slackId);
 }
 
-export function getLeaderByName(name: string) {
-  return getDb().prepare('SELECT * FROM leaders WHERE name_normalized = ?').get(name.toLowerCase()) as Leader | undefined;
+export async function getLeaderByName(name: string): Promise<Leader | undefined> {
+  const leaders = await getAllLeaders();
+  return leaders.find(l => l.name_normalized === name.toLowerCase());
 }
 
-export function insertLeader(name: string, nameNormalized: string, slackId: string | null) {
-  return getDb().prepare(
-    'INSERT INTO leaders (name, name_normalized, slack_id) VALUES (?, ?, ?)'
-  ).run(name, nameNormalized, slackId);
+export async function insertLeader(name: string, nameNormalized: string, slackId: string | null) {
+  const id = await getNextId(COLLECTIONS.LEADERS);
+  const data = {
+    id,
+    name,
+    name_normalized: nameNormalized,
+    slack_id: slackId,
+    created_at: new Date().toISOString(),
+  };
+  await getDb().collection(COLLECTIONS.LEADERS).doc(String(id)).set(data);
+  invalidateCaches();
+  return { lastInsertRowid: id };
 }
 
 // ─── Employees ─────────────────────────────────────────────────
 
-export function getAllEmployees() {
-  return getDb().prepare(`
-    SELECT e.*, l.name as leader_name, l.slack_id as leader_slack_id
-    FROM employees e
-    JOIN leaders l ON e.leader_id = l.id
-    ORDER BY e.name
-  `).all() as EmployeeWithLeader[];
+export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
+  if (employeesCache) return employeesCache;
+  const leaders = await getAllLeaders();
+  const leaderMap = new Map(leaders.map(l => [l.id, l]));
+
+  const snap = await getDb().collection(COLLECTIONS.EMPLOYEES).orderBy('name').get();
+  const employees = docsToArray<Employee>(snap);
+
+  employeesCache = employees.map(e => {
+    const leader = leaderMap.get(e.leader_id);
+    return {
+      ...e,
+      leader_name: leader?.name ?? '',
+      leader_slack_id: leader?.slack_id ?? null,
+    };
+  });
+  return employeesCache;
 }
 
-export function getEmployeesByLeaderId(leaderId: number) {
-  return getDb().prepare(`
-    SELECT e.*, l.name as leader_name
-    FROM employees e
-    JOIN leaders l ON e.leader_id = l.id
-    WHERE e.leader_id = ? OR e.secondary_approver_id = ?
-    ORDER BY e.name
-  `).all(leaderId, leaderId) as EmployeeWithLeader[];
+export async function getEmployeesByLeaderId(leaderId: number): Promise<EmployeeWithLeader[]> {
+  const all = await getAllEmployees();
+  return all.filter(e => e.leader_id === leaderId || e.secondary_approver_id === leaderId);
 }
 
-export function getEmployeeBySlackId(slackId: string) {
-  return getDb().prepare('SELECT * FROM employees WHERE slack_id = ?').get(slackId) as Employee | undefined;
+export async function getEmployeeBySlackId(slackId: string): Promise<Employee | undefined> {
+  const all = await getAllEmployees();
+  return all.find(e => e.slack_id === slackId);
 }
 
-export function getEmployeeById(id: number) {
-  return getDb().prepare('SELECT * FROM employees WHERE id = ?').get(id) as Employee | undefined;
+export async function getEmployeeById(id: number): Promise<Employee | undefined> {
+  const all = await getAllEmployees();
+  return all.find(e => e.id === id);
 }
 
-export function insertEmployee(
+export async function insertEmployee(
   name: string,
   slackId: string | null,
   leaderId: number,
   secondaryApproverId: number | null
 ) {
-  return getDb().prepare(
-    'INSERT INTO employees (name, slack_id, leader_id, secondary_approver_id) VALUES (?, ?, ?, ?)'
-  ).run(name, slackId, leaderId, secondaryApproverId);
+  const id = await getNextId(COLLECTIONS.EMPLOYEES);
+  const data = {
+    id,
+    name,
+    slack_id: slackId,
+    leader_id: leaderId,
+    secondary_approver_id: secondaryApproverId,
+    solides_employee_id: null,
+    created_at: new Date().toISOString(),
+  };
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(id)).set(data);
+  invalidateCaches();
+  return { lastInsertRowid: id };
 }
 
-export function updateEmployeeSolidesId(employeeId: number, solidesId: string) {
-  return getDb().prepare(
-    'UPDATE employees SET solides_employee_id = ? WHERE id = ?'
-  ).run(solidesId, employeeId);
+export async function updateEmployeeSolidesId(employeeId: number, solidesId: string) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    solides_employee_id: solidesId,
+  });
+  invalidateCaches();
 }
 
 // ─── Daily Records ─────────────────────────────────────────────
 
-export function getDailyRecord(employeeId: number, date: string) {
-  return getDb().prepare(
-    'SELECT * FROM daily_records WHERE employee_id = ? AND date = ?'
-  ).get(employeeId, date) as DailyRecord | undefined;
+// Composite key for daily_records: "employeeId_date"
+function dailyRecordDocId(employeeId: number, date: string): string {
+  return `${employeeId}_${date}`;
 }
 
-export function getDailyRecordsByDate(date: string) {
-  return getDb().prepare(`
-    SELECT dr.*, e.name as employee_name, e.slack_id as employee_slack_id,
-           l.name as leader_name, l.slack_id as leader_slack_id, e.leader_id
-    FROM daily_records dr
-    JOIN employees e ON dr.employee_id = e.id
-    JOIN leaders l ON e.leader_id = l.id
-    WHERE dr.date = ?
-    ORDER BY e.name
-  `).all(date) as DailyRecordFull[];
+export async function getDailyRecord(employeeId: number, date: string): Promise<DailyRecord | undefined> {
+  const docId = dailyRecordDocId(employeeId, date);
+  const doc = await getDb().collection(COLLECTIONS.DAILY_RECORDS).doc(docId).get();
+  return docToObj<DailyRecord>(doc);
 }
 
-export function getDailyRecordsByEmployeeRange(employeeId: number, startDate: string, endDate: string) {
-  return getDb().prepare(`
-    SELECT dr.*, j.reason as justification_reason, j.type as justification_type
-    FROM daily_records dr
-    LEFT JOIN justifications j ON j.daily_record_id = dr.id
-    WHERE dr.employee_id = ? AND dr.date BETWEEN ? AND ?
-    ORDER BY dr.date DESC
-  `).all(employeeId, startDate, endDate) as DailyRecordWithJustification[];
+export async function getDailyRecordsByDate(date: string): Promise<DailyRecordFull[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '==', date).get();
+  const records = docsToArray<DailyRecord>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return records.map(r => {
+    const emp = empMap.get(r.employee_id);
+    return {
+      ...r,
+      employee_name: emp?.name ?? '',
+      employee_slack_id: emp?.slack_id ?? null,
+      leader_name: emp?.leader_name ?? '',
+      leader_slack_id: emp?.leader_slack_id ?? null,
+      leader_id: emp?.leader_id ?? 0,
+    };
+  }).sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 }
 
-export function getDailyRecordsByLeaderRange(leaderId: number, startDate: string, endDate: string) {
-  return getDb().prepare(`
-    SELECT dr.*, e.name as employee_name, e.slack_id as employee_slack_id,
-           j.reason as justification_reason, j.type as justification_type
-    FROM daily_records dr
-    JOIN employees e ON dr.employee_id = e.id
-    LEFT JOIN justifications j ON j.daily_record_id = dr.id
-    WHERE (e.leader_id = ? OR e.secondary_approver_id = ?)
-      AND dr.date BETWEEN ? AND ?
-    ORDER BY dr.date DESC, e.name
-  `).all(leaderId, leaderId, startDate, endDate) as DailyRecordFull[];
+export async function getDailyRecordsByEmployeeRange(
+  employeeId: number, startDate: string, endDate: string
+): Promise<DailyRecordWithJustification[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('employee_id', '==', employeeId)
+    .where('date', '>=', startDate)
+    .where('date', '<=', endDate)
+    .orderBy('date', 'desc')
+    .get();
+  const records = docsToArray<DailyRecord>(snap);
+
+  // Get justifications for these records
+  const justSnap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('employee_id', '==', employeeId).get();
+  const justMap = new Map<number, { reason: string; type: string }>();
+  for (const doc of justSnap.docs) {
+    const j = doc.data();
+    justMap.set(j.daily_record_id, { reason: j.reason, type: j.type });
+  }
+
+  return records.map(r => ({
+    ...r,
+    justification_reason: justMap.get(r.id)?.reason ?? null,
+    justification_type: justMap.get(r.id)?.type ?? null,
+  }));
 }
 
-export function getAllRecordsRange(startDate: string, endDate: string) {
-  return getDb().prepare(`
-    SELECT dr.*, e.name as employee_name, e.slack_id as employee_slack_id,
-           l.name as leader_name, l.slack_id as leader_slack_id, e.leader_id,
-           j.reason as justification_reason, j.type as justification_type
-    FROM daily_records dr
-    JOIN employees e ON dr.employee_id = e.id
-    JOIN leaders l ON e.leader_id = l.id
-    LEFT JOIN justifications j ON j.daily_record_id = dr.id
-    WHERE dr.date BETWEEN ? AND ?
-    ORDER BY dr.date DESC, e.name
-  `).all(startDate, endDate) as DailyRecordFull[];
+export async function getDailyRecordsByLeaderRange(
+  leaderId: number, startDate: string, endDate: string
+): Promise<DailyRecordFull[]> {
+  const employees = await getEmployeesByLeaderId(leaderId);
+  const empIds = employees.map(e => e.id);
+  if (empIds.length === 0) return [];
+
+  // Firestore 'in' supports max 30 values per query
+  const chunks = chunkArray(empIds, 30);
+  const allRecords: DailyRecord[] = [];
+
+  for (const chunk of chunks) {
+    const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('employee_id', 'in', chunk)
+      .where('date', '>=', startDate)
+      .where('date', '<=', endDate)
+      .get();
+    allRecords.push(...docsToArray<DailyRecord>(snap));
+  }
+
+  // Get justifications
+  const recordIds = allRecords.map(r => r.id);
+  const justMap = await getJustificationsMap(recordIds);
+
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return allRecords
+    .map(r => {
+      const emp = empMap.get(r.employee_id);
+      return {
+        ...r,
+        employee_name: emp?.name ?? '',
+        employee_slack_id: emp?.slack_id ?? null,
+        leader_name: emp?.leader_name ?? '',
+        leader_slack_id: emp?.leader_slack_id ?? null,
+        leader_id: emp?.leader_id ?? 0,
+        justification_reason: justMap.get(r.id)?.reason ?? null,
+        justification_type: justMap.get(r.id)?.type ?? null,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
 }
 
-export function upsertDailyRecord(
+export async function getAllRecordsRange(startDate: string, endDate: string): Promise<DailyRecordFull[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '>=', startDate)
+    .where('date', '<=', endDate)
+    .orderBy('date', 'desc')
+    .get();
+  const records = docsToArray<DailyRecord>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  const recordIds = records.map(r => r.id);
+  const justMap = await getJustificationsMap(recordIds);
+
+  return records.map(r => {
+    const emp = empMap.get(r.employee_id);
+    return {
+      ...r,
+      employee_name: emp?.name ?? '',
+      employee_slack_id: emp?.slack_id ?? null,
+      leader_name: emp?.leader_name ?? '',
+      leader_slack_id: emp?.leader_slack_id ?? null,
+      leader_id: emp?.leader_id ?? 0,
+      justification_reason: justMap.get(r.id)?.reason ?? null,
+      justification_type: justMap.get(r.id)?.type ?? null,
+    };
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+}
+
+export async function upsertDailyRecord(
   employeeId: number,
   date: string,
   punch1: string | null,
@@ -138,95 +266,246 @@ export function upsertDailyRecord(
   differenceMinutes: number | null,
   classification: string | null
 ) {
-  return getDb().prepare(`
-    INSERT INTO daily_records (employee_id, date, punch_1, punch_2, punch_3, punch_4,
-      total_worked_minutes, difference_minutes, classification, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(employee_id, date) DO UPDATE SET
-      punch_1 = excluded.punch_1,
-      punch_2 = excluded.punch_2,
-      punch_3 = excluded.punch_3,
-      punch_4 = excluded.punch_4,
-      total_worked_minutes = excluded.total_worked_minutes,
-      difference_minutes = excluded.difference_minutes,
-      classification = excluded.classification,
-      updated_at = datetime('now')
-  `).run(employeeId, date, punch1, punch2, punch3, punch4, totalWorkedMinutes, differenceMinutes, classification);
+  const docId = dailyRecordDocId(employeeId, date);
+  const ref = getDb().collection(COLLECTIONS.DAILY_RECORDS).doc(docId);
+  const existing = await ref.get();
+  const now = new Date().toISOString();
+
+  if (existing.exists) {
+    await ref.update({
+      punch_1: punch1, punch_2: punch2, punch_3: punch3, punch_4: punch4,
+      total_worked_minutes: totalWorkedMinutes,
+      difference_minutes: differenceMinutes,
+      classification,
+      updated_at: now,
+    });
+  } else {
+    const id = await getNextId(COLLECTIONS.DAILY_RECORDS);
+    await ref.set({
+      id,
+      employee_id: employeeId,
+      date,
+      punch_1: punch1, punch_2: punch2, punch_3: punch3, punch_4: punch4,
+      total_worked_minutes: totalWorkedMinutes,
+      difference_minutes: differenceMinutes,
+      classification,
+      alert_sent: 0,
+      manager_alert_sent: 0,
+      created_at: now,
+      updated_at: now,
+    });
+  }
 }
 
-export function markAlertSent(recordId: number) {
-  return getDb().prepare('UPDATE daily_records SET alert_sent = 1 WHERE id = ?').run(recordId);
+export async function markAlertSent(recordId: number) {
+  // Find the doc by numeric id
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (!snap.empty) {
+    await snap.docs[0].ref.update({ alert_sent: 1 });
+  }
 }
 
-export function markManagerAlertSent(date: string) {
-  return getDb().prepare('UPDATE daily_records SET manager_alert_sent = 1 WHERE date = ?').run(date);
+export async function markManagerAlertSent(date: string) {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '==', date).get();
+  const batch = getDb().batch();
+  for (const doc of snap.docs) {
+    batch.update(doc.ref, { manager_alert_sent: 1 });
+  }
+  await batch.commit();
 }
 
-export function getUnalertedRecords(date: string) {
-  return getDb().prepare(`
-    SELECT dr.*, e.name as employee_name, e.slack_id as employee_slack_id,
-           l.name as leader_name, l.slack_id as leader_slack_id, e.leader_id
-    FROM daily_records dr
-    JOIN employees e ON dr.employee_id = e.id
-    JOIN leaders l ON e.leader_id = l.id
-    WHERE dr.date = ? AND dr.alert_sent = 0
-      AND dr.classification IN ('late', 'overtime')
-      AND ABS(dr.difference_minutes) >= 11
-  `).all(date) as DailyRecordFull[];
+export async function getUnalertedRecords(date: string): Promise<DailyRecordFull[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '==', date)
+    .where('alert_sent', '==', 0)
+    .get();
+  const records = docsToArray<DailyRecord>(snap);
+
+  // Filter in-memory for classification and threshold
+  const filtered = records.filter(
+    r => (r.classification === 'late' || r.classification === 'overtime')
+      && Math.abs(r.difference_minutes ?? 0) >= 11
+  );
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return filtered.map(r => {
+    const emp = empMap.get(r.employee_id);
+    return {
+      ...r,
+      employee_name: emp?.name ?? '',
+      employee_slack_id: emp?.slack_id ?? null,
+      leader_name: emp?.leader_name ?? '',
+      leader_slack_id: emp?.leader_slack_id ?? null,
+      leader_id: emp?.leader_id ?? 0,
+    };
+  });
 }
 
 // ─── Justifications ────────────────────────────────────────────
 
-export function insertJustification(
+export async function insertJustification(
   dailyRecordId: number,
   employeeId: number,
   type: 'late' | 'overtime',
   reason: string,
   customNote?: string
 ) {
-  return getDb().prepare(
-    'INSERT INTO justifications (daily_record_id, employee_id, type, reason, custom_note) VALUES (?, ?, ?, ?, ?)'
-  ).run(dailyRecordId, employeeId, type, reason, customNote || null);
+  const id = await getNextId(COLLECTIONS.JUSTIFICATIONS);
+  await getDb().collection(COLLECTIONS.JUSTIFICATIONS).doc(String(id)).set({
+    id,
+    daily_record_id: dailyRecordId,
+    employee_id: employeeId,
+    type,
+    reason,
+    custom_note: customNote || null,
+    submitted_at: new Date().toISOString(),
+  });
 }
 
-export function getJustificationsByEmployee(employeeId: number) {
-  return getDb().prepare(`
-    SELECT j.*, dr.date
-    FROM justifications j
-    JOIN daily_records dr ON j.daily_record_id = dr.id
-    WHERE j.employee_id = ?
-    ORDER BY dr.date DESC
-  `).all(employeeId) as JustificationWithDate[];
+export async function getJustificationsByEmployee(employeeId: number): Promise<JustificationWithDate[]> {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('employee_id', '==', employeeId).get();
+  const justifications = docsToArray<any>(snap);
+
+  // Get daily_record dates
+  const recordIds = [...new Set(justifications.map(j => j.daily_record_id))];
+  const dateMap = new Map<number, string>();
+
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', 'in', chunk).get();
+    for (const doc of rSnap.docs) {
+      const data = doc.data();
+      dateMap.set(data.id, data.date);
+    }
+  }
+
+  return justifications
+    .map(j => ({
+      ...j,
+      date: dateMap.get(j.daily_record_id) ?? '',
+    }))
+    .sort((a: any, b: any) => b.date.localeCompare(a.date));
 }
 
 // ─── Audit Log ─────────────────────────────────────────────────
 
-export function logAudit(action: string, entityType: string, entityId?: number, details?: string) {
-  return getDb().prepare(
-    'INSERT INTO audit_log (action, entity_type, entity_id, details) VALUES (?, ?, ?, ?)'
-  ).run(action, entityType, entityId || null, details || null);
+export async function logAudit(action: string, entityType: string, entityId?: number, details?: string) {
+  await getDb().collection(COLLECTIONS.AUDIT_LOG).add({
+    action,
+    entity_type: entityType,
+    entity_id: entityId || null,
+    details: details || null,
+    created_at: new Date().toISOString(),
+  });
 }
 
-export function getAuditLogs(limit = 100, offset = 0) {
-  return getDb().prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset);
+export async function getAuditLogs(limit = 100, offset = 0) {
+  const snap = await getDb().collection(COLLECTIONS.AUDIT_LOG)
+    .orderBy('created_at', 'desc')
+    .limit(limit + offset)
+    .get();
+  const all = docsToArray<AuditLog>(snap);
+  return all.slice(offset, offset + limit);
 }
 
 // ─── Users ─────────────────────────────────────────────────────
 
-export function getUserBySlackId(slackId: string) {
-  return getDb().prepare('SELECT * FROM users WHERE slack_id = ?').get(slackId) as User | undefined;
+export async function getUserBySlackId(slackId: string): Promise<User | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.USERS)
+    .where('slack_id', '==', slackId).limit(1).get();
+  if (snap.empty) return undefined;
+  return { ...snap.docs[0].data(), _docId: snap.docs[0].id } as unknown as User;
 }
 
-export function upsertUser(slackId: string, name: string, role: string, employeeId?: number, leaderId?: number) {
-  return getDb().prepare(`
-    INSERT INTO users (slack_id, name, role, employee_id, leader_id)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(slack_id) DO UPDATE SET
-      name = excluded.name,
-      role = excluded.role,
-      employee_id = excluded.employee_id,
-      leader_id = excluded.leader_id
-  `).run(slackId, name, role, employeeId || null, leaderId || null);
+export async function upsertUser(slackId: string, name: string, role: string, employeeId?: number, leaderId?: number) {
+  const existing = await getUserBySlackId(slackId);
+  if (existing) {
+    const docId = (existing as any)._docId;
+    await getDb().collection(COLLECTIONS.USERS).doc(docId).update({
+      name, role,
+      employee_id: employeeId || null,
+      leader_id: leaderId || null,
+    });
+  } else {
+    const id = await getNextId(COLLECTIONS.USERS);
+    await getDb().collection(COLLECTIONS.USERS).doc(String(id)).set({
+      id,
+      slack_id: slackId,
+      name,
+      role,
+      employee_id: employeeId || null,
+      leader_id: leaderId || null,
+      created_at: new Date().toISOString(),
+    });
+  }
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────
+
+export async function getDashboardStats() {
+  const today = new Date().toISOString().split('T')[0];
+
+  const [employees, leaders, todaySnap, justSnap] = await Promise.all([
+    getAllEmployees(),
+    getAllLeaders(),
+    getDb().collection(COLLECTIONS.DAILY_RECORDS).where('date', '==', today).get(),
+    getDb().collection(COLLECTIONS.JUSTIFICATIONS).get(),
+  ]);
+
+  const todayRecords = docsToArray<DailyRecord>(todaySnap);
+  const todayAlerts = todayRecords.filter(
+    r => (r.classification === 'late' || r.classification === 'overtime')
+      && Math.abs(r.difference_minutes ?? 0) >= 11
+  );
+
+  const justifiedRecordIds = new Set(justSnap.docs.map(d => d.data().daily_record_id));
+
+  // Count all records with alerts but no justification
+  const allRecordsSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('classification', 'in', ['late', 'overtime']).get();
+  const pendingJustifications = allRecordsSnap.docs.filter(doc => {
+    const data = doc.data();
+    return Math.abs(data.difference_minutes ?? 0) >= 11
+      && !justifiedRecordIds.has(data.id);
+  }).length;
+
+  return {
+    total_employees: employees.length,
+    total_leaders: leaders.length,
+    today_records: todayRecords.length,
+    today_alerts: todayAlerts.length,
+    pending_justifications: pendingJustifications,
+  };
+}
+
+// ─── Helpers ──────────────────────────────────────────────────
+
+async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string }>> {
+  const map = new Map<number, { reason: string; type: string }>();
+  if (recordIds.length === 0) return map;
+
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('daily_record_id', 'in', chunk).get();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      map.set(data.daily_record_id, { reason: data.reason, type: data.type });
+    }
+  }
+  return map;
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
 }
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -295,6 +574,15 @@ export interface JustificationWithDate {
   custom_note: string | null;
   submitted_at: string;
   date: string;
+}
+
+export interface AuditLog {
+  id?: number;
+  action: string;
+  entity_type: string;
+  entity_id: number | null;
+  details: string | null;
+  created_at: string;
 }
 
 export interface User {

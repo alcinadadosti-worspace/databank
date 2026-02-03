@@ -4,14 +4,14 @@ import * as queries from '../models/queries';
 const router = Router();
 
 /** GET /api/records?date=YYYY-MM-DD - Get all records for a date */
-router.get('/', (req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const { date } = req.query;
     if (!date || typeof date !== 'string') {
       res.status(400).json({ error: 'date query parameter required (YYYY-MM-DD)' });
       return;
     }
-    const records = queries.getDailyRecordsByDate(date);
+    const records = await queries.getDailyRecordsByDate(date);
     res.json({ records });
   } catch (error) {
     console.error('[records] Error fetching records:', error);
@@ -20,7 +20,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 /** GET /api/records/employee/:employeeId?start=YYYY-MM-DD&end=YYYY-MM-DD */
-router.get('/employee/:employeeId', (req: Request, res: Response) => {
+router.get('/employee/:employeeId', async (req: Request, res: Response) => {
   try {
     const employeeId = parseInt(req.params.employeeId as string, 10);
     const { start, end } = req.query;
@@ -34,7 +34,7 @@ router.get('/employee/:employeeId', (req: Request, res: Response) => {
       return;
     }
 
-    const records = queries.getDailyRecordsByEmployeeRange(employeeId, start, end);
+    const records = await queries.getDailyRecordsByEmployeeRange(employeeId, start, end);
     res.json({ records });
   } catch (error) {
     console.error('[records] Error fetching employee records:', error);
@@ -43,7 +43,7 @@ router.get('/employee/:employeeId', (req: Request, res: Response) => {
 });
 
 /** GET /api/records/leader/:leaderId?start=YYYY-MM-DD&end=YYYY-MM-DD */
-router.get('/leader/:leaderId', (req: Request, res: Response) => {
+router.get('/leader/:leaderId', async (req: Request, res: Response) => {
   try {
     const leaderId = parseInt(req.params.leaderId as string, 10);
     const { start, end } = req.query;
@@ -57,7 +57,7 @@ router.get('/leader/:leaderId', (req: Request, res: Response) => {
       return;
     }
 
-    const records = queries.getDailyRecordsByLeaderRange(leaderId, start, end);
+    const records = await queries.getDailyRecordsByLeaderRange(leaderId, start, end);
     res.json({ records });
   } catch (error) {
     console.error('[records] Error fetching leader records:', error);
@@ -66,7 +66,7 @@ router.get('/leader/:leaderId', (req: Request, res: Response) => {
 });
 
 /** GET /api/records/all?start=YYYY-MM-DD&end=YYYY-MM-DD (Admin only) */
-router.get('/all', (req: Request, res: Response) => {
+router.get('/all', async (req: Request, res: Response) => {
   try {
     const { start, end } = req.query;
     if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
@@ -74,7 +74,7 @@ router.get('/all', (req: Request, res: Response) => {
       return;
     }
 
-    const records = queries.getAllRecordsRange(start, end);
+    const records = await queries.getAllRecordsRange(start, end);
     res.json({ records });
   } catch (error) {
     console.error('[records] Error fetching all records:', error);

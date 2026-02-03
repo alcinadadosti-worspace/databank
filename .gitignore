@@ -5,3 +5,6 @@ dist/
 .next/
 .turbo/
 excel_data.json
+firebase-key.json
+*.db-shm
+*.db-wal
