@@ -95,6 +95,13 @@ export function getExportUrl(start: string, end: string) {
   return `${API_BASE}/api/admin/export?start=${start}&end=${end}`;
 }
 
+export async function resyncPunches(date: string) {
+  return apiFetch<{ success: boolean; message: string }>('/api/admin/resync', {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
+}
+
 // ─── Units ────────────────────────────────────────────────────
 
 export async function getUnitRecords(date: string) {

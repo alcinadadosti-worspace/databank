@@ -1,28 +1,42 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getUnitRecords, type UnitData } from '@/lib/api';
+import { useEffect, useState, useCallback } from 'react';
+import { getUnitRecords, resyncPunches, type UnitData } from '@/lib/api';
 import { todayISO } from '@/lib/utils';
 
 export default function FuncionamentoUnidade() {
   const [units, setUnits] = useState<UnitData[]>([]);
   const [date, setDate] = useState(todayISO());
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getUnitRecords(date);
+      setUnits(data.units);
+    } catch (error) {
+      console.error('Failed to load unit records:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [date]);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await getUnitRecords(date);
-        setUnits(data.units);
-      } catch (error) {
-        console.error('Failed to load unit records:', error);
-      } finally {
-        setLoading(false);
-      }
+    loadData();
+  }, [loadData]);
+
+  async function handleResync() {
+    setSyncing(true);
+    try {
+      await resyncPunches(date);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to resync:', error);
+    } finally {
+      setSyncing(false);
     }
-    load();
-  }, [date]);
+  }
 
   const totalPresent = units.reduce((sum, u) => sum + u.present_count, 0);
   const totalEmployees = units.reduce((sum, u) => sum + u.total_count, 0);
@@ -36,12 +50,31 @@ export default function FuncionamentoUnidade() {
             {totalPresent} de {totalEmployees} colaboradores presentes
           </p>
         </div>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="input max-w-[180px]"
-        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleResync}
+            disabled={syncing}
+            className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1.5"
+          >
+            <svg
+              width="14" height="14" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              className={syncing ? 'animate-spin' : ''}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+              <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+            </svg>
+            {syncing ? 'Atualizando...' : 'Atualizar Pontos'}
+          </button>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="input max-w-[180px]"
+          />
+        </div>
       </div>
 
       {loading ? (
