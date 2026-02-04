@@ -65,7 +65,7 @@ export async function fetchAllEmployees(): Promise<SolidesEmployee[]> {
   while (page < totalPages) {
     const data = await readOnlyFetch(EMPLOYER_URL, '/employee/find-all', {
       page: String(page),
-      size: '100',
+      size: '500',
       showFired: 'false',
     });
 
@@ -115,7 +115,7 @@ export async function fetchPunches(
     startDate: dateToMillis(startDate),
     endDate: dateToMillis(endDate, true),
     page: '0',
-    size: '100',
+    size: '500',
     status: 'APPROVED',
   };
 
