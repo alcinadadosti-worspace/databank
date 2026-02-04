@@ -77,23 +77,21 @@ export async function syncPunches(): Promise<void> {
         await queries.updateEmployeeSolidesId(employee.id, solidesEmpId);
       }
 
-      // Sort punches by dateIn
-      punches.sort((a, b) => a.dateIn - b.dateIn);
-
-      // Extract 4 times from the 2 pairs
-      let punch1: string | null = null; // Entrada
-      let punch2: string | null = null; // Saida almoco
-      let punch3: string | null = null; // Retorno almoco
-      let punch4: string | null = null; // Saida final
-
-      if (punches.length >= 1) {
-        punch1 = millisToTime(punches[0].dateIn);
-        punch2 = punches[0].dateOut ? millisToTime(punches[0].dateOut) : null;
+      // Collect all individual timestamps from all records
+      const allTimestamps: number[] = [];
+      for (const p of punches) {
+        if (p.dateIn) allTimestamps.push(p.dateIn);
+        if (p.dateOut) allTimestamps.push(p.dateOut);
       }
-      if (punches.length >= 2) {
-        punch3 = millisToTime(punches[1].dateIn);
-        punch4 = punches[1].dateOut ? millisToTime(punches[1].dateOut) : null;
-      }
+
+      // Sort chronologically and deduplicate
+      const uniqueTimes = [...new Set(allTimestamps)].sort((a, b) => a - b);
+
+      // Assign to punch1-4 in chronological order
+      const punch1 = uniqueTimes[0] ? millisToTime(uniqueTimes[0]) : null; // Entrada
+      const punch2 = uniqueTimes[1] ? millisToTime(uniqueTimes[1]) : null; // Saida almoco
+      const punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
+      const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
       // Calculate only with all 4 punches
       const result = calculateDailyHours({ punch1, punch2, punch3, punch4 });
