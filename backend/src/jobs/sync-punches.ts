@@ -25,8 +25,8 @@ function millisToTime(millis: number): string {
  * Record 1: dateIn = entrada, dateOut = saida almoco
  * Record 2: dateIn = retorno almoco, dateOut = saida final
  */
-export async function syncPunches(): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+export async function syncPunches(targetDate?: string): Promise<void> {
+  const today = targetDate || new Date().toISOString().split('T')[0];
   console.log(`[sync] Starting punch sync for ${today}`);
 
   try {

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { syncPunches } from '../jobs/sync-punches';
 
 const router = Router();
 
@@ -61,6 +62,23 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('[admin] Error fetching dashboard:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard' });
+  }
+});
+
+/** POST /api/admin/resync?date=YYYY-MM-DD - Re-sync punches for a specific date */
+router.post('/resync', async (req: Request, res: Response) => {
+  try {
+    const date = (req.query.date as string) || (req.body && req.body.date);
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'date parameter required (YYYY-MM-DD)' });
+      return;
+    }
+    console.log(`[admin] Manual resync requested for ${date}`);
+    await syncPunches(date);
+    res.json({ success: true, message: `Resync completed for ${date}` });
+  } catch (error) {
+    console.error('[admin] Error resyncing:', error);
+    res.status(500).json({ error: 'Failed to resync' });
   }
 });
 
