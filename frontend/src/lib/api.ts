@@ -193,6 +193,7 @@ export interface UnitEmployee {
   punch_3: string | null;
   punch_4: string | null;
   present: boolean;
+  is_apprentice: boolean;
 }
 
 export interface UnitData {

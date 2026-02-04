@@ -20,6 +20,9 @@ async function main() {
 
   console.log('[seed-prod] Running sector migration...');
   await import('./migrate-sectors');
+
+  console.log('[seed-prod] Running apprentice migration...');
+  await import('./migrate-apprentices');
 }
 
 main().catch(err => {

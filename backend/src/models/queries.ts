@@ -123,6 +123,14 @@ export async function updateEmployeeSolidesId(employeeId: number, solidesId: str
   invalidateCaches();
 }
 
+export async function setApprentice(employeeId: number, isApprentice: boolean, expectedMinutes: number) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    is_apprentice: isApprentice,
+    expected_daily_minutes: expectedMinutes,
+  });
+  invalidateCaches();
+}
+
 export async function updateEmployeeNameAndSolidesId(
   employeeId: number,
   name: string,
@@ -557,6 +565,7 @@ export interface UnitEmployee {
   punch_3: string | null;
   punch_4: string | null;
   present: boolean;
+  is_apprentice: boolean;
 }
 
 export interface UnitData {
@@ -588,11 +597,18 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     grouped.get(leaderId)!.push(emp);
   }
 
-  // Merge Marketing sub-leader (16) into leader (15)
+  // Merge Marketing sub-leader (16) into leader (15), dedup by employee id
   const marketing16 = grouped.get(16);
   if (marketing16) {
     const marketing15 = grouped.get(15) || [];
-    grouped.set(15, [...marketing15, ...marketing16]);
+    const merged = [...marketing15, ...marketing16];
+    const seen = new Set<number>();
+    const deduped = merged.filter(e => {
+      if (seen.has(e.id)) return false;
+      seen.add(e.id);
+      return true;
+    });
+    grouped.set(15, deduped);
     grouped.delete(16);
   }
 
@@ -605,6 +621,11 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const leader = leaderMap.get(leaderId);
     const unitEmployees: UnitEmployee[] = emps.map(emp => {
       const record = recordMap.get(emp.id);
+      // Apprentices only punch entry + exit (2 punches), present = has punch_1
+      const isApprentice = emp.is_apprentice === true;
+      const present = isApprentice
+        ? !!(record?.punch_1)
+        : !!(record?.punch_1 && record?.punch_2);
       return {
         id: emp.id,
         name: emp.name,
@@ -612,7 +633,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
         punch_2: record?.punch_2 ?? null,
         punch_3: record?.punch_3 ?? null,
         punch_4: record?.punch_4 ?? null,
-        present: !!(record?.punch_1 && record?.punch_2),
+        present,
+        is_apprentice: isApprentice,
       };
     });
 
@@ -682,6 +704,8 @@ export interface Employee {
   leader_id: number;
   secondary_approver_id: number | null;
   solides_employee_id: string | null;
+  is_apprentice: boolean;
+  expected_daily_minutes: number;
   created_at: string;
 }
 

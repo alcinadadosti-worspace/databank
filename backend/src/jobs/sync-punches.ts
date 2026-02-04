@@ -95,16 +95,23 @@ export async function syncPunches(targetDate?: string): Promise<void> {
       const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
       // Calculate using epoch millis from API records (handles cross-midnight)
+      // Apprentices only need 1 complete pair; regular employees need 2
+      const isApprentice = employee.is_apprentice === true;
+      const expectedMinutes = isApprentice
+        ? (employee.expected_daily_minutes || 240)
+        : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+      const minPairs = isApprentice ? 1 : 2;
+
       let result: CalculationResult | null = null;
       const completePairs = punches.filter(p => p.dateIn && p.dateOut);
-      if (completePairs.length >= 2) {
+      if (completePairs.length >= minPairs) {
         completePairs.sort((a, b) => a.dateIn - b.dateIn);
         let totalMs = 0;
         for (const pair of completePairs) {
           totalMs += pair.dateOut! - pair.dateIn;
         }
         const totalWorkedMinutes = Math.round(totalMs / 60000);
-        const differenceMinutes = totalWorkedMinutes - WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+        const differenceMinutes = totalWorkedMinutes - expectedMinutes;
         let classification: HourClassification;
         if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {
           classification = 'normal';
