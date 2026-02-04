@@ -122,6 +122,27 @@ export async function updateEmployeeSolidesId(employeeId: number, solidesId: str
   invalidateCaches();
 }
 
+export async function updateEmployeeNameAndSolidesId(
+  employeeId: number,
+  name: string,
+  solidesId: string | null
+) {
+  const data: Record<string, any> = { name };
+  if (solidesId !== null) {
+    data.solides_employee_id = solidesId;
+  }
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update(data);
+  invalidateCaches();
+}
+
+export async function updateLeaderName(leaderId: number, name: string, nameNormalized: string) {
+  await getDb().collection(COLLECTIONS.LEADERS).doc(String(leaderId)).update({
+    name,
+    name_normalized: nameNormalized,
+  });
+  invalidateCaches();
+}
+
 // ─── Daily Records ─────────────────────────────────────────────
 
 // Composite key for daily_records: "employeeId_date"

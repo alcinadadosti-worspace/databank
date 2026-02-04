@@ -1,5 +1,6 @@
 /**
  * Seed script: Import organizational hierarchy from Excel file into Firestore.
+ * Also links Sólides employee IDs using the ID mapping spreadsheet.
  *
  * Run: npx tsx scripts/seed.ts
  */
@@ -10,6 +11,7 @@ import * as queries from '../src/models/queries';
 import * as XLSX from 'xlsx';
 
 const EXCEL_PATH = path.resolve(__dirname, '../../mapeamento_final_com_slack.xlsx');
+const SOLIDES_IDS_PATH = path.resolve(__dirname, '../../ID_solides_ID_slack.xlsx');
 
 interface ExcelRow {
   lider_nome: string;
@@ -18,6 +20,12 @@ interface ExcelRow {
   lider_nome_norm?: string;
   lider_slack_id?: string | null;
   aprovador_secundario?: string | null;
+}
+
+interface SolidesIdRow {
+  id_solides: number;
+  Nome: string;
+  id_slack: string | null;
 }
 
 async function seed(): Promise<void> {
@@ -35,6 +43,22 @@ async function seed(): Promise<void> {
   );
 
   console.log(`[seed] Found ${hierarchyRows.length} hierarchy records`);
+
+  // Load Sólides ID mapping (slack_id -> solides_employee_id)
+  const slackToSolidesId = new Map<string, string>();
+  try {
+    const idsWorkbook = XLSX.readFile(SOLIDES_IDS_PATH);
+    const idsSheet = idsWorkbook.Sheets[idsWorkbook.SheetNames[0]];
+    const idsData: SolidesIdRow[] = XLSX.utils.sheet_to_json(idsSheet);
+    for (const row of idsData) {
+      if (row.id_slack && row.id_solides) {
+        slackToSolidesId.set(row.id_slack, String(row.id_solides));
+      }
+    }
+    console.log(`[seed] Loaded ${slackToSolidesId.size} Sólides ID mappings`);
+  } catch (err) {
+    console.warn('[seed] Could not load Sólides ID mappings, skipping:', err);
+  }
 
   // Clear existing data
   console.log('[seed] Clearing existing Firestore data...');
@@ -101,8 +125,9 @@ async function seed(): Promise<void> {
     console.log(`[seed] Leader: ${data.name} (ID: ${result.lastInsertRowid}, Slack: ${slackId || 'N/A'}) [key: ${key}]`);
   }
 
-  // Insert employees
+  // Insert employees (with Sólides ID when available)
   let employeeCount = 0;
+  let solidesLinked = 0;
   for (const row of hierarchyRows) {
     const leaderId = leaderIdMap.get(row.lider_nome);
     if (!leaderId) {
@@ -122,12 +147,22 @@ async function seed(): Promise<void> {
       }
     }
 
-    await queries.insertEmployee(
+    const result = await queries.insertEmployee(
       row.colaborador_nome!,
       row.colaborador_slack_id || null,
       leaderId,
       secondaryApproverId
     );
+
+    // Link Sólides employee ID if available
+    const solidesId = row.colaborador_slack_id
+      ? slackToSolidesId.get(row.colaborador_slack_id)
+      : undefined;
+    if (solidesId) {
+      await queries.updateEmployeeSolidesId(result.lastInsertRowid as number, solidesId);
+      solidesLinked++;
+    }
+
     employeeCount++;
   }
 
@@ -156,6 +191,7 @@ async function seed(): Promise<void> {
   console.log(`\n[seed] Done!`);
   console.log(`[seed] Leaders: ${leaderNames.size}`);
   console.log(`[seed] Employees: ${employeeCount}`);
+  console.log(`[seed] Sólides IDs linked: ${solidesLinked}`);
   console.log(`[seed] Users created: ${allLeaders.filter(l => l.slack_id).length + allEmployees.filter(e => e.slack_id).length}`);
 }
 

@@ -1,5 +1,6 @@
 /**
  * Production seed: Only seeds if the Firestore database is empty.
+ * If already seeded, runs the name migration to ensure data is up-to-date.
  * Used by Render's startCommand to avoid re-seeding on every deploy.
  */
 
@@ -13,7 +14,8 @@ async function main() {
     console.log('[seed-prod] Database is empty, running seed...');
     await import('./seed');
   } else {
-    console.log('[seed-prod] Database already seeded, skipping.');
+    console.log('[seed-prod] Database already seeded, running name migration...');
+    await import('./migrate-names');
   }
 }
 
