@@ -597,15 +597,16 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     grouped.get(leaderId)!.push(emp);
   }
 
-  // Merge Marketing sub-leader (16) into leader (15), dedup by employee id
+  // Merge Marketing sub-leader (16) into leader (15), dedup by slack_id
   const marketing16 = grouped.get(16);
   if (marketing16) {
     const marketing15 = grouped.get(15) || [];
     const merged = [...marketing15, ...marketing16];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     const deduped = merged.filter(e => {
-      if (seen.has(e.id)) return false;
-      seen.add(e.id);
+      const key = e.slack_id || `id_${e.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
     grouped.set(15, deduped);

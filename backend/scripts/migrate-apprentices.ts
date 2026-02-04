@@ -21,13 +21,15 @@ async function migrateApprentices(): Promise<void> {
   let updated = 0;
 
   for (const name of APPRENTICE_NAMES) {
-    const emp = employees.find(e => e.name.toLowerCase() === name.toLowerCase());
-    if (emp) {
+    const matches = employees.filter(e => e.name.toLowerCase() === name.toLowerCase());
+    if (matches.length === 0) {
+      console.warn(`[migrate-apprentices] Employee not found: "${name}"`);
+      continue;
+    }
+    for (const emp of matches) {
       await queries.setApprentice(emp.id, true, EXPECTED_DAILY_MINUTES);
       console.log(`[migrate-apprentices] Employee #${emp.id} "${emp.name}" -> is_apprentice=true, expected=240min`);
       updated++;
-    } else {
-      console.warn(`[migrate-apprentices] Employee not found: "${name}"`);
     }
   }
 
