@@ -1,5 +1,6 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
-import { calculateDailyHours, shouldAlert } from '../services/hours-calculator';
+import { shouldAlert, CalculationResult } from '../services/hours-calculator';
+import { WORK_SCHEDULE, HourClassification } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
 import { env } from '../config/env';
@@ -93,8 +94,27 @@ export async function syncPunches(targetDate?: string): Promise<void> {
       const punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
       const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
-      // Calculate only with all 4 punches
-      const result = calculateDailyHours({ punch1, punch2, punch3, punch4 });
+      // Calculate using epoch millis from API records (handles cross-midnight)
+      let result: CalculationResult | null = null;
+      const completePairs = punches.filter(p => p.dateIn && p.dateOut);
+      if (completePairs.length >= 2) {
+        completePairs.sort((a, b) => a.dateIn - b.dateIn);
+        let totalMs = 0;
+        for (const pair of completePairs) {
+          totalMs += pair.dateOut! - pair.dateIn;
+        }
+        const totalWorkedMinutes = Math.round(totalMs / 60000);
+        const differenceMinutes = totalWorkedMinutes - WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+        let classification: HourClassification;
+        if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {
+          classification = 'normal';
+        } else if (differenceMinutes < 0) {
+          classification = 'late';
+        } else {
+          classification = 'overtime';
+        }
+        result = { totalWorkedMinutes, differenceMinutes, classification, isComplete: true };
+      }
 
       await queries.upsertDailyRecord(
         employee.id,
