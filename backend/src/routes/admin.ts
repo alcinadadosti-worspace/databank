@@ -65,6 +65,22 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/leader-slack - Set a leader's Slack ID */
+router.post('/leader-slack', async (req: Request, res: Response) => {
+  try {
+    const { leaderId, slackId } = req.body;
+    if (!leaderId || !slackId) {
+      res.status(400).json({ error: 'leaderId and slackId required' });
+      return;
+    }
+    await queries.updateLeaderSlackId(Number(leaderId), slackId);
+    res.json({ success: true, message: `Leader ${leaderId} slack_id set to ${slackId}` });
+  } catch (error) {
+    console.error('[admin] Error updating leader:', error);
+    res.status(500).json({ error: 'Failed to update leader' });
+  }
+});
+
 /** POST /api/admin/resync?date=YYYY-MM-DD - Re-sync punches for a specific date */
 router.post('/resync', async (req: Request, res: Response) => {
   try {
