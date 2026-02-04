@@ -32,11 +32,15 @@ const LEADER_SLACK_IDS: Record<string, string> = {
   'Mariane Santos Sousa': 'U088B372R40',
   'Michaell Jean Nunes De Carvalho': 'U07P692F1FB',
   'Rafaela Alves Mendes': 'U07KP9J5BLP',
+  'Rafaela Mendes': 'U07KP9J5BLP',
   'Ravy Thiago Vieira Da Silva': 'U07Q8NT7J1Y',
   'Romulo Jose Santos Lisboa': 'U07LSKN7SNL',
+  'Rômulo Lisboa': 'U07LSKN7SNL',
   'Suzana Martins Tavares': 'U09F9LWM6MC',
+  'Suzana Tavares': 'U09F9LWM6MC',
   'Maria Taciane Pereira Barbosa': 'U07L6EAUS75',
   'Carlos Eduardo Silva De Oliveira': 'U0895CZ8HU7',
+  'Carlos Oliveira': 'U0895CZ8HU7',
 };
 
 async function migrate(): Promise<void> {
