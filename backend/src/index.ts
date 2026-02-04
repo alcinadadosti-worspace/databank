@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env } from './config/env';
 import { getDb } from './models/database';
 import { startScheduler, stopScheduler } from './jobs/scheduler';
+import { syncPunches } from './jobs/sync-punches';
 import { startSlackBot } from './slack/bot';
 
 // Routes
@@ -48,6 +49,9 @@ async function start(): Promise<void> {
 
   // Start cron jobs
   startScheduler();
+
+  // Run immediate sync on startup (server may have been sleeping)
+  syncPunches().catch(err => console.error('[startup] Initial sync failed:', err));
 
   // Start Slack bot (only if tokens are configured)
   if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
