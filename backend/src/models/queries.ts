@@ -531,12 +531,14 @@ export async function getDashboardStats() {
 // ─── Unit Records (Funcionamento de Unidade) ─────────────────
 
 const UNIT_NAMES: Record<number, string> = {
+  1: 'Canal VD',
   2: 'Logistica',
   3: 'VD Penedo',
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
-  6: 'Loja Palmeira',
+  6: 'Canal Loja',
   7: 'Loja Teotonio Vilela',
+  8: 'Loja Palmeira dos Indios',
   9: 'Loja Penedo',
   10: 'Loja Sao Sebastiao',
   11: 'Loja Coruripe',
