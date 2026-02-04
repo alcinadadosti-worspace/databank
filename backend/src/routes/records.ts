@@ -19,6 +19,18 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+/** GET /api/records/units?date=YYYY-MM-DD - Unit operation overview */
+router.get('/units', async (req: Request, res: Response) => {
+  try {
+    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const units = await queries.getUnitRecords(date);
+    res.json({ units, date });
+  } catch (error) {
+    console.error('[records] Error fetching unit records:', error);
+    res.status(500).json({ error: 'Failed to fetch unit records' });
+  }
+});
+
 /** GET /api/records/employee/:employeeId?start=YYYY-MM-DD&end=YYYY-MM-DD */
 router.get('/employee/:employeeId', async (req: Request, res: Response) => {
   try {

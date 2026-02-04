@@ -27,6 +27,7 @@ const adminNav: NavItem[] = [
   { label: 'Colaboradores', href: '/admin/employees', icon: <IconUsers /> },
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
+  { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },
   { label: 'Logs', href: '/admin/logs', icon: <IconTerminal /> },
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
 ];
@@ -149,6 +150,14 @@ function IconDownload() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function IconBuilding() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" /><path d="M9 22v-4h6v4" /><line x1="8" y1="6" x2="10" y2="6" /><line x1="14" y1="6" x2="16" y2="6" /><line x1="8" y1="10" x2="10" y2="10" /><line x1="14" y1="10" x2="16" y2="10" /><line x1="8" y1="14" x2="10" y2="14" /><line x1="14" y1="14" x2="16" y2="14" />
     </svg>
   );
 }

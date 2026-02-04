@@ -95,6 +95,12 @@ export function getExportUrl(start: string, end: string) {
   return `${API_BASE}/api/admin/export?start=${start}&end=${end}`;
 }
 
+// ─── Units ────────────────────────────────────────────────────
+
+export async function getUnitRecords(date: string) {
+  return apiFetch<{ units: UnitData[]; date: string }>(`/api/records/units?date=${date}`);
+}
+
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface User {
@@ -170,4 +176,23 @@ export interface AuditLog {
   entity_id: number | null;
   details: string | null;
   created_at: string;
+}
+
+export interface UnitEmployee {
+  id: number;
+  name: string;
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  present: boolean;
+}
+
+export interface UnitData {
+  leader_id: number;
+  unit_name: string;
+  leader_name: string;
+  employees: UnitEmployee[];
+  present_count: number;
+  total_count: number;
 }

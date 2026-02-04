@@ -528,6 +528,114 @@ export async function getDashboardStats() {
   };
 }
 
+// ─── Unit Records (Funcionamento de Unidade) ─────────────────
+
+const UNIT_NAMES: Record<number, string> = {
+  2: 'Logistica',
+  3: 'VD Penedo',
+  4: 'VD Palmeira dos Indios',
+  5: 'Dados TI',
+  6: 'Loja Palmeira',
+  7: 'Loja Teotonio Vilela',
+  9: 'Loja Penedo',
+  10: 'Loja Sao Sebastiao',
+  11: 'Loja Coruripe',
+  12: 'Loja Digital',
+  13: 'Financeiro/Administrativo',
+  14: 'Gente e Cultura',
+  15: 'Marketing',
+  16: 'Marketing',
+};
+
+export interface UnitEmployee {
+  id: number;
+  name: string;
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  present: boolean;
+}
+
+export interface UnitData {
+  leader_id: number;
+  unit_name: string;
+  leader_name: string;
+  employees: UnitEmployee[];
+  present_count: number;
+  total_count: number;
+}
+
+export async function getUnitRecords(date: string): Promise<UnitData[]> {
+  const employees = await getAllEmployees();
+  const leaders = await getAllLeaders();
+
+  // Get all daily records for the date
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '==', date).get();
+  const records = docsToArray<DailyRecord>(snap);
+  const recordMap = new Map(records.map(r => [r.employee_id, r]));
+
+  // Group employees by leader
+  const leaderMap = new Map(leaders.map(l => [l.id, l]));
+  const grouped = new Map<number, EmployeeWithLeader[]>();
+
+  for (const emp of employees) {
+    const leaderId = emp.leader_id;
+    if (!grouped.has(leaderId)) grouped.set(leaderId, []);
+    grouped.get(leaderId)!.push(emp);
+  }
+
+  // Merge Marketing sub-leader (16) into leader (15)
+  const marketing16 = grouped.get(16);
+  if (marketing16) {
+    const marketing15 = grouped.get(15) || [];
+    grouped.set(15, [...marketing15, ...marketing16]);
+    grouped.delete(16);
+  }
+
+  const units: UnitData[] = [];
+
+  for (const [leaderId, emps] of grouped) {
+    const unitName = UNIT_NAMES[leaderId];
+    if (!unitName) continue; // skip leaders without unit mapping (e.g. Alta Lideranca id=1,8)
+
+    const leader = leaderMap.get(leaderId);
+    const unitEmployees: UnitEmployee[] = emps.map(emp => {
+      const record = recordMap.get(emp.id);
+      return {
+        id: emp.id,
+        name: emp.name,
+        punch_1: record?.punch_1 ?? null,
+        punch_2: record?.punch_2 ?? null,
+        punch_3: record?.punch_3 ?? null,
+        punch_4: record?.punch_4 ?? null,
+        present: !!(record?.punch_1 && record?.punch_2),
+      };
+    });
+
+    // Sort: present first, then absent; alphabetical within each group
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: leaderId,
+      unit_name: unitName,
+      leader_name: leader?.name ?? '',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Sort units alphabetically by name
+  units.sort((a, b) => a.unit_name.localeCompare(b.unit_name));
+
+  return units;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────
 
 async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string }>> {
