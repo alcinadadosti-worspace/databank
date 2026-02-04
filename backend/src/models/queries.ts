@@ -554,7 +554,6 @@ const UNIT_NAMES: Record<number, string> = {
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
   15: 'Marketing',
-  16: 'Marketing',
 };
 
 export interface UnitEmployee {
