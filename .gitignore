@@ -4,7 +4,11 @@ dist/
 *.db
 .next/
 .turbo/
-excel_data.json
 firebase-key.json
+emp_test.json
+swagger_punch.json
+swagger_temp.json
+nul
+.~lock.*
 *.db-shm
 *.db-wal
