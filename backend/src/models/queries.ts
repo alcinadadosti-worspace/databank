@@ -143,6 +143,13 @@ export async function updateLeaderName(leaderId: number, name: string, nameNorma
   invalidateCaches();
 }
 
+export async function updateLeaderSlackId(leaderId: number, slackId: string) {
+  await getDb().collection(COLLECTIONS.LEADERS).doc(String(leaderId)).update({
+    slack_id: slackId,
+  });
+  invalidateCaches();
+}
+
 // ─── Daily Records ─────────────────────────────────────────────
 
 // Composite key for daily_records: "employeeId_date"
