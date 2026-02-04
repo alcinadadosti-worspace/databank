@@ -597,18 +597,27 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   }
 
   // Merge Marketing sub-leader (16) into leader (15), dedup by slack_id
+  // Prefer the record that has punch data in recordMap
   const marketing16 = grouped.get(16);
   if (marketing16) {
     const marketing15 = grouped.get(15) || [];
     const merged = [...marketing15, ...marketing16];
-    const seen = new Set<string>();
-    const deduped = merged.filter(e => {
+    const best = new Map<string, EmployeeWithLeader>();
+    for (const e of merged) {
       const key = e.slack_id || `id_${e.id}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    grouped.set(15, deduped);
+      const existing = best.get(key);
+      if (!existing) {
+        best.set(key, e);
+      } else {
+        // Prefer the one that has a daily record
+        const existingHasRecord = recordMap.has(existing.id);
+        const newHasRecord = recordMap.has(e.id);
+        if (!existingHasRecord && newHasRecord) {
+          best.set(key, e);
+        }
+      }
+    }
+    grouped.set(15, [...best.values()]);
     grouped.delete(16);
   }
 

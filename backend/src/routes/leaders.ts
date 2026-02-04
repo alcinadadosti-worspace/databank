@@ -8,10 +8,13 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const sector = req.query.sector as string | undefined;
     const allLeaders = await queries.getAllLeaders();
+    // Filter out leaders that are actually just employees (e.g. Ravy id=16)
+    const HIDDEN_LEADER_IDS = [16];
+    const visibleLeaders = allLeaders.filter(l => !HIDDEN_LEADER_IDS.includes(l.id));
     const leaders = sector
-      ? allLeaders.filter(l => l.sector === sector)
-      : allLeaders;
-    const sectors = [...new Set(allLeaders.map(l => l.sector).filter(Boolean))].sort() as string[];
+      ? visibleLeaders.filter(l => l.sector === sector)
+      : visibleLeaders;
+    const sectors = [...new Set(visibleLeaders.map(l => l.sector).filter(Boolean))].sort() as string[];
     res.json({ leaders, sectors });
   } catch (error) {
     console.error('[leaders] Error fetching leaders:', error);
