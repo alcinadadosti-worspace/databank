@@ -3,10 +3,13 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
-/** GET /api/employees - List all employees */
-router.get('/', async (_req: Request, res: Response) => {
+/** GET /api/employees?sector=... - List employees, optionally filtered by sector */
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const employees = await queries.getAllEmployees();
+    const sector = req.query.sector as string | undefined;
+    const employees = sector
+      ? await queries.getEmployeesBySector(sector)
+      : await queries.getAllEmployees();
     res.json({ employees });
   } catch (error) {
     console.error('[employees] Error fetching employees:', error);

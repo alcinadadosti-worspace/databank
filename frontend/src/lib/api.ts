@@ -35,8 +35,9 @@ export async function getEmployeesByLeader(leaderId: number) {
 
 // ─── Leaders ───────────────────────────────────────────────────
 
-export async function getLeaders() {
-  return apiFetch<{ leaders: Leader[] }>('/api/leaders');
+export async function getLeaders(sector?: string) {
+  const params = sector ? `?sector=${encodeURIComponent(sector)}` : '';
+  return apiFetch<{ leaders: Leader[]; sectors: string[] }>(`/api/leaders${params}`);
 }
 
 export async function getLeaderWithEmployees(leaderId: number) {
@@ -113,6 +114,7 @@ export interface Employee {
   secondary_approver_id: number | null;
   leader_name?: string;
   leader_slack_id?: string | null;
+  sector?: string | null;
 }
 
 export interface Leader {
@@ -120,6 +122,8 @@ export interface Leader {
   name: string;
   name_normalized: string;
   slack_id: string | null;
+  sector: string | null;
+  parent_leader_id: number | null;
 }
 
 export interface DailyRecord {

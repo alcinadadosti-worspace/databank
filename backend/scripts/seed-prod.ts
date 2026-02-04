@@ -14,9 +14,12 @@ async function main() {
     console.log('[seed-prod] Database is empty, running seed...');
     await import('./seed');
   } else {
-    console.log('[seed-prod] Database already seeded, running name migration...');
+    console.log('[seed-prod] Database already seeded, running migrations...');
     await import('./migrate-names');
   }
+
+  console.log('[seed-prod] Running sector migration...');
+  await import('./migrate-sectors');
 }
 
 main().catch(err => {

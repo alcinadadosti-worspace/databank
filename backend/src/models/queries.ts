@@ -74,6 +74,7 @@ export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
       ...e,
       leader_name: leader?.name ?? '',
       leader_slack_id: leader?.slack_id ?? null,
+      sector: leader?.sector ?? null,
     };
   });
   return employeesCache;
@@ -148,6 +149,26 @@ export async function updateLeaderSlackId(leaderId: number, slackId: string) {
     slack_id: slackId,
   });
   invalidateCaches();
+}
+
+export async function updateLeaderSector(leaderId: number, sector: string, parentLeaderId: number | null) {
+  await getDb().collection(COLLECTIONS.LEADERS).doc(String(leaderId)).update({
+    sector,
+    parent_leader_id: parentLeaderId,
+  });
+  invalidateCaches();
+}
+
+export async function getLeadersBySector(sector: string): Promise<Leader[]> {
+  const all = await getAllLeaders();
+  return all.filter(l => l.sector === sector);
+}
+
+export async function getEmployeesBySector(sector: string): Promise<EmployeeWithLeader[]> {
+  const leaders = await getLeadersBySector(sector);
+  const leaderIds = new Set(leaders.map(l => l.id));
+  const all = await getAllEmployees();
+  return all.filter(e => leaderIds.has(e.leader_id));
 }
 
 // ─── Daily Records ─────────────────────────────────────────────
@@ -539,6 +560,8 @@ export interface Leader {
   name: string;
   name_normalized: string;
   slack_id: string | null;
+  sector: string | null;
+  parent_leader_id: number | null;
   created_at: string;
 }
 
@@ -555,6 +578,7 @@ export interface Employee {
 export interface EmployeeWithLeader extends Employee {
   leader_name: string;
   leader_slack_id?: string | null;
+  sector?: string | null;
 }
 
 export interface DailyRecord {

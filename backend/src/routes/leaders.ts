@@ -3,11 +3,16 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
-/** GET /api/leaders - List all leaders */
-router.get('/', async (_req: Request, res: Response) => {
+/** GET /api/leaders?sector=... - List leaders, optionally filtered by sector */
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const leaders = await queries.getAllLeaders();
-    res.json({ leaders });
+    const sector = req.query.sector as string | undefined;
+    const allLeaders = await queries.getAllLeaders();
+    const leaders = sector
+      ? allLeaders.filter(l => l.sector === sector)
+      : allLeaders;
+    const sectors = [...new Set(allLeaders.map(l => l.sector).filter(Boolean))].sort() as string[];
+    res.json({ leaders, sectors });
   } catch (error) {
     console.error('[leaders] Error fetching leaders:', error);
     res.status(500).json({ error: 'Failed to fetch leaders' });
