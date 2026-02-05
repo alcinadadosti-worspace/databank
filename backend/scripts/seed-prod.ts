@@ -23,6 +23,9 @@ async function main() {
 
   console.log('[seed-prod] Running apprentice migration...');
   await import('./migrate-apprentices');
+
+  console.log('[seed-prod] Running no-punch migration...');
+  await import('./migrate-no-punch');
 }
 
 main().catch(err => {

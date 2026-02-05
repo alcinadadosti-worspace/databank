@@ -120,11 +120,11 @@ export default function FuncionamentoUnidade() {
 
                       {/* Punches */}
                       <div className="flex items-center gap-2 text-xs font-mono text-text-muted flex-shrink-0">
-                        {emp.is_apprentice && (
-                          <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>
-                        )}
-                        {emp.is_apprentice ? (
+                        {emp.no_punch_required ? (
+                          <span className="text-2xs font-sans font-medium text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded" title="Colaborador nao bate ponto">Sem ponto</span>
+                        ) : emp.is_apprentice ? (
                           <>
+                            <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>
                             {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
                             {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
                             {!emp.punch_1 && <span className="text-status-danger">Sem registro</span>}
@@ -135,7 +135,7 @@ export default function FuncionamentoUnidade() {
                             {emp.punch_2 && <span title="Saida almoco">{emp.punch_2}</span>}
                             {emp.punch_3 && <span title="Retorno almoco">{emp.punch_3}</span>}
                             {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
-                            {!emp.punch_1 && !emp.punch_2 && (
+                            {!emp.punch_1 && (
                               <span className="text-status-danger">Sem registro</span>
                             )}
                           </>

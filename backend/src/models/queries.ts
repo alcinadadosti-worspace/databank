@@ -131,6 +131,13 @@ export async function setApprentice(employeeId: number, isApprentice: boolean, e
   invalidateCaches();
 }
 
+export async function setNoPunchRequired(employeeId: number, noPunchRequired: boolean) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    no_punch_required: noPunchRequired,
+  });
+  invalidateCaches();
+}
+
 export async function updateEmployeeNameAndSolidesId(
   employeeId: number,
   name: string,
@@ -565,6 +572,7 @@ export interface UnitEmployee {
   punch_4: string | null;
   present: boolean;
   is_apprentice: boolean;
+  no_punch_required: boolean;
 }
 
 export interface UnitData {
@@ -630,11 +638,11 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const leader = leaderMap.get(leaderId);
     const unitEmployees: UnitEmployee[] = emps.map(emp => {
       const record = recordMap.get(emp.id);
-      // Apprentices only punch entry + exit (2 punches), present = has punch_1
+      // Present = has at least 1 punch (punch_1)
+      // Employees marked as no_punch_required are always considered present
+      const noPunchRequired = emp.no_punch_required === true;
       const isApprentice = emp.is_apprentice === true;
-      const present = isApprentice
-        ? !!(record?.punch_1)
-        : !!(record?.punch_1 && record?.punch_2);
+      const present = noPunchRequired || !!(record?.punch_1);
       return {
         id: emp.id,
         name: emp.name,
@@ -644,6 +652,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
         punch_4: record?.punch_4 ?? null,
         present,
         is_apprentice: isApprentice,
+        no_punch_required: noPunchRequired,
       };
     });
 
@@ -715,6 +724,7 @@ export interface Employee {
   solides_employee_id: string | null;
   is_apprentice: boolean;
   expected_daily_minutes: number;
+  no_punch_required: boolean;
   created_at: string;
 }
 
