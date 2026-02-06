@@ -123,6 +123,25 @@ export async function resyncPunches(date: string) {
   });
 }
 
+export interface SyncRangeResult {
+  success: boolean;
+  message: string;
+  details: {
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+    synced: number;
+    errors: number;
+  };
+}
+
+export async function syncPunchesRange(startDate: string, endDate: string) {
+  return apiFetch<SyncRangeResult>('/api/admin/sync-range', {
+    method: 'POST',
+    body: JSON.stringify({ startDate, endDate }),
+  });
+}
+
 // ─── Units ────────────────────────────────────────────────────
 
 export async function getUnitRecords(date: string) {

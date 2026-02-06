@@ -98,4 +98,70 @@ router.post('/resync', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/sync-range - Sync punches for a date range */
+router.post('/sync-range', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      res.status(400).json({ error: 'startDate and endDate are required' });
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      res.status(400).json({ error: 'Dates must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (start > end) {
+      res.status(400).json({ error: 'startDate must be before or equal to endDate' });
+      return;
+    }
+
+    // Calculate number of days
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    if (diffDays > 90) {
+      res.status(400).json({ error: 'Maximum range is 90 days' });
+      return;
+    }
+
+    console.log(`[admin] Sync range requested: ${startDate} to ${endDate} (${diffDays} days)`);
+
+    // Sync each day in the range
+    let synced = 0;
+    let errors = 0;
+    const current = new Date(start);
+
+    while (current <= end) {
+      const dateStr = current.toISOString().split('T')[0];
+      try {
+        await syncPunches(dateStr);
+        synced++;
+        console.log(`[admin] Synced ${dateStr} (${synced}/${diffDays})`);
+      } catch (err) {
+        errors++;
+        console.error(`[admin] Error syncing ${dateStr}:`, err);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+
+    await queries.logAudit('SYNC_RANGE', 'admin', undefined,
+      `Synced range ${startDate} to ${endDate}: ${synced} days synced, ${errors} errors`);
+
+    res.json({
+      success: true,
+      message: `Sync completed: ${synced} days synced, ${errors} errors`,
+      details: { startDate, endDate, totalDays: diffDays, synced, errors }
+    });
+  } catch (error) {
+    console.error('[admin] Error in sync-range:', error);
+    res.status(500).json({ error: 'Failed to sync range' });
+  }
+});
+
 export default router;
