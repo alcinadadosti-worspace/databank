@@ -588,7 +588,7 @@ const VD_LEADER_MAPPING: Record<string, number> = {
   'jonathan henrique da conceicao silva': 4,     // → VD Palmeira dos Indios (without accent)
 };
 
-// Custom sort order: Loja first, then others alphabetically
+// Custom sort order: Loja first, then VD, then others alphabetically
 const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Coruripe': 1,
   'Loja Digital': 2,
@@ -596,6 +596,8 @@ const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Penedo': 4,
   'Loja Sao Sebastiao': 5,
   'Loja Teotonio Vilela': 6,
+  'VD Palmeira dos Indios': 7,
+  'VD Penedo': 8,
   // All other units will get a high number and sort alphabetically
 };
 
