@@ -44,6 +44,19 @@ export async function getLeaderWithEmployees(leaderId: number) {
   return apiFetch<{ leader: Leader; employees: Employee[] }>(`/api/leaders/${leaderId}`);
 }
 
+export interface ManagerAuth {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export async function authenticateManager(email: string) {
+  return apiFetch<{ success: boolean; leader: ManagerAuth }>('/api/leaders/auth', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
 // ─── Records ───────────────────────────────────────────────────
 
 export async function getRecordsByDate(date: string) {

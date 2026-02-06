@@ -4,23 +4,28 @@ import { useState } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import RecordsTable from '@/components/RecordsTable';
 import { getLeaderRecords, type DailyRecord } from '@/lib/api';
-
-const DEMO_LEADER_ID = 1;
+import { useManagerAuth } from '../ManagerAuthContext';
 
 export default function ManagerTeam() {
+  const { manager } = useManagerAuth();
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
   async function loadRecords(start: string, end: string) {
+    if (!manager) return;
     setLoading(true);
     try {
-      const data = await getLeaderRecords(DEMO_LEADER_ID, start, end);
+      const data = await getLeaderRecords(manager.id, start, end);
       setRecords(data.records);
     } catch (error) {
       console.error('Failed to load records:', error);
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!manager) {
+    return null;
   }
 
   return (

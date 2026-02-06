@@ -3,6 +3,67 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
+// Manager email authentication mapping
+const MANAGER_EMAILS: Record<string, string> = {
+  'rafaela@cpalcina.com': 'Rafaela Alves Mendes',
+  'marianessousa02@gmail.com': 'Mariane Santos Sousa',
+  'kemillyrafaelly05@hotmail.com': 'Kemilly Rafaelly Souza Silva',
+  'alberto@cpalcina.com': 'Alberto Luiz Marinho Batista',
+  'romulo@cpalcina.com': 'Romulo Jose Santos Lisboa',
+  'tacianep@outlook.com': 'Maria Taciane Pereira Barbosa',
+  'leidiane@cpalcina.com': 'Leidiane Souza',
+  'erick.cafe@gmail.com': 'Erick Café Santos Júnior',
+  'joao_tavares_17@hotmail.com': 'Joao Antonio Tavares Santos',
+  'carloscontato148@gmail.com': 'Carlos Eduardo Silva De Oliveira',
+  'claramatoschagas@gmail.com': 'Ana Clara de Matos Chagas',
+  'jontahenrique@gmail.com': 'Jonathan Henrique da Conceição Silva',
+  'michael@cpalcina.com': 'Michaell Jean Nunes De Carvalho',
+  'suzana@cpalcina.com': 'Suzana Martins Tavares',
+};
+
+/** POST /api/leaders/auth - Authenticate manager by email */
+router.post('/auth', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== 'string') {
+      res.status(400).json({ error: 'Email é obrigatório' });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const managerName = MANAGER_EMAILS[normalizedEmail];
+
+    if (!managerName) {
+      res.status(401).json({ error: 'Email não autorizado' });
+      return;
+    }
+
+    // Find the leader by name
+    const allLeaders = await queries.getAllLeaders();
+    const leader = allLeaders.find(l =>
+      l.name.toLowerCase() === managerName.toLowerCase() ||
+      l.name_normalized?.toLowerCase() === managerName.toLowerCase()
+    );
+
+    if (!leader) {
+      res.status(404).json({ error: 'Gestor não encontrado no sistema' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      leader: {
+        id: leader.id,
+        name: leader.name,
+        email: normalizedEmail,
+      }
+    });
+  } catch (error) {
+    console.error('[leaders] Error authenticating manager:', error);
+    res.status(500).json({ error: 'Erro ao autenticar' });
+  }
+});
+
 /** GET /api/leaders?sector=... - List leaders, optionally filtered by sector */
 router.get('/', async (req: Request, res: Response) => {
   try {

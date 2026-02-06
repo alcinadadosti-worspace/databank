@@ -32,10 +32,23 @@ const adminNav: NavItem[] = [
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
 ];
 
-export default function Sidebar({ role }: { role: 'employee' | 'manager' | 'admin' }) {
+interface SidebarProps {
+  role: 'employee' | 'manager' | 'admin';
+  managerName?: string;
+  onLogout?: () => void;
+}
+
+export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
   const pathname = usePathname();
 
   const navItems = role === 'admin' ? adminNav : role === 'manager' ? managerNav : employeeNav;
+
+  function handleLogout(e: React.MouseEvent) {
+    if (onLogout) {
+      e.preventDefault();
+      onLogout();
+    }
+  }
 
   return (
     <aside className="w-56 h-screen bg-bg-secondary border-r border-border flex flex-col fixed left-0 top-0">
@@ -65,11 +78,19 @@ export default function Sidebar({ role }: { role: 'employee' | 'manager' | 'admi
 
       {/* Footer */}
       <div className="px-3 py-4 border-t border-border space-y-2">
-        <p className="px-2 text-2xs text-text-muted">
-          {role === 'admin' ? 'RH / Admin' : role === 'manager' ? 'Gestor' : 'Colaborador'}
-        </p>
+        <div className="px-2">
+          <p className="text-2xs text-text-muted">
+            {role === 'admin' ? 'RH / Admin' : role === 'manager' ? 'Gestor' : 'Colaborador'}
+          </p>
+          {managerName && (
+            <p className="text-xs text-text-primary font-medium truncate mt-0.5" title={managerName}>
+              {managerName}
+            </p>
+          )}
+        </div>
         <Link
           href="/"
+          onClick={handleLogout}
           className="sidebar-link flex items-center gap-2 text-text-muted hover:text-text-primary"
         >
           <span className="w-4 h-4 opacity-60"><IconLogout /></span>

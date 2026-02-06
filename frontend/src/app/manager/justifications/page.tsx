@@ -4,17 +4,18 @@ import { useState } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import { getLeaderRecords, type DailyRecord } from '@/lib/api';
 import { formatDate, classificationBadge, classificationLabel, formatMinutes } from '@/lib/utils';
-
-const DEMO_LEADER_ID = 1;
+import { useManagerAuth } from '../ManagerAuthContext';
 
 export default function ManagerJustifications() {
+  const { manager } = useManagerAuth();
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
   async function loadRecords(start: string, end: string) {
+    if (!manager) return;
     setLoading(true);
     try {
-      const data = await getLeaderRecords(DEMO_LEADER_ID, start, end);
+      const data = await getLeaderRecords(manager.id, start, end);
       // Only show records with alerts (late/overtime >= 11 min)
       const alertRecords = data.records.filter(
         r => r.classification && r.classification !== 'normal' && Math.abs(r.difference_minutes || 0) >= 11
@@ -25,6 +26,10 @@ export default function ManagerJustifications() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!manager) {
+    return null;
   }
 
   return (
@@ -54,7 +59,7 @@ export default function ManagerJustifications() {
                   </span>
                 </div>
                 <p className="text-xs text-text-muted mt-1">
-                  {formatDate(record.date)} — {formatMinutes(Math.abs(record.difference_minutes || 0))}
+                  {formatDate(record.date)} - {formatMinutes(Math.abs(record.difference_minutes || 0))}
                 </p>
               </div>
               <div className="text-right">
