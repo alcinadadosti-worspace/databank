@@ -3,6 +3,9 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
+// Master password for full access
+const MASTER_PASSWORD = '198738';
+
 // Manager email authentication mapping
 const MANAGER_EMAILS: Record<string, string> = {
   'rafaela@cpalcina.com': 'Rafaela Alves Mendes',
@@ -21,10 +24,25 @@ const MANAGER_EMAILS: Record<string, string> = {
   'suzana@cpalcina.com': 'Suzana Martins Tavares',
 };
 
-/** POST /api/leaders/auth - Authenticate manager by email */
+/** POST /api/leaders/auth - Authenticate manager by email or master password */
 router.post('/auth', async (req: Request, res: Response) => {
   try {
-    const { email } = req.body;
+    const { email, password } = req.body;
+
+    // Check master password first
+    if (password === MASTER_PASSWORD) {
+      res.json({
+        success: true,
+        leader: {
+          id: 0,
+          name: 'Administrador',
+          email: 'admin',
+          isAdmin: true,
+        }
+      });
+      return;
+    }
+
     if (!email || typeof email !== 'string') {
       res.status(400).json({ error: 'Email é obrigatório' });
       return;
@@ -56,10 +74,34 @@ router.post('/auth', async (req: Request, res: Response) => {
         id: leader.id,
         name: leader.name,
         email: normalizedEmail,
+        isAdmin: false,
       }
     });
   } catch (error) {
     console.error('[leaders] Error authenticating manager:', error);
+    res.status(500).json({ error: 'Erro ao autenticar' });
+  }
+});
+
+/** POST /api/leaders/auth-admin - Authenticate admin by master password */
+router.post('/auth-admin', async (req: Request, res: Response) => {
+  try {
+    const { password } = req.body;
+
+    if (password === MASTER_PASSWORD) {
+      res.json({
+        success: true,
+        admin: {
+          name: 'Administrador RH',
+          authenticated: true,
+        }
+      });
+      return;
+    }
+
+    res.status(401).json({ error: 'Senha incorreta' });
+  } catch (error) {
+    console.error('[leaders] Error authenticating admin:', error);
     res.status(500).json({ error: 'Erro ao autenticar' });
   }
 });
