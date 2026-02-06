@@ -546,7 +546,7 @@ export async function getDashboardStats() {
 // ─── Unit Records (Funcionamento de Unidade) ─────────────────
 
 const UNIT_NAMES: Record<number, string> = {
-  1: 'Canal VD',
+  // 1: 'Canal VD' - removed, leaders moved to their respective VD units
   2: 'Logistica Penedo',
   3: 'VD Penedo',
   4: 'VD Palmeira dos Indios',
@@ -578,6 +578,14 @@ const STORE_LEADER_MAPPING: Record<string, number> = {
   'kemilly rafaelly souza silva': 10,       // → Loja Sao Sebastiao
   'erick café santos júnior': 7,            // → Loja Teotonio Vilela
   // Leidiane Souza excluded - should not appear in Loja Palmeira dos Indios
+};
+
+// VD leaders from Canal VD (leader_id=1) that should appear in their own VD units
+const VD_LEADER_MAPPING: Record<string, number> = {
+  'joao antonio tavares santos': 3,              // → VD Penedo
+  'joão antonio tavares santos': 3,              // → VD Penedo (with accent)
+  'jonathan henrique da conceição silva': 4,     // → VD Palmeira dos Indios
+  'jonathan henrique da conceicao silva': 4,     // → VD Palmeira dos Indios (without accent)
 };
 
 // Custom sort order: Loja first, then others alphabetically
@@ -681,6 +689,19 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     // If not in mapping (e.g., Leidiane), they're simply excluded
   }
   grouped.delete(6); // Remove Canal Loja entirely
+
+  // Move VD leaders from Canal VD (leader_id=1) to their respective VD units
+  const canalVD = grouped.get(1) || [];
+  for (const emp of canalVD) {
+    const targetLeaderId = VD_LEADER_MAPPING[emp.name.toLowerCase()];
+    if (targetLeaderId) {
+      // Add this employee to their VD unit
+      if (!grouped.has(targetLeaderId)) grouped.set(targetLeaderId, []);
+      grouped.get(targetLeaderId)!.push(emp);
+    }
+    // If not in mapping (e.g., Romulo), they're simply excluded
+  }
+  grouped.delete(1); // Remove Canal VD entirely
 
   // Split Logistica (leader_id=2) into Penedo and Palmeira dos Indios
   const logisticaAll = grouped.get(2) || [];
