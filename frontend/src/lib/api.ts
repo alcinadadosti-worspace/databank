@@ -51,10 +51,10 @@ export interface ManagerAuth {
   isAdmin?: boolean;
 }
 
-export async function authenticateManager(email?: string, password?: string) {
+export async function authenticateManager(email: string) {
   return apiFetch<{ success: boolean; leader: ManagerAuth }>('/api/leaders/auth', {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email }),
   });
 }
 

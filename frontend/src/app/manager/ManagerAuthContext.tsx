@@ -7,7 +7,7 @@ interface ManagerAuthContextType {
   manager: ManagerAuth | null;
   loading: boolean;
   error: string | null;
-  login: (email?: string, password?: string) => Promise<boolean>;
+  login: (email: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -33,17 +33,17 @@ export function ManagerAuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, []);
 
-  async function login(email?: string, password?: string): Promise<boolean> {
+  async function login(email: string): Promise<boolean> {
     setError(null);
     setLoading(true);
     try {
-      const result = await authenticateManager(email, password);
+      const result = await authenticateManager(email);
       if (result.success && result.leader) {
         setManager(result.leader);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(result.leader));
         return true;
       }
-      setError('Credenciais inválidas');
+      setError('Email não autorizado');
       return false;
     } catch (err: any) {
       setError(err.message || 'Erro ao autenticar');

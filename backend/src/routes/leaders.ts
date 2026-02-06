@@ -24,24 +24,10 @@ const MANAGER_EMAILS: Record<string, string> = {
   'suzana@cpalcina.com': 'Suzana Martins Tavares',
 };
 
-/** POST /api/leaders/auth - Authenticate manager by email or master password */
+/** POST /api/leaders/auth - Authenticate manager by email */
 router.post('/auth', async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
-
-    // Check master password first
-    if (password === MASTER_PASSWORD) {
-      res.json({
-        success: true,
-        leader: {
-          id: 0,
-          name: 'Administrador',
-          email: 'admin',
-          isAdmin: true,
-        }
-      });
-      return;
-    }
+    const { email } = req.body;
 
     if (!email || typeof email !== 'string') {
       res.status(400).json({ error: 'Email é obrigatório' });
@@ -74,7 +60,6 @@ router.post('/auth', async (req: Request, res: Response) => {
         id: leader.id,
         name: leader.name,
         email: normalizedEmail,
-        isAdmin: false,
       }
     });
   } catch (error) {
