@@ -547,7 +547,7 @@ export async function getDashboardStats() {
 
 const UNIT_NAMES: Record<number, string> = {
   1: 'Canal VD',
-  2: 'Logistica',
+  2: 'Logistica Penedo',
   3: 'VD Penedo',
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
@@ -561,6 +561,24 @@ const UNIT_NAMES: Record<number, string> = {
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
   15: 'Marketing',
+};
+
+// Employees that belong to Logistica Palmeira dos Indios (split from leader_id=2)
+const LOGISTICA_PALMEIRA_EMPLOYEES = [
+  'Hugo Castro Lopes',
+  'João Victor Santos da Silva',
+  'Pedro Lucas Rocha da Fonseca',
+].map(n => n.toLowerCase());
+
+// Custom sort order: Loja first, then others alphabetically
+const UNIT_SORT_ORDER: Record<string, number> = {
+  'Loja Coruripe': 1,
+  'Loja Digital': 2,
+  'Loja Palmeira dos Indios': 3,
+  'Loja Penedo': 4,
+  'Loja Sao Sebastiao': 5,
+  'Loja Teotonio Vilela': 6,
+  // All other units will get a high number and sort alphabetically
 };
 
 export interface UnitEmployee {
@@ -594,11 +612,23 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const records = docsToArray<DailyRecord>(snap);
   const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
-  // Group employees by leader
+  // Separate employees who don't punch from regular employees
+  const noPunchEmployees: EmployeeWithLeader[] = [];
+  const regularEmployees: EmployeeWithLeader[] = [];
+
+  for (const emp of employees) {
+    if (emp.no_punch_required === true) {
+      noPunchEmployees.push(emp);
+    } else {
+      regularEmployees.push(emp);
+    }
+  }
+
+  // Group regular employees by leader
   const leaderMap = new Map(leaders.map(l => [l.id, l]));
   const grouped = new Map<number, EmployeeWithLeader[]>();
 
-  for (const emp of employees) {
+  for (const emp of regularEmployees) {
     const leaderId = emp.leader_id;
     if (!grouped.has(leaderId)) grouped.set(leaderId, []);
     grouped.get(leaderId)!.push(emp);
@@ -629,32 +659,54 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     grouped.delete(16);
   }
 
+  // Split Logistica (leader_id=2) into Penedo and Palmeira dos Indios
+  const logisticaAll = grouped.get(2) || [];
+  const logisticaPalmeira: EmployeeWithLeader[] = [];
+  const logisticaPenedo: EmployeeWithLeader[] = [];
+
+  for (const emp of logisticaAll) {
+    if (LOGISTICA_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())) {
+      logisticaPalmeira.push(emp);
+    } else {
+      logisticaPenedo.push(emp);
+    }
+  }
+
+  // Update grouped map with split Logistica
+  if (logisticaPenedo.length > 0) {
+    grouped.set(2, logisticaPenedo);
+  } else {
+    grouped.delete(2);
+  }
+
   const units: UnitData[] = [];
 
+  // Helper to create UnitEmployee from EmployeeWithLeader
+  function toUnitEmployee(emp: EmployeeWithLeader): UnitEmployee {
+    const record = recordMap.get(emp.id);
+    const noPunchRequired = emp.no_punch_required === true;
+    const isApprentice = emp.is_apprentice === true;
+    const present = noPunchRequired || !!(record?.punch_1);
+    return {
+      id: emp.id,
+      name: emp.name,
+      punch_1: record?.punch_1 ?? null,
+      punch_2: record?.punch_2 ?? null,
+      punch_3: record?.punch_3 ?? null,
+      punch_4: record?.punch_4 ?? null,
+      present,
+      is_apprentice: isApprentice,
+      no_punch_required: noPunchRequired,
+    };
+  }
+
+  // Process regular units
   for (const [leaderId, emps] of grouped) {
     const unitName = UNIT_NAMES[leaderId];
-    if (!unitName) continue; // skip leaders without unit mapping (e.g. Alta Lideranca id=1,8)
+    if (!unitName) continue; // skip leaders without unit mapping
 
     const leader = leaderMap.get(leaderId);
-    const unitEmployees: UnitEmployee[] = emps.map(emp => {
-      const record = recordMap.get(emp.id);
-      // Present = has at least 1 punch (punch_1)
-      // Employees marked as no_punch_required are always considered present
-      const noPunchRequired = emp.no_punch_required === true;
-      const isApprentice = emp.is_apprentice === true;
-      const present = noPunchRequired || !!(record?.punch_1);
-      return {
-        id: emp.id,
-        name: emp.name,
-        punch_1: record?.punch_1 ?? null,
-        punch_2: record?.punch_2 ?? null,
-        punch_3: record?.punch_3 ?? null,
-        punch_4: record?.punch_4 ?? null,
-        present,
-        is_apprentice: isApprentice,
-        no_punch_required: noPunchRequired,
-      };
-    });
+    const unitEmployees = emps.map(toUnitEmployee);
 
     // Sort: present first, then absent; alphabetical within each group
     unitEmployees.sort((a, b) => {
@@ -672,8 +724,47 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
-  // Sort units alphabetically by name
-  units.sort((a, b) => a.unit_name.localeCompare(b.unit_name));
+  // Add Logistica Palmeira dos Indios as separate unit (same leader as Penedo)
+  if (logisticaPalmeira.length > 0) {
+    const leader = leaderMap.get(2);
+    const unitEmployees = logisticaPalmeira.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 2,
+      unit_name: 'Logistica Palmeira dos Indios',
+      leader_name: leader?.name ?? '',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Add "Sem Ponto" card for employees who don't use punch clock
+  if (noPunchEmployees.length > 0) {
+    const unitEmployees = noPunchEmployees.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => a.name.localeCompare(b.name));
+
+    units.push({
+      leader_id: 0, // special ID for this virtual unit
+      unit_name: 'Sem Ponto',
+      leader_name: '',
+      employees: unitEmployees,
+      present_count: unitEmployees.length, // always considered present
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Custom sort: Loja units first, then others alphabetically
+  units.sort((a, b) => {
+    const orderA = UNIT_SORT_ORDER[a.unit_name] ?? 100;
+    const orderB = UNIT_SORT_ORDER[b.unit_name] ?? 100;
+    if (orderA !== orderB) return orderA - orderB;
+    return a.unit_name.localeCompare(b.unit_name);
+  });
 
   return units;
 }
