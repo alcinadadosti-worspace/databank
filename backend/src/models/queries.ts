@@ -551,7 +551,7 @@ const UNIT_NAMES: Record<number, string> = {
   3: 'VD Penedo',
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
-  6: 'Canal Loja',
+  // 6: 'Canal Loja' - removed, leaders moved to their respective stores
   7: 'Loja Teotonio Vilela',
   8: 'Loja Palmeira dos Indios',
   9: 'Loja Penedo',
@@ -569,6 +569,16 @@ const LOGISTICA_PALMEIRA_EMPLOYEES = [
   'João Victor Santos da Silva',
   'Pedro Lucas Rocha da Fonseca',
 ].map(n => n.toLowerCase());
+
+// Store leaders from Canal Loja (leader_id=6) that should appear in their own stores
+// Maps employee name (lowercase) → target leader_id (their store)
+const STORE_LEADER_MAPPING: Record<string, number> = {
+  'maria taciane pereira barbosa': 11,      // → Loja Coruripe
+  'ana clara de matos chagas': 9,           // → Loja Penedo
+  'kemilly rafaelly souza silva': 10,       // → Loja Sao Sebastiao
+  'erick café santos júnior': 7,            // → Loja Teotonio Vilela
+  // Leidiane Souza excluded - should not appear in Loja Palmeira dos Indios
+};
 
 // Custom sort order: Loja first, then others alphabetically
 const UNIT_SORT_ORDER: Record<string, number> = {
@@ -658,6 +668,19 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     grouped.set(15, [...best.values()]);
     grouped.delete(16);
   }
+
+  // Move store leaders from Canal Loja (leader_id=6) to their respective stores
+  const canalLoja = grouped.get(6) || [];
+  for (const emp of canalLoja) {
+    const targetLeaderId = STORE_LEADER_MAPPING[emp.name.toLowerCase()];
+    if (targetLeaderId) {
+      // Add this employee to their store's unit
+      if (!grouped.has(targetLeaderId)) grouped.set(targetLeaderId, []);
+      grouped.get(targetLeaderId)!.push(emp);
+    }
+    // If not in mapping (e.g., Leidiane), they're simply excluded
+  }
+  grouped.delete(6); // Remove Canal Loja entirely
 
   // Split Logistica (leader_id=2) into Penedo and Palmeira dos Indios
   const logisticaAll = grouped.get(2) || [];
