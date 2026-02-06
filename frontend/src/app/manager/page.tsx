@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import StatsCard from '@/components/StatsCard';
 import RecordsTable from '@/components/RecordsTable';
-import { getLeaderRecords, getEmployeesByLeader, type DailyRecord, type Employee } from '@/lib/api';
+import { getLeaderRecords, getUnitRecords, type DailyRecord, type UnitData } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 import { useManagerAuth } from './ManagerAuthContext';
 
 export default function ManagerDashboard() {
   const { manager } = useManagerAuth();
   const [records, setRecords] = useState<DailyRecord[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [unitData, setUnitData] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
 
   useEffect(() => {
     if (!manager) return;
@@ -19,12 +19,15 @@ export default function ManagerDashboard() {
     async function loadData() {
       setLoading(true);
       try {
-        const [recData, empData] = await Promise.all([
+        const [recData, unitsData] = await Promise.all([
           getLeaderRecords(manager!.id, daysAgo(7), todayISO()),
-          getEmployeesByLeader(manager!.id),
+          getUnitRecords(selectedDate),
         ]);
         setRecords(recData.records);
-        setEmployees(empData.employees);
+
+        // Find this manager's unit
+        const myUnit = unitsData.units.find(u => u.leader_id === manager!.id);
+        setUnitData(myUnit || null);
       } catch (error) {
         console.error('Failed to load:', error);
       } finally {
@@ -32,14 +35,10 @@ export default function ManagerDashboard() {
       }
     }
     loadData();
-  }, [manager]);
-
-  const lateCount = records.filter(r => r.classification === 'late').length;
-  const overtimeCount = records.filter(r => r.classification === 'overtime').length;
-  const normalCount = records.filter(r => r.classification === 'normal').length;
+  }, [manager, selectedDate]);
 
   if (!manager) {
-    return null; // Layout handles the login
+    return null;
   }
 
   if (loading) {
@@ -51,49 +50,99 @@ export default function ManagerDashboard() {
     );
   }
 
+  const presentCount = unitData?.present_count ?? 0;
+  const totalCount = unitData?.total_count ?? 0;
+
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div>
-        <h2 className="text-lg font-semibold text-text-primary">Painel Gestor</h2>
-        <p className="text-sm text-text-tertiary mt-1">
-          Bem-vindo, {manager.name}
-        </p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatsCard label="Colaboradores" value={employees.length} />
-        <StatsCard label="Registros (7d)" value={records.length} />
-        <StatsCard label="Normal" value={normalCount} variant="success" />
-        <StatsCard label="Atrasos" value={lateCount} variant={lateCount > 0 ? 'danger' : 'default'} />
-        <StatsCard label="Horas Extras" value={overtimeCount} variant={overtimeCount > 0 ? 'warning' : 'default'} />
-      </div>
-
-      {/* Team members */}
-      <div>
-        <h3 className="text-sm font-medium text-text-secondary mb-3">
-          Sua equipe ({employees.length} colaboradores)
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {employees.map((emp) => {
-            const empRecords = records.filter(r => r.employee_id === emp.id);
-            const empLate = empRecords.filter(r => r.classification === 'late').length;
-            const empOvertime = empRecords.filter(r => r.classification === 'overtime').length;
-            const empNormal = empRecords.filter(r => r.classification === 'normal').length;
-            return (
-              <div key={emp.id} className="card">
-                <p className="text-sm font-medium text-text-primary">{emp.name}</p>
-                <div className="flex gap-3 mt-2 text-xs">
-                  <span className="text-status-success">{empNormal} normal</span>
-                  <span className="text-status-danger">{empLate} atraso{empLate !== 1 ? 's' : ''}</span>
-                  <span className="text-status-warning">{empOvertime} extra{empOvertime !== 1 ? 's' : ''}</span>
-                </div>
-                <p className="text-xs text-text-muted mt-1">{empRecords.length} registros em 7 dias</p>
-              </div>
-            );
-          })}
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-text-primary">Painel Gestor</h2>
+          <p className="text-sm text-text-tertiary mt-1">
+            Bem-vindo, {manager.name}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="input max-w-[180px]"
+          />
         </div>
       </div>
+
+      {/* Unit Card - Similar to Funcionamento */}
+      {unitData ? (
+        <div className="card p-0 overflow-hidden">
+          {/* Unit header */}
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">{unitData.unit_name}</h3>
+              <p className="text-xs text-text-tertiary">Sua equipe</p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-sm font-semibold ${presentCount === totalCount ? 'text-status-success' : 'text-status-warning'}`}>
+                {presentCount}/{totalCount} presentes
+              </span>
+            </div>
+          </div>
+
+          {/* Employee list */}
+          <div className="divide-y divide-border-subtle">
+            {unitData.employees.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-text-tertiary">Nenhum colaborador</p>
+            ) : (
+              unitData.employees.map((emp) => (
+                <div key={emp.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-hover transition-colors">
+                  {/* Status indicator */}
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                      emp.present ? 'bg-status-success' : 'bg-status-danger'
+                    }`}
+                    title={emp.present ? 'Presente' : 'Ausente'}
+                  />
+
+                  {/* Name */}
+                  <span className={`text-sm flex-1 min-w-0 truncate ${
+                    emp.present ? 'text-text-primary' : 'text-text-muted'
+                  }`}>
+                    {emp.name}
+                  </span>
+
+                  {/* Punches */}
+                  <div className="flex items-center gap-2 text-xs font-mono text-text-muted flex-shrink-0">
+                    {emp.no_punch_required ? (
+                      <span className="text-2xs font-sans font-medium text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded" title="Colaborador nao bate ponto">Sem ponto</span>
+                    ) : emp.is_apprentice ? (
+                      <>
+                        <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>
+                        {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
+                        {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
+                        {!emp.punch_1 && <span className="text-status-danger">Sem registro</span>}
+                      </>
+                    ) : (
+                      <>
+                        {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
+                        {emp.punch_2 && <span title="Saida almoco">{emp.punch_2}</span>}
+                        {emp.punch_3 && <span title="Retorno almoco">{emp.punch_3}</span>}
+                        {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
+                        {!emp.punch_1 && (
+                          <span className="text-status-danger">Sem registro</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="card text-center py-8">
+          <p className="text-text-tertiary">Nenhuma unidade encontrada para este gestor</p>
+        </div>
+      )}
 
       {/* Records table */}
       <div>

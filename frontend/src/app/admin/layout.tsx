@@ -1,11 +1,18 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useAdminAuth, AdminAuthProvider } from './AdminAuthContext';
 import AdminLogin from './AdminLogin';
 import Sidebar from '@/components/Sidebar';
 
 function AdminContent({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const { authenticated, loading, logout } = useAdminAuth();
+
+  function handleLogout() {
+    logout();
+    router.push('/');
+  }
 
   if (loading) {
     return (
@@ -21,7 +28,7 @@ function AdminContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex">
-      <Sidebar role="admin" onLogout={logout} />
+      <Sidebar role="admin" onLogout={handleLogout} />
       <main className="ml-56 flex-1 min-h-screen p-8">
         {children}
       </main>

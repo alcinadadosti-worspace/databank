@@ -17,9 +17,6 @@ export default function Home() {
           <Link href="/manager" className="btn-secondary w-full block">
             Painel Gestor
           </Link>
-          <Link href="/employee" className="btn-secondary w-full block">
-            Painel Colaborador
-          </Link>
         </div>
 
         <p className="text-2xs text-text-muted mt-8">

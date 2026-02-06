@@ -10,12 +10,6 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-const employeeNav: NavItem[] = [
-  { label: 'Meu Resumo', href: '/employee', icon: <IconUser /> },
-  { label: 'Historico', href: '/employee/history', icon: <IconClock /> },
-  { label: 'Justificativas', href: '/employee/justifications', icon: <IconFile /> },
-];
-
 const managerNav: NavItem[] = [
   { label: 'Visao Geral', href: '/manager', icon: <IconUsers /> },
   { label: 'Equipe', href: '/manager/team', icon: <IconList /> },
@@ -33,7 +27,7 @@ const adminNav: NavItem[] = [
 ];
 
 interface SidebarProps {
-  role: 'employee' | 'manager' | 'admin';
+  role: 'manager' | 'admin';
   managerName?: string;
   onLogout?: () => void;
 }
@@ -41,7 +35,7 @@ interface SidebarProps {
 export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
   const pathname = usePathname();
 
-  const navItems = role === 'admin' ? adminNav : role === 'manager' ? managerNav : employeeNav;
+  const navItems = role === 'admin' ? adminNav : managerNav;
 
   function handleLogout(e: React.MouseEvent) {
     if (onLogout) {
@@ -80,7 +74,7 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
       <div className="px-3 py-4 border-t border-border space-y-2">
         <div className="px-2">
           <p className="text-2xs text-text-muted">
-            {role === 'admin' ? 'RH / Admin' : role === 'manager' ? 'Gestor' : 'Colaborador'}
+            {role === 'admin' ? 'RH / Admin' : 'Gestor'}
           </p>
           {managerName && (
             <p className="text-xs text-text-primary font-medium truncate mt-0.5" title={managerName}>

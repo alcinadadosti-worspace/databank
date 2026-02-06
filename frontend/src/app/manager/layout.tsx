@@ -1,11 +1,18 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useManagerAuth, ManagerAuthProvider } from './ManagerAuthContext';
 import ManagerLogin from './ManagerLogin';
 import Sidebar from '@/components/Sidebar';
 
 function ManagerContent({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const { manager, loading, logout } = useManagerAuth();
+
+  function handleLogout() {
+    logout();
+    router.push('/');
+  }
 
   if (loading) {
     return (
@@ -21,7 +28,7 @@ function ManagerContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex">
-      <Sidebar role="manager" managerName={manager.name} onLogout={logout} />
+      <Sidebar role="manager" managerName={manager.name} onLogout={handleLogout} />
       <main className="ml-56 flex-1 min-h-screen p-8">
         {children}
       </main>
