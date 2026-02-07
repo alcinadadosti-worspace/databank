@@ -229,6 +229,71 @@ export async function sendManagerDailySummary(
   }
 }
 
+// ─── Send Punch Reminders ──────────────────────────────────────
+
+export type ReminderType = 'entry' | 'lunch_return' | 'exit';
+
+export async function sendPunchReminder(
+  employeeSlackId: string | null,
+  employeeName: string,
+  reminderType: ReminderType,
+  minutesLeft: number
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employeeSlackId);
+
+  let emoji: string;
+  let message: string;
+  let punchName: string;
+
+  switch (reminderType) {
+    case 'entry':
+      emoji = ':alarm_clock:';
+      punchName = 'entrada';
+      message = `Bom dia! Esta chegando a hora de bater o ponto de *entrada*.`;
+      break;
+    case 'lunch_return':
+      emoji = ':fork_and_knife:';
+      punchName = 'retorno do almoco';
+      message = `Hora de voltar! Nao esqueca de bater o ponto de *retorno do almoco*.`;
+      break;
+    case 'exit':
+      emoji = ':house:';
+      punchName = 'saida';
+      message = `Fim de expediente chegando! Nao esqueca de bater o ponto de *saida*.`;
+      break;
+  }
+
+  const blocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `${emoji} *Lembrete de Ponto*`,
+          '',
+          message,
+          '',
+          `:clock3: *Faltam ${minutesLeft} minutos* para o horario do ponto de ${punchName}.`,
+        ].join('\n'),
+      },
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Lembrete: faltam ${minutesLeft} min para bater o ponto de ${punchName}`,
+      blocks,
+    });
+
+    console.log(`[slack] Punch reminder (${reminderType}) sent to ${employeeName}`);
+  } catch (error) {
+    console.error(`[slack] Failed to send punch reminder:`, error);
+  }
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {

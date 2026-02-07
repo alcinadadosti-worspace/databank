@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import StatsCard from '@/components/StatsCard';
 import RecordsTable from '@/components/RecordsTable';
-import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, testSlackMessage, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
+import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, testSlackMessage, testPunchReminder, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 
 type Filter = 'all' | 'late' | 'overtime' | 'normal' | 'pending';
@@ -32,6 +32,10 @@ export default function AdminDashboard() {
   // Slack test states
   const [testingSlack, setTestingSlack] = useState<'employee' | 'manager' | null>(null);
   const [slackTestResult, setSlackTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Reminder test states
+  const [testingReminder, setTestingReminder] = useState<'entry' | 'lunch_return' | 'exit' | null>(null);
+  const [reminderTestResult, setReminderTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadRecords = useCallback(async (date: string) => {
     setLoading(true);
@@ -133,6 +137,20 @@ export default function AdminDashboard() {
       setSlackTestResult({ success: false, message: err instanceof Error ? err.message : 'Erro ao enviar teste' });
     } finally {
       setTestingSlack(null);
+    }
+  }
+
+  async function handleTestReminder(type: 'entry' | 'lunch_return' | 'exit') {
+    setTestingReminder(type);
+    setReminderTestResult(null);
+
+    try {
+      const result = await testPunchReminder(type);
+      setReminderTestResult(result);
+    } catch (err) {
+      setReminderTestResult({ success: false, message: err instanceof Error ? err.message : 'Erro ao enviar teste' });
+    } finally {
+      setTestingReminder(null);
     }
   }
 
@@ -293,7 +311,7 @@ export default function AdminDashboard() {
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex-1">
-            <label className="text-xs text-text-tertiary font-medium">Testar Bot do Slack</label>
+            <label className="text-xs text-text-tertiary font-medium">Testar Alertas do Slack</label>
             <p className="text-xs text-text-muted mt-1">Envia mensagens de teste para o usuario configurado em SLACK_TEST_USER_ID</p>
           </div>
           <div className="flex gap-2">
@@ -315,6 +333,44 @@ export default function AdminDashboard() {
           {slackTestResult && (
             <span className={`text-xs ${slackTestResult.success ? 'text-green-400' : 'text-red-400'}`}>
               {slackTestResult.message}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Reminder Test Section */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <label className="text-xs text-text-tertiary font-medium">Testar Lembretes de Ponto</label>
+            <p className="text-xs text-text-muted mt-1">Envia lembretes de teste (entrada 7:50, retorno almoco, saida 17:50)</p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => handleTestReminder('entry')}
+              disabled={testingReminder !== null}
+              className="btn-secondary px-3 py-2 text-sm"
+            >
+              {testingReminder === 'entry' ? '...' : 'Entrada'}
+            </button>
+            <button
+              onClick={() => handleTestReminder('lunch_return')}
+              disabled={testingReminder !== null}
+              className="btn-secondary px-3 py-2 text-sm"
+            >
+              {testingReminder === 'lunch_return' ? '...' : 'Retorno Almoco'}
+            </button>
+            <button
+              onClick={() => handleTestReminder('exit')}
+              disabled={testingReminder !== null}
+              className="btn-secondary px-3 py-2 text-sm"
+            >
+              {testingReminder === 'exit' ? '...' : 'Saida'}
+            </button>
+          </div>
+          {reminderTestResult && (
+            <span className={`text-xs ${reminderTestResult.success ? 'text-green-400' : 'text-red-400'}`}>
+              {reminderTestResult.message}
             </span>
           )}
         </div>

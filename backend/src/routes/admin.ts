@@ -333,4 +333,46 @@ router.post('/test-slack', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/test-reminder - Test punch reminder */
+router.post('/test-reminder', async (req: Request, res: Response) => {
+  try {
+    const { sendPunchReminder } = await import('../slack/bot');
+    const app = getSlackApp();
+    if (!app) {
+      res.status(400).json({
+        success: false,
+        error: 'Slack nao configurado.'
+      });
+      return;
+    }
+
+    const { type = 'entry' } = req.body;
+
+    if (type === 'entry') {
+      await sendPunchReminder(null, 'Colaborador Teste', 'entry', 10);
+      res.json({
+        success: true,
+        message: 'Lembrete de entrada enviado! Verifique seu Slack.'
+      });
+    } else if (type === 'lunch_return') {
+      await sendPunchReminder(null, 'Colaborador Teste', 'lunch_return', 10);
+      res.json({
+        success: true,
+        message: 'Lembrete de retorno do almoco enviado! Verifique seu Slack.'
+      });
+    } else if (type === 'exit') {
+      await sendPunchReminder(null, 'Colaborador Teste', 'exit', 10);
+      res.json({
+        success: true,
+        message: 'Lembrete de saida enviado! Verifique seu Slack.'
+      });
+    } else {
+      res.status(400).json({ error: 'type must be "entry", "lunch_return", or "exit"' });
+    }
+  } catch (error) {
+    console.error('[admin] Error testing reminder:', error);
+    res.status(500).json({ error: 'Falha ao enviar teste: ' + (error as Error).message });
+  }
+});
+
 export default router;

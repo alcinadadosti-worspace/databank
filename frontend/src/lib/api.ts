@@ -171,6 +171,13 @@ export async function testSlackMessage(type: 'employee' | 'manager') {
   });
 }
 
+export async function testPunchReminder(type: 'entry' | 'lunch_return' | 'exit') {
+  return apiFetch<{ success: boolean; message: string }>('/api/admin/test-reminder', {
+    method: 'POST',
+    body: JSON.stringify({ type }),
+  });
+}
+
 export interface SyncStartResult {
   success: boolean;
   message: string;
