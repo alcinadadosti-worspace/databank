@@ -138,13 +138,13 @@ export default function RelatoriosPage() {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <Tooltip
-                    formatter={(value: number, name: string) => {
+                    formatter={(value, name) => {
                       const labels: Record<string, string> = {
                         late: 'Atrasos',
                         overtime: 'Horas Extras',
                         normal: 'Normais',
                       };
-                      return [value, labels[name] || name];
+                      return [value, labels[String(name)] || name];
                     }}
                   />
                   <Legend
@@ -176,13 +176,13 @@ export default function RelatoriosPage() {
                     <XAxis type="number" />
                     <YAxis dataKey="sector" type="category" width={120} />
                     <Tooltip
-                      formatter={(value: number, name: string) => {
+                      formatter={(value, name) => {
                         const labels: Record<string, string> = {
                           late: 'Atrasos',
                           overtime: 'Horas Extras',
                           normal: 'Normais',
                         };
-                        return [value, labels[name] || name];
+                        return [value, labels[String(name)] || name];
                       }}
                     />
                     <Legend
