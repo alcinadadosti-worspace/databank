@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import StatsCard from '@/components/StatsCard';
 import RecordsTable from '@/components/RecordsTable';
-import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
+import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, testSlackMessage, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 
 type Filter = 'all' | 'late' | 'overtime' | 'normal' | 'pending';
@@ -28,6 +28,10 @@ export default function AdminDashboard() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
   const syncPollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Slack test states
+  const [testingSlack, setTestingSlack] = useState<'employee' | 'manager' | null>(null);
+  const [slackTestResult, setSlackTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadRecords = useCallback(async (date: string) => {
     setLoading(true);
@@ -115,6 +119,20 @@ export default function AdminDashboard() {
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Erro ao iniciar sincronizacao');
       setSyncing(false);
+    }
+  }
+
+  async function handleTestSlack(type: 'employee' | 'manager') {
+    setTestingSlack(type);
+    setSlackTestResult(null);
+
+    try {
+      const result = await testSlackMessage(type);
+      setSlackTestResult(result);
+    } catch (err) {
+      setSlackTestResult({ success: false, message: err instanceof Error ? err.message : 'Erro ao enviar teste' });
+    } finally {
+      setTestingSlack(null);
     }
   }
 
@@ -267,6 +285,37 @@ export default function AdminDashboard() {
           )}
           {syncError && (
             <span className="text-xs text-red-400">{syncError}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Slack Test Section */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <label className="text-xs text-text-tertiary font-medium">Testar Bot do Slack</label>
+            <p className="text-xs text-text-muted mt-1">Envia mensagens de teste para o usuario configurado em SLACK_TEST_USER_ID</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleTestSlack('employee')}
+              disabled={testingSlack !== null}
+              className="btn-secondary px-4 py-2 text-sm"
+            >
+              {testingSlack === 'employee' ? 'Enviando...' : 'Teste Colaborador'}
+            </button>
+            <button
+              onClick={() => handleTestSlack('manager')}
+              disabled={testingSlack !== null}
+              className="btn-secondary px-4 py-2 text-sm"
+            >
+              {testingSlack === 'manager' ? 'Enviando...' : 'Teste Gestor'}
+            </button>
+          </div>
+          {slackTestResult && (
+            <span className={`text-xs ${slackTestResult.success ? 'text-green-400' : 'text-red-400'}`}>
+              {slackTestResult.message}
+            </span>
           )}
         </div>
       </div>

@@ -164,6 +164,13 @@ export async function resyncPunches(date: string) {
   });
 }
 
+export async function testSlackMessage(type: 'employee' | 'manager') {
+  return apiFetch<{ success: boolean; message: string }>('/api/admin/test-slack', {
+    method: 'POST',
+    body: JSON.stringify({ type }),
+  });
+}
+
 export interface SyncStartResult {
   success: boolean;
   message: string;
