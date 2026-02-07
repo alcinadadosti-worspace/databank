@@ -28,7 +28,7 @@ function getBalanceColor(minutes: number): string {
 }
 
 export default function BancoHorasPage() {
-  const { isAuthenticated } = useAdminAuth();
+  const { authenticated } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [employees, setEmployees] = useState<EmployeeBalance[]>([]);
@@ -37,9 +37,9 @@ export default function BancoHorasPage() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!authenticated) return;
     loadData();
-  }, [isAuthenticated, year]);
+  }, [authenticated, year]);
 
   async function loadData() {
     setLoading(true);
@@ -71,7 +71,7 @@ export default function BancoHorasPage() {
     setEmployeeDetail(null);
   }
 
-  if (!isAuthenticated) {
+  if (!authenticated) {
     return null;
   }
 

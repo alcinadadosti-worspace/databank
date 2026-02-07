@@ -34,7 +34,7 @@ function formatMinutes(minutes: number): string {
 }
 
 export default function RelatoriosPage() {
-  const { isAuthenticated } = useAdminAuth();
+  const { authenticated } = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
   const [monthlyData, setMonthlyData] = useState<MonthlyReportData[]>([]);
@@ -43,9 +43,9 @@ export default function RelatoriosPage() {
   const [topOvertime, setTopOvertime] = useState<EmployeeReportData[]>([]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!authenticated) return;
     loadData();
-  }, [isAuthenticated, year]);
+  }, [authenticated, year]);
 
   async function loadData() {
     setLoading(true);
@@ -70,7 +70,7 @@ export default function RelatoriosPage() {
     }
   }
 
-  if (!isAuthenticated) {
+  if (!authenticated) {
     return null;
   }
 
