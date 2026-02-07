@@ -1,8 +1,8 @@
-import { WORK_SCHEDULE, HourClassification } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, getExpectedMinutes } from '../config/constants';
 
 export interface PunchSet {
   punch1: string | null; // Entry
-  punch2: string | null; // Lunch out
+  punch2: string | null; // Lunch out (or exit on Saturday)
   punch3: string | null; // Lunch return
   punch4: string | null; // Exit
 }
@@ -14,6 +14,12 @@ export interface CalculationResult {
   isComplete: boolean;
 }
 
+export interface CalculationOptions {
+  date?: string;           // Date in YYYY-MM-DD format (to check Saturday/holiday)
+  isApprentice?: boolean;  // Apprentice has different hours
+  expectedMinutes?: number; // Override expected minutes
+}
+
 /**
  * Parse a time string "HH:MM" or "HH:MM:SS" to minutes from midnight.
  */
@@ -23,21 +29,77 @@ function timeToMinutes(time: string): number {
 }
 
 /**
- * Calculate work hours from 4 clock punches.
+ * Calculate work hours from clock punches.
  *
- * Calculation:
+ * Weekdays (Mon-Fri):
+ *   Requires 4 punches
  *   Morning = punch2 - punch1
  *   Afternoon = punch4 - punch3
  *   Total = Morning + Afternoon
- *   Difference = Total - Expected (480 min)
+ *   Expected = 480 min (8h)
+ *
+ * Saturdays:
+ *   Requires 2 punches (punch1 and punch2)
+ *   Total = punch2 - punch1
+ *   Expected = 240 min (4h)
  *
  * Classification:
  *   - |difference| <= 10 → normal
- *   - difference <= -11 → late (negative hours)
- *   - difference >= 11 → overtime
+ *   - difference < -10 → late (worked less)
+ *   - difference > 10 → overtime (worked more)
  */
-export function calculateDailyHours(punches: PunchSet): CalculationResult | null {
-  // Only calculate when all 4 punches exist
+export function calculateDailyHours(punches: PunchSet, options?: CalculationOptions): CalculationResult | null {
+  const date = options?.date;
+  const isApprentice = options?.isApprentice ?? false;
+
+  // Check if it's a non-working day
+  if (date && !isWorkingDay(date)) {
+    return null; // No calculation for Sundays/holidays
+  }
+
+  // Determine if it's Saturday
+  const isSat = date ? isSaturday(date) : false;
+
+  // Get expected minutes
+  let expectedMinutes: number;
+  if (options?.expectedMinutes !== undefined) {
+    expectedMinutes = options.expectedMinutes;
+  } else if (date) {
+    expectedMinutes = getExpectedMinutes(date, isApprentice);
+  } else {
+    expectedMinutes = WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+  }
+
+  // Saturday or Apprentice: only need 2 punches (entry and exit)
+  if (isSat || isApprentice) {
+    if (!punches.punch1 || !punches.punch2) {
+      return null;
+    }
+
+    const p1 = timeToMinutes(punches.punch1);
+    const p2 = timeToMinutes(punches.punch2);
+
+    const totalWorkedMinutes = p2 - p1;
+    const differenceMinutes = totalWorkedMinutes - expectedMinutes;
+
+    let classification: HourClassification;
+    if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {
+      classification = 'normal';
+    } else if (differenceMinutes < 0) {
+      classification = 'late';
+    } else {
+      classification = 'overtime';
+    }
+
+    return {
+      totalWorkedMinutes,
+      differenceMinutes,
+      classification,
+      isComplete: true,
+    };
+  }
+
+  // Weekdays: need all 4 punches
   if (!punches.punch1 || !punches.punch2 || !punches.punch3 || !punches.punch4) {
     return null;
   }
@@ -53,7 +115,7 @@ export function calculateDailyHours(punches: PunchSet): CalculationResult | null
   const afternoonMinutes = p4 - p3;
 
   const totalWorkedMinutes = morningMinutes + afternoonMinutes;
-  const differenceMinutes = totalWorkedMinutes - WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+  const differenceMinutes = totalWorkedMinutes - expectedMinutes;
 
   let classification: HourClassification;
 
