@@ -11,7 +11,9 @@ export default function ManagerDashboard() {
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [unitData, setUnitData] = useState<UnitData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(todayISO());
+  const [unitDate, setUnitDate] = useState(todayISO());
 
   useEffect(() => {
     if (!manager) return;
@@ -20,8 +22,8 @@ export default function ManagerDashboard() {
       setLoading(true);
       try {
         const [recData, unitsData] = await Promise.all([
-          getLeaderRecords(manager!.id, daysAgo(7), todayISO()),
-          getUnitRecords(selectedDate),
+          getLeaderRecords(manager!.id, startDate, endDate),
+          getUnitRecords(unitDate),
         ]);
         setRecords(recData.records);
 
@@ -35,7 +37,7 @@ export default function ManagerDashboard() {
       }
     }
     loadData();
-  }, [manager, selectedDate]);
+  }, [manager, startDate, endDate, unitDate]);
 
   if (!manager) {
     return null;
@@ -63,11 +65,12 @@ export default function ManagerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="text-xs text-text-muted">Presenca:</label>
           <input
             type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="input max-w-[180px]"
+            value={unitDate}
+            onChange={(e) => setUnitDate(e.target.value)}
+            className="input max-w-[150px]"
           />
         </div>
       </div>
@@ -145,8 +148,27 @@ export default function ManagerDashboard() {
       )}
 
       {/* Records table */}
-      <div>
-        <h3 className="text-sm font-medium text-text-secondary mb-3">Registros - ultimos 7 dias</h3>
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h3 className="text-sm font-medium text-text-secondary">Banco de Horas da Equipe</h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-xs text-text-muted">De:</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input max-w-[150px]"
+            />
+            <label className="text-xs text-text-muted">Ate:</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="input max-w-[150px]"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-text-muted">{records.length} registros encontrados</p>
         <RecordsTable records={records} showEmployee />
       </div>
     </div>
