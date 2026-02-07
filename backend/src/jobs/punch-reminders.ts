@@ -2,11 +2,37 @@ import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
 import { isWorkingDay, isSaturday } from '../config/constants';
 
+// Track which reminders have been sent today (resets daily)
+// Format: "YYYY-MM-DD:employeeId:type"
+const sentReminders = new Set<string>();
+let lastResetDate = '';
+
+function resetIfNewDay(): void {
+  const today = new Date().toISOString().split('T')[0];
+  if (today !== lastResetDate) {
+    sentReminders.clear();
+    lastResetDate = today;
+    console.log('[reminders] Reset reminder tracking for new day');
+  }
+}
+
+function hasReminderBeenSent(employeeId: number, type: string): boolean {
+  const today = new Date().toISOString().split('T')[0];
+  return sentReminders.has(`${today}:${employeeId}:${type}`);
+}
+
+function markReminderSent(employeeId: number, type: string): void {
+  const today = new Date().toISOString().split('T')[0];
+  sentReminders.add(`${today}:${employeeId}:${type}`);
+}
+
 /**
  * Send entry reminder at 7:50 AM.
  * Reminds employees who haven't punched in yet.
+ * Each employee receives only ONE entry reminder per day.
  */
 export async function sendEntryReminders(): Promise<void> {
+  resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
   // Skip non-working days
@@ -22,13 +48,15 @@ export async function sendEntryReminders(): Promise<void> {
     const records = await queries.getDailyRecordsByDate(today);
     const punchedIds = new Set(records.map(r => r.employee_id));
 
-    // Send to employees who haven't punched yet and have a Slack ID
+    // Send to employees who haven't punched yet
     let sent = 0;
     for (const emp of employees) {
-      // Skip if already punched or no punch required
+      // Skip if already punched, no punch required, or already reminded
       if (punchedIds.has(emp.id) || emp.no_punch_required) continue;
+      if (hasReminderBeenSent(emp.id, 'entry')) continue;
 
       await sendPunchReminder(emp.slack_id, emp.name, 'entry', 10);
+      markReminderSent(emp.id, 'entry');
       sent++;
     }
 
@@ -41,8 +69,10 @@ export async function sendEntryReminders(): Promise<void> {
 /**
  * Send exit reminder at 17:50 PM.
  * Reminds employees who haven't punched out yet.
+ * Each employee receives only ONE exit reminder per day.
  */
 export async function sendExitReminders(): Promise<void> {
+  resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
   // Skip non-working days
@@ -70,11 +100,13 @@ export async function sendExitReminders(): Promise<void> {
     let sent = 0;
     for (const emp of employees) {
       if (emp.no_punch_required || emp.is_apprentice) continue;
+      if (hasReminderBeenSent(emp.id, 'exit')) continue;
 
       const record = recordMap.get(emp.id);
       // Has returned from lunch but hasn't left yet
       if (record && record.punch_3 && !record.punch_4) {
         await sendPunchReminder(emp.slack_id, emp.name, 'exit', 10);
+        markReminderSent(emp.id, 'exit');
         sent++;
       }
     }
@@ -88,8 +120,10 @@ export async function sendExitReminders(): Promise<void> {
 /**
  * Send Saturday exit reminder at 11:50 AM.
  * Reminds employees who haven't punched out yet on Saturday.
+ * Each employee receives only ONE exit reminder per day.
  */
 export async function sendSaturdayExitReminders(): Promise<void> {
+  resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
   // Only run on Saturday
@@ -109,10 +143,12 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     let sent = 0;
     for (const emp of employees) {
       if (emp.no_punch_required) continue;
+      if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
         await sendPunchReminder(emp.slack_id, emp.name, 'exit', 10);
+        markReminderSent(emp.id, 'exit_saturday');
         sent++;
       }
     }
@@ -125,10 +161,12 @@ export async function sendSaturdayExitReminders(): Promise<void> {
 
 /**
  * Check and send lunch return reminders.
- * Runs every 5 minutes between 13:00-15:00.
- * Sends reminder 10 minutes before the employee should return (1 hour after lunch_out).
+ * Runs every 5 minutes between 14:00-16:00.
+ * Sends reminder 10 minutes before the employee should return (2 hours after lunch_out).
+ * Each employee receives only ONE lunch return reminder per day.
  */
 export async function checkLunchReturnReminders(): Promise<void> {
+  resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
   // Skip non-working days and Saturdays (no lunch break on Saturday)
@@ -148,6 +186,7 @@ export async function checkLunchReturnReminders(): Promise<void> {
     let sent = 0;
     for (const emp of employees) {
       if (emp.no_punch_required || emp.is_apprentice) continue;
+      if (hasReminderBeenSent(emp.id, 'lunch_return')) continue;
 
       const record = recordMap.get(emp.id);
       // Has gone to lunch but hasn't returned yet
@@ -160,10 +199,11 @@ export async function checkLunchReturnReminders(): Promise<void> {
         // Send reminder 10 minutes before
         const reminderMinutes = shouldReturnMinutes - 10;
 
-        // Check if we're within the reminder window (±2 minutes to avoid duplicates)
-        if (currentMinutes >= reminderMinutes && currentMinutes <= reminderMinutes + 2) {
+        // Check if we're at or past the reminder time (send once when we hit the window)
+        if (currentMinutes >= reminderMinutes && currentMinutes <= shouldReturnMinutes) {
           const minutesLeft = shouldReturnMinutes - currentMinutes;
           await sendPunchReminder(emp.slack_id, emp.name, 'lunch_return', Math.max(minutesLeft, 1));
+          markReminderSent(emp.id, 'lunch_return');
           sent++;
         }
       }
