@@ -14,6 +14,7 @@ const managerNav: NavItem[] = [
   { label: 'Visao Geral', href: '/manager', icon: <IconUsers /> },
   { label: 'Equipe', href: '/manager/team', icon: <IconList /> },
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
+  { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
 ];
 
 const adminNav: NavItem[] = [

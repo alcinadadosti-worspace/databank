@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { syncPunches } from '../jobs/sync-punches';
 
 const router = Router();
 
@@ -129,6 +130,135 @@ router.get('/:id', async (req: Request, res: Response) => {
     console.error('[leaders] Error fetching leader:', error);
     res.status(500).json({ error: 'Failed to fetch leader' });
   }
+});
+
+// In-memory sync status tracking for manager syncs
+interface ManagerSyncStatus {
+  id: string;
+  status: 'running' | 'completed' | 'error';
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  synced: number;
+  errors: number;
+  currentDate?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+const managerSyncJobs = new Map<string, ManagerSyncStatus>();
+
+/** POST /api/leaders/:id/sync - Sync punches for a leader's team (no notifications) */
+router.post('/:id/sync', async (req: Request, res: Response) => {
+  try {
+    const leaderId = parseInt(req.params.id as string, 10);
+    if (isNaN(leaderId)) {
+      res.status(400).json({ error: 'Invalid leader ID' });
+      return;
+    }
+
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      res.status(400).json({ error: 'startDate and endDate are required' });
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      res.status(400).json({ error: 'Dates must be in YYYY-MM-DD format' });
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (start > end) {
+      res.status(400).json({ error: 'startDate must be before or equal to endDate' });
+      return;
+    }
+
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+    if (diffDays > 90) {
+      res.status(400).json({ error: 'Maximum range is 90 days' });
+      return;
+    }
+
+    // Generate unique job ID
+    const jobId = `manager_sync_${leaderId}_${Date.now()}`;
+
+    // Create initial status
+    const status: ManagerSyncStatus = {
+      id: jobId,
+      status: 'running',
+      startDate,
+      endDate,
+      totalDays: diffDays,
+      synced: 0,
+      errors: 0,
+      startedAt: new Date().toISOString(),
+    };
+    managerSyncJobs.set(jobId, status);
+
+    console.log(`[leaders] Manager sync started for leader ${leaderId}: ${startDate} to ${endDate} (${diffDays} days) - Job ${jobId}`);
+
+    // Return immediately with job ID
+    res.json({
+      success: true,
+      message: 'Sync started in background (no notifications)',
+      jobId,
+      totalDays: diffDays,
+    });
+
+    // Run sync in background (after response is sent) - NO NOTIFICATIONS
+    setImmediate(async () => {
+      const current = new Date(start);
+
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0];
+        status.currentDate = dateStr;
+
+        try {
+          await syncPunches(dateStr, { skipNotifications: true });
+          status.synced++;
+          console.log(`[leaders] Manager sync: ${dateStr} (${status.synced}/${diffDays})`);
+        } catch (err) {
+          status.errors++;
+          console.error(`[leaders] Manager sync error ${dateStr}:`, err);
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      status.status = 'completed';
+      status.completedAt = new Date().toISOString();
+
+      await queries.logAudit('MANAGER_SYNC', 'leader', leaderId,
+        `Synced range ${startDate} to ${endDate}: ${status.synced} days synced, ${status.errors} errors`);
+
+      console.log(`[leaders] Manager sync completed: ${status.synced} days synced, ${status.errors} errors`);
+
+      // Clean up old jobs after 1 hour
+      setTimeout(() => managerSyncJobs.delete(jobId), 60 * 60 * 1000);
+    });
+  } catch (error) {
+    console.error('[leaders] Error starting manager sync:', error);
+    res.status(500).json({ error: 'Failed to start sync' });
+  }
+});
+
+/** GET /api/leaders/sync-status/:jobId - Get status of a manager sync job */
+router.get('/sync-status/:jobId', (req: Request, res: Response) => {
+  const jobId = req.params.jobId as string;
+  const status = managerSyncJobs.get(jobId);
+
+  if (!status) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+
+  res.json(status);
 });
 
 export default router;

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
+import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
 
 const router = Router();
 
@@ -98,10 +99,27 @@ router.post('/resync', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /api/admin/sync-range - Sync punches for a date range */
+// In-memory sync status tracking
+interface SyncStatus {
+  id: string;
+  status: 'running' | 'completed' | 'error';
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  synced: number;
+  errors: number;
+  currentDate?: string;
+  startedAt: string;
+  completedAt?: string;
+  errorMessage?: string;
+}
+
+const syncJobs = new Map<string, SyncStatus>();
+
+/** POST /api/admin/sync-range - Start sync punches for a date range (runs in background) */
 router.post('/sync-range', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.body;
+    const { startDate, endDate, skipNotifications } = req.body;
 
     if (!startDate || !endDate) {
       res.status(400).json({ error: 'startDate and endDate are required' });
@@ -121,7 +139,6 @@ router.post('/sync-range', async (req: Request, res: Response) => {
       return;
     }
 
-    // Calculate number of days
     const diffTime = end.getTime() - start.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
@@ -130,37 +147,134 @@ router.post('/sync-range', async (req: Request, res: Response) => {
       return;
     }
 
-    console.log(`[admin] Sync range requested: ${startDate} to ${endDate} (${diffDays} days)`);
+    // Generate unique job ID
+    const jobId = `sync_${Date.now()}`;
 
-    // Sync each day in the range
-    let synced = 0;
-    let errors = 0;
-    const current = new Date(start);
+    // Create initial status
+    const status: SyncStatus = {
+      id: jobId,
+      status: 'running',
+      startDate,
+      endDate,
+      totalDays: diffDays,
+      synced: 0,
+      errors: 0,
+      startedAt: new Date().toISOString(),
+    };
+    syncJobs.set(jobId, status);
 
-    while (current <= end) {
-      const dateStr = current.toISOString().split('T')[0];
-      try {
-        await syncPunches(dateStr);
-        synced++;
-        console.log(`[admin] Synced ${dateStr} (${synced}/${diffDays})`);
-      } catch (err) {
-        errors++;
-        console.error(`[admin] Error syncing ${dateStr}:`, err);
-      }
-      current.setDate(current.getDate() + 1);
-    }
+    console.log(`[admin] Sync range started: ${startDate} to ${endDate} (${diffDays} days) - Job ${jobId}`);
 
-    await queries.logAudit('SYNC_RANGE', 'admin', undefined,
-      `Synced range ${startDate} to ${endDate}: ${synced} days synced, ${errors} errors`);
-
+    // Return immediately with job ID
     res.json({
       success: true,
-      message: `Sync completed: ${synced} days synced, ${errors} errors`,
-      details: { startDate, endDate, totalDays: diffDays, synced, errors }
+      message: 'Sync started in background',
+      jobId,
+      totalDays: diffDays,
+    });
+
+    // Run sync in background (after response is sent)
+    setImmediate(async () => {
+      const current = new Date(start);
+
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0];
+        status.currentDate = dateStr;
+
+        try {
+          await syncPunches(dateStr, { skipNotifications: !!skipNotifications });
+          status.synced++;
+          console.log(`[admin] Synced ${dateStr} (${status.synced}/${diffDays})`);
+        } catch (err) {
+          status.errors++;
+          console.error(`[admin] Error syncing ${dateStr}:`, err);
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      status.status = 'completed';
+      status.completedAt = new Date().toISOString();
+
+      await queries.logAudit('SYNC_RANGE', 'admin', undefined,
+        `Synced range ${startDate} to ${endDate}: ${status.synced} days synced, ${status.errors} errors`);
+
+      console.log(`[admin] Sync completed: ${status.synced} days synced, ${status.errors} errors`);
+
+      // Clean up old jobs after 1 hour
+      setTimeout(() => syncJobs.delete(jobId), 60 * 60 * 1000);
     });
   } catch (error) {
-    console.error('[admin] Error in sync-range:', error);
-    res.status(500).json({ error: 'Failed to sync range' });
+    console.error('[admin] Error starting sync-range:', error);
+    res.status(500).json({ error: 'Failed to start sync' });
+  }
+});
+
+/** GET /api/admin/sync-status/:jobId - Get status of a sync job */
+router.get('/sync-status/:jobId', (req: Request, res: Response) => {
+  const jobId = req.params.jobId as string;
+  const status = syncJobs.get(jobId);
+
+  if (!status) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+
+  res.json(status);
+});
+
+/** POST /api/admin/test-slack - Test Slack bot connection */
+router.post('/test-slack', async (req: Request, res: Response) => {
+  try {
+    const app = getSlackApp();
+    if (!app) {
+      res.status(400).json({
+        success: false,
+        error: 'Slack não configurado. Verifique SLACK_BOT_TOKEN, SLACK_APP_TOKEN e SLACK_SIGNING_SECRET no .env'
+      });
+      return;
+    }
+
+    const { type = 'employee' } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+
+    if (type === 'employee') {
+      // Send test employee alert
+      await sendEmployeeAlert(
+        null, // will use SLACK_TEST_USER_ID
+        'Colaborador Teste',
+        today,
+        450, // 7h30 worked
+        -30, // 30min late
+        'late',
+        99999 // fake record ID
+      );
+      res.json({
+        success: true,
+        message: 'Alerta de teste (atraso) enviado! Verifique seu Slack.'
+      });
+    } else if (type === 'manager') {
+      // Send test manager summary
+      await sendManagerDailySummary(
+        null, // will use SLACK_TEST_USER_ID
+        'Gestor Teste',
+        today,
+        [
+          { employee_name: 'Maria Silva', classification: 'late', difference_minutes: -25, justification_reason: 'Trânsito' },
+          { employee_name: 'João Santos', classification: 'overtime', difference_minutes: 45, justification_reason: null },
+          { employee_name: 'Ana Costa', classification: 'late', difference_minutes: -15, justification_reason: 'Atestado médico' },
+        ]
+      );
+      res.json({
+        success: true,
+        message: 'Resumo de gestor de teste enviado! Verifique seu Slack.'
+      });
+    } else {
+      res.status(400).json({ error: 'type must be "employee" or "manager"' });
+    }
+  } catch (error) {
+    console.error('[admin] Error testing Slack:', error);
+    res.status(500).json({ error: 'Falha ao enviar teste: ' + (error as Error).message });
   }
 });
 

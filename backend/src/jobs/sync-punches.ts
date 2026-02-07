@@ -17,6 +17,10 @@ function millisToTime(millis: number): string {
   return `${String(adjustedHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+export interface SyncOptions {
+  skipNotifications?: boolean;
+}
+
 /**
  * Sync clock punches from Sólides API (READ-ONLY).
  *
@@ -26,7 +30,8 @@ function millisToTime(millis: number): string {
  * Record 1: dateIn = entrada, dateOut = saida almoco
  * Record 2: dateIn = retorno almoco, dateOut = saida final
  */
-export async function syncPunches(targetDate?: string): Promise<void> {
+export async function syncPunches(targetDate?: string, options?: SyncOptions): Promise<void> {
+  const skipNotifications = options?.skipNotifications ?? false;
   const today = targetDate || new Date().toISOString().split('T')[0];
   console.log(`[sync] Starting punch sync for ${today}`);
 
@@ -135,8 +140,8 @@ export async function syncPunches(targetDate?: string): Promise<void> {
         result?.classification ?? null
       );
 
-      // Send alert if threshold exceeded
-      if (result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
+      // Send alert if threshold exceeded (skip if silent sync)
+      if (!skipNotifications && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
         const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
           // Only send if Slack is configured

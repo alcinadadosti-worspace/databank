@@ -89,6 +89,39 @@ export async function getEmployeeJustifications(employeeId: number) {
   return apiFetch<{ justifications: Justification[] }>(`/api/justifications/employee/${employeeId}`);
 }
 
+export async function getPendingJustifications(leaderId: number) {
+  return apiFetch<{ justifications: JustificationFull[] }>(`/api/justifications/leader/${leaderId}/pending`);
+}
+
+export async function approveJustification(justificationId: number, reviewedBy: string) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/justifications/${justificationId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewedBy }),
+  });
+}
+
+export async function rejectJustification(justificationId: number, reviewedBy: string) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/justifications/${justificationId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewedBy }),
+  });
+}
+
+export interface JustificationFull {
+  id: number;
+  daily_record_id: number;
+  employee_id: number;
+  type: string;
+  reason: string;
+  custom_note: string | null;
+  submitted_at: string;
+  date: string;
+  employee_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by?: string;
+  reviewed_at?: string;
+}
+
 export async function submitJustification(data: {
   daily_record_id: number;
   employee_id: number;
@@ -123,23 +156,49 @@ export async function resyncPunches(date: string) {
   });
 }
 
-export interface SyncRangeResult {
+export interface SyncStartResult {
   success: boolean;
   message: string;
-  details: {
-    startDate: string;
-    endDate: string;
-    totalDays: number;
-    synced: number;
-    errors: number;
-  };
+  jobId: string;
+  totalDays: number;
+}
+
+export interface SyncStatus {
+  id: string;
+  status: 'running' | 'completed' | 'error';
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+  synced: number;
+  errors: number;
+  currentDate?: string;
+  startedAt: string;
+  completedAt?: string;
+  errorMessage?: string;
 }
 
 export async function syncPunchesRange(startDate: string, endDate: string) {
-  return apiFetch<SyncRangeResult>('/api/admin/sync-range', {
+  return apiFetch<SyncStartResult>('/api/admin/sync-range', {
     method: 'POST',
     body: JSON.stringify({ startDate, endDate }),
   });
+}
+
+export async function getSyncStatus(jobId: string) {
+  return apiFetch<SyncStatus>(`/api/admin/sync-status/${jobId}`);
+}
+
+// ─── Manager Sync ───────────────────────────────────────────────
+
+export async function syncManagerPunches(leaderId: number, startDate: string, endDate: string) {
+  return apiFetch<SyncStartResult>(`/api/leaders/${leaderId}/sync`, {
+    method: 'POST',
+    body: JSON.stringify({ startDate, endDate }),
+  });
+}
+
+export async function getManagerSyncStatus(jobId: string) {
+  return apiFetch<SyncStatus>(`/api/leaders/sync-status/${jobId}`);
 }
 
 // ─── Units ────────────────────────────────────────────────────
