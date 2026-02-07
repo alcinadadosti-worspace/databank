@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
 import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
+import { calculateDailyHours } from '../services/hours-calculator';
 
 const router = Router();
 
@@ -278,6 +279,108 @@ router.delete('/employee/:id', async (req: Request, res: Response) => {
   }
 });
 
+/** PUT /api/admin/record/:id - Manually edit a daily record's punches */
+router.put('/record/:id', async (req: Request, res: Response) => {
+  try {
+    const recordId = parseInt(req.params.id as string, 10);
+    if (isNaN(recordId)) {
+      res.status(400).json({ error: 'Invalid record ID' });
+      return;
+    }
+
+    const { punch_1, punch_2, punch_3, punch_4, editedBy, reason } = req.body;
+
+    // Validate time format (HH:MM or null)
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    const punches = [punch_1, punch_2, punch_3, punch_4];
+    for (const p of punches) {
+      if (p !== null && p !== '' && !timeRegex.test(p)) {
+        res.status(400).json({ error: `Invalid time format: ${p}. Use HH:MM` });
+        return;
+      }
+    }
+
+    // Get the existing record
+    const existingRecord = await queries.getDailyRecordById(recordId);
+    if (!existingRecord) {
+      res.status(404).json({ error: 'Record not found' });
+      return;
+    }
+
+    // Get employee info for recalculation
+    const employee = await queries.getEmployeeById(existingRecord.employee_id);
+
+    // Recalculate hours with new punches
+    const punchSet = {
+      punch1: punch_1 || null,
+      punch2: punch_2 || null,
+      punch3: punch_3 || null,
+      punch4: punch_4 || null,
+    };
+
+    const calcResult = calculateDailyHours(punchSet, {
+      date: existingRecord.date,
+      isApprentice: employee?.is_apprentice ?? false,
+      expectedMinutes: employee?.expected_daily_minutes,
+    });
+
+    // Build old values for audit
+    const oldValues = {
+      punch_1: existingRecord.punch_1,
+      punch_2: existingRecord.punch_2,
+      punch_3: existingRecord.punch_3,
+      punch_4: existingRecord.punch_4,
+    };
+
+    // Update the record
+    const updated = await queries.updateDailyRecordPunches(
+      recordId,
+      punch_1 || null,
+      punch_2 || null,
+      punch_3 || null,
+      punch_4 || null,
+      calcResult?.totalWorkedMinutes ?? null,
+      calcResult?.differenceMinutes ?? null,
+      calcResult?.classification ?? null
+    );
+
+    if (!updated) {
+      res.status(404).json({ error: 'Record not found' });
+      return;
+    }
+
+    // Log the manual edit with details
+    await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
+      JSON.stringify({
+        editedBy: editedBy || 'admin',
+        reason: reason || 'Correção manual',
+        date: existingRecord.date,
+        employeeId: existingRecord.employee_id,
+        oldValues,
+        newValues: { punch_1, punch_2, punch_3, punch_4 },
+      })
+    );
+
+    res.json({
+      success: true,
+      message: 'Registro atualizado com sucesso',
+      record: {
+        id: recordId,
+        punch_1: punch_1 || null,
+        punch_2: punch_2 || null,
+        punch_3: punch_3 || null,
+        punch_4: punch_4 || null,
+        total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
+        difference_minutes: calcResult?.differenceMinutes ?? null,
+        classification: calcResult?.classification ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[admin] Error editing record:', error);
+    res.status(500).json({ error: 'Failed to edit record' });
+  }
+});
+
 /** POST /api/admin/test-slack - Test Slack bot connection */
 router.post('/test-slack', async (req: Request, res: Response) => {
   try {
@@ -372,6 +475,350 @@ router.post('/test-reminder', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[admin] Error testing reminder:', error);
     res.status(500).json({ error: 'Falha ao enviar teste: ' + (error as Error).message });
+  }
+});
+
+/** GET /api/admin/banco-horas?year=YYYY&month=MM - Get accumulated time bank per employee */
+router.get('/banco-horas', async (req: Request, res: Response) => {
+  try {
+    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
+    const month = req.query.month as string; // Optional, if not provided shows yearly
+
+    let startDate: string;
+    let endDate: string;
+
+    if (month) {
+      // Monthly view
+      const m = month.padStart(2, '0');
+      startDate = `${year}-${m}-01`;
+      const lastDay = new Date(year, parseInt(m, 10), 0).getDate();
+      endDate = `${year}-${m}-${lastDay}`;
+    } else {
+      // Yearly view
+      startDate = `${year}-01-01`;
+      endDate = `${year}-12-31`;
+    }
+
+    const records = await queries.getAllRecordsRange(startDate, endDate);
+    const employees = await queries.getAllEmployees();
+    const leaders = await queries.getAllLeaders();
+
+    // Create leader map
+    const leaderMap = new Map(leaders.map(l => [l.id, l.name]));
+
+    // Create employee map
+    const empMap = new Map(employees.map(e => [e.id, e]));
+
+    // Calculate accumulated balance per employee
+    const balanceMap = new Map<number, {
+      name: string;
+      leader_name: string;
+      total_difference: number;
+      days_worked: number;
+      late_count: number;
+      overtime_count: number;
+      normal_count: number;
+      monthly_breakdown: { [month: string]: number };
+    }>();
+
+    // Initialize all employees
+    for (const emp of employees) {
+      balanceMap.set(emp.id, {
+        name: emp.name,
+        leader_name: leaderMap.get(emp.leader_id) || '',
+        total_difference: 0,
+        days_worked: 0,
+        late_count: 0,
+        overtime_count: 0,
+        normal_count: 0,
+        monthly_breakdown: {},
+      });
+    }
+
+    // Process records
+    for (const r of records) {
+      const balance = balanceMap.get(r.employee_id);
+      if (!balance) continue;
+
+      const monthKey = r.date.substring(0, 7); // YYYY-MM
+
+      balance.days_worked++;
+      balance.total_difference += r.difference_minutes || 0;
+
+      if (!balance.monthly_breakdown[monthKey]) {
+        balance.monthly_breakdown[monthKey] = 0;
+      }
+      balance.monthly_breakdown[monthKey] += r.difference_minutes || 0;
+
+      if (r.classification === 'late') balance.late_count++;
+      else if (r.classification === 'overtime') balance.overtime_count++;
+      else if (r.classification === 'normal') balance.normal_count++;
+    }
+
+    // Convert to array and sort by total difference
+    const result = Array.from(balanceMap.entries())
+      .map(([employee_id, data]) => ({
+        employee_id,
+        ...data,
+      }))
+      .filter(e => e.days_worked > 0)
+      .sort((a, b) => a.total_difference - b.total_difference);
+
+    res.json({
+      year,
+      month: month || null,
+      startDate,
+      endDate,
+      employees: result,
+    });
+  } catch (error) {
+    console.error('[admin] Error fetching banco de horas:', error);
+    res.status(500).json({ error: 'Failed to fetch banco de horas' });
+  }
+});
+
+/** GET /api/admin/banco-horas/:employeeId?year=YYYY - Get detailed time bank for a specific employee */
+router.get('/banco-horas/:employeeId', async (req: Request, res: Response) => {
+  try {
+    const employeeId = parseInt(req.params.employeeId as string, 10);
+    if (isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid employee ID' });
+      return;
+    }
+
+    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const employee = await queries.getEmployeeById(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: 'Employee not found' });
+      return;
+    }
+
+    const records = await queries.getDailyRecordsByEmployeeRange(employeeId, startDate, endDate);
+
+    // Group by month
+    const monthlyData: { [month: string]: { difference: number; days: number; late: number; overtime: number; normal: number } } = {};
+
+    for (let m = 1; m <= 12; m++) {
+      const monthKey = `${year}-${String(m).padStart(2, '0')}`;
+      monthlyData[monthKey] = { difference: 0, days: 0, late: 0, overtime: 0, normal: 0 };
+    }
+
+    let totalDifference = 0;
+    let totalDays = 0;
+
+    for (const r of records) {
+      const monthKey = r.date.substring(0, 7);
+      if (!monthlyData[monthKey]) continue;
+
+      monthlyData[monthKey].days++;
+      monthlyData[monthKey].difference += r.difference_minutes || 0;
+      totalDifference += r.difference_minutes || 0;
+      totalDays++;
+
+      if (r.classification === 'late') monthlyData[monthKey].late++;
+      else if (r.classification === 'overtime') monthlyData[monthKey].overtime++;
+      else if (r.classification === 'normal') monthlyData[monthKey].normal++;
+    }
+
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthlyResult = months.map((name, i) => {
+      const monthKey = `${year}-${String(i + 1).padStart(2, '0')}`;
+      return {
+        month: name,
+        monthKey,
+        ...monthlyData[monthKey],
+      };
+    });
+
+    // Calculate running balance
+    let runningBalance = 0;
+    for (const m of monthlyResult) {
+      runningBalance += m.difference;
+      (m as any).running_balance = runningBalance;
+    }
+
+    res.json({
+      employee_id: employeeId,
+      employee_name: employee.name,
+      year,
+      total_difference: totalDifference,
+      total_days: totalDays,
+      monthly: monthlyResult,
+      records: records.slice(0, 100), // Limit recent records
+    });
+  } catch (error) {
+    console.error('[admin] Error fetching employee banco de horas:', error);
+    res.status(500).json({ error: 'Failed to fetch employee banco de horas' });
+  }
+});
+
+/** GET /api/admin/reports/monthly?year=YYYY - Get monthly summary (overtime/late by month) */
+router.get('/reports/monthly', async (req: Request, res: Response) => {
+  try {
+    const year = parseInt(req.query.year as string, 10) || new Date().getFullYear();
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const records = await queries.getAllRecordsRange(startDate, endDate);
+
+    // Group by month
+    const monthlyData: { [key: string]: { late: number; overtime: number; normal: number; lateMinutes: number; overtimeMinutes: number } } = {};
+
+    for (let m = 1; m <= 12; m++) {
+      const month = String(m).padStart(2, '0');
+      monthlyData[month] = { late: 0, overtime: 0, normal: 0, lateMinutes: 0, overtimeMinutes: 0 };
+    }
+
+    for (const r of records) {
+      const month = r.date.substring(5, 7);
+      if (monthlyData[month]) {
+        if (r.classification === 'late') {
+          monthlyData[month].late++;
+          monthlyData[month].lateMinutes += Math.abs(r.difference_minutes || 0);
+        } else if (r.classification === 'overtime') {
+          monthlyData[month].overtime++;
+          monthlyData[month].overtimeMinutes += r.difference_minutes || 0;
+        } else if (r.classification === 'normal') {
+          monthlyData[month].normal++;
+        }
+      }
+    }
+
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const result = months.map((name, i) => {
+      const month = String(i + 1).padStart(2, '0');
+      return {
+        month: name,
+        ...monthlyData[month],
+      };
+    });
+
+    res.json({ year, data: result });
+  } catch (error) {
+    console.error('[admin] Error fetching monthly report:', error);
+    res.status(500).json({ error: 'Failed to fetch monthly report' });
+  }
+});
+
+/** GET /api/admin/reports/sector?start=YYYY-MM-DD&end=YYYY-MM-DD - Get summary by sector */
+router.get('/reports/sector', async (req: Request, res: Response) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
+      res.status(400).json({ error: 'start and end parameters required' });
+      return;
+    }
+
+    const records = await queries.getAllRecordsRange(start, end);
+    const leaders = await queries.getAllLeaders();
+
+    // Map leader_id to sector
+    const leaderSectorMap = new Map<number, string>();
+    for (const l of leaders) {
+      leaderSectorMap.set(l.id, l.sector || 'Outros');
+    }
+
+    // Get all employees to map to their leader/sector
+    const employees = await queries.getAllEmployees();
+    const empLeaderMap = new Map<number, number>();
+    for (const e of employees) {
+      empLeaderMap.set(e.id, e.leader_id);
+    }
+
+    // Group by sector
+    const sectorData: { [key: string]: { late: number; overtime: number; normal: number; total: number; lateMinutes: number; overtimeMinutes: number } } = {};
+
+    for (const r of records) {
+      const leaderId = empLeaderMap.get(r.employee_id);
+      const sector = leaderId ? (leaderSectorMap.get(leaderId) || 'Outros') : 'Outros';
+
+      if (!sectorData[sector]) {
+        sectorData[sector] = { late: 0, overtime: 0, normal: 0, total: 0, lateMinutes: 0, overtimeMinutes: 0 };
+      }
+
+      sectorData[sector].total++;
+      if (r.classification === 'late') {
+        sectorData[sector].late++;
+        sectorData[sector].lateMinutes += Math.abs(r.difference_minutes || 0);
+      } else if (r.classification === 'overtime') {
+        sectorData[sector].overtime++;
+        sectorData[sector].overtimeMinutes += r.difference_minutes || 0;
+      } else if (r.classification === 'normal') {
+        sectorData[sector].normal++;
+      }
+    }
+
+    const result = Object.entries(sectorData).map(([sector, data]) => ({
+      sector,
+      ...data,
+    })).sort((a, b) => b.total - a.total);
+
+    res.json({ start, end, data: result });
+  } catch (error) {
+    console.error('[admin] Error fetching sector report:', error);
+    res.status(500).json({ error: 'Failed to fetch sector report' });
+  }
+});
+
+/** GET /api/admin/reports/employees?start=YYYY-MM-DD&end=YYYY-MM-DD&limit=10 - Get employee ranking */
+router.get('/reports/employees', async (req: Request, res: Response) => {
+  try {
+    const { start, end } = req.query;
+    const limit = parseInt(req.query.limit as string, 10) || 10;
+
+    if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
+      res.status(400).json({ error: 'start and end parameters required' });
+      return;
+    }
+
+    const records = await queries.getAllRecordsRange(start, end);
+
+    // Group by employee
+    const employeeData: { [key: number]: { name: string; late: number; overtime: number; lateMinutes: number; overtimeMinutes: number; totalRecords: number } } = {};
+
+    for (const r of records) {
+      if (!employeeData[r.employee_id]) {
+        employeeData[r.employee_id] = {
+          name: r.employee_name || `ID ${r.employee_id}`,
+          late: 0,
+          overtime: 0,
+          lateMinutes: 0,
+          overtimeMinutes: 0,
+          totalRecords: 0,
+        };
+      }
+
+      employeeData[r.employee_id].totalRecords++;
+      if (r.classification === 'late') {
+        employeeData[r.employee_id].late++;
+        employeeData[r.employee_id].lateMinutes += Math.abs(r.difference_minutes || 0);
+      } else if (r.classification === 'overtime') {
+        employeeData[r.employee_id].overtime++;
+        employeeData[r.employee_id].overtimeMinutes += r.difference_minutes || 0;
+      }
+    }
+
+    // Top late employees
+    const topLate = Object.entries(employeeData)
+      .map(([id, data]) => ({ employee_id: Number(id), ...data }))
+      .filter(e => e.late > 0)
+      .sort((a, b) => b.lateMinutes - a.lateMinutes)
+      .slice(0, limit);
+
+    // Top overtime employees
+    const topOvertime = Object.entries(employeeData)
+      .map(([id, data]) => ({ employee_id: Number(id), ...data }))
+      .filter(e => e.overtime > 0)
+      .sort((a, b) => b.overtimeMinutes - a.overtimeMinutes)
+      .slice(0, limit);
+
+    res.json({ start, end, topLate, topOvertime });
+  } catch (error) {
+    console.error('[admin] Error fetching employee report:', error);
+    res.status(500).json({ error: 'Failed to fetch employee report' });
   }
 });
 

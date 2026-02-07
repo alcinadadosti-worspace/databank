@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { sendJustificationReviewNotification } from '../slack/bot';
 
 const router = Router();
 
@@ -78,9 +79,30 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
       return;
     }
 
+    // Get justification details before updating
+    const justification = await queries.getJustificationById(justificationId);
+    if (!justification) {
+      res.status(404).json({ error: 'Justification not found' });
+      return;
+    }
+
     await queries.updateJustificationStatus(justificationId, 'approved', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_APPROVED', 'justification', justificationId,
       `Approved by ${reviewedBy || 'manager'}: ${comment}`);
+
+    // Send Slack notification to employee
+    const employee = await queries.getEmployeeById(justification.employee_id);
+    if (employee) {
+      await sendJustificationReviewNotification(
+        employee.slack_id,
+        employee.name,
+        justification.date,
+        justification.type as 'late' | 'overtime',
+        'approved',
+        reviewedBy || 'Gestor',
+        comment
+      );
+    }
 
     res.json({ success: true, message: 'Justificativa aprovada' });
   } catch (error) {
@@ -105,9 +127,30 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
       return;
     }
 
+    // Get justification details before updating
+    const justification = await queries.getJustificationById(justificationId);
+    if (!justification) {
+      res.status(404).json({ error: 'Justification not found' });
+      return;
+    }
+
     await queries.updateJustificationStatus(justificationId, 'rejected', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_REJECTED', 'justification', justificationId,
       `Rejected by ${reviewedBy || 'manager'}: ${comment}`);
+
+    // Send Slack notification to employee
+    const employee = await queries.getEmployeeById(justification.employee_id);
+    if (employee) {
+      await sendJustificationReviewNotification(
+        employee.slack_id,
+        employee.name,
+        justification.date,
+        justification.type as 'late' | 'overtime',
+        'rejected',
+        reviewedBy || 'Gestor',
+        comment
+      );
+    }
 
     res.json({ success: true, message: 'Justificativa rejeitada' });
   } catch (error) {

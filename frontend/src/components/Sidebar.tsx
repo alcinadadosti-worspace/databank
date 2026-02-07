@@ -21,6 +21,8 @@ const adminNav: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: <IconGrid /> },
   { label: 'Colaboradores', href: '/admin/employees', icon: <IconUsers /> },
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
+  { label: 'Banco de Horas', href: '/admin/banco-horas', icon: <IconWallet /> },
+  { label: 'Relatórios', href: '/admin/relatorios', icon: <IconChart /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },
   { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },
@@ -200,6 +202,22 @@ function IconCheckCircle() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  );
+}
+
+function IconChart() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+}
+
+function IconWallet() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
     </svg>
   );
 }

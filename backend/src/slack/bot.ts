@@ -294,6 +294,67 @@ export async function sendPunchReminder(
   }
 }
 
+// ─── Send Justification Review Notification ────────────────────
+
+export async function sendJustificationReviewNotification(
+  employeeSlackId: string | null,
+  employeeName: string,
+  date: string,
+  type: 'late' | 'overtime',
+  status: 'approved' | 'rejected',
+  managerName: string,
+  managerComment: string
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employeeSlackId);
+
+  const isApproved = status === 'approved';
+  const emoji = isApproved ? ':white_check_mark:' : ':x:';
+  const statusLabel = isApproved ? 'APROVADA' : 'REJEITADA';
+  const typeLabel = type === 'late' ? 'Atraso' : 'Hora Extra';
+  const color = isApproved ? '#36a64f' : '#e01e5a';
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: `${emoji} Justificativa ${statusLabel}`,
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employeeName}`,
+          `*Data:* ${date}`,
+          `*Tipo:* ${typeLabel}`,
+          `*Status:* ${statusLabel}`,
+          `*Revisado por:* ${managerName}`,
+          '',
+          `*Comentário do gestor:*`,
+          `> ${managerComment}`,
+        ].join('\n'),
+      },
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Sua justificativa de ${typeLabel.toLowerCase()} foi ${statusLabel.toLowerCase()}`,
+      blocks,
+    });
+
+    console.log(`[slack] Justification review notification sent to ${employeeName} (${status})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send justification review notification:`, error);
+  }
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {

@@ -229,6 +229,137 @@ export async function getUnitRecords(date: string) {
   return apiFetch<{ units: UnitData[]; date: string }>(`/api/records/units?date=${date}`);
 }
 
+// ─── Banco de Horas ───────────────────────────────────────────
+
+export interface EmployeeBalance {
+  employee_id: number;
+  name: string;
+  leader_name: string;
+  total_difference: number;
+  days_worked: number;
+  late_count: number;
+  overtime_count: number;
+  normal_count: number;
+  monthly_breakdown: { [month: string]: number };
+}
+
+export interface BancoHorasResponse {
+  year: number;
+  month: string | null;
+  startDate: string;
+  endDate: string;
+  employees: EmployeeBalance[];
+}
+
+export interface EmployeeMonthlyBalance {
+  month: string;
+  monthKey: string;
+  difference: number;
+  days: number;
+  late: number;
+  overtime: number;
+  normal: number;
+  running_balance: number;
+}
+
+export interface EmployeeBancoHorasResponse {
+  employee_id: number;
+  employee_name: string;
+  year: number;
+  total_difference: number;
+  total_days: number;
+  monthly: EmployeeMonthlyBalance[];
+  records: DailyRecord[];
+}
+
+export async function getBancoHoras(year: number, month?: string) {
+  const params = new URLSearchParams({ year: String(year) });
+  if (month) params.set('month', month);
+  return apiFetch<BancoHorasResponse>(`/api/admin/banco-horas?${params}`);
+}
+
+export async function getEmployeeBancoHoras(employeeId: number, year: number) {
+  return apiFetch<EmployeeBancoHorasResponse>(`/api/admin/banco-horas/${employeeId}?year=${year}`);
+}
+
+// ─── Record Editing ───────────────────────────────────────────
+
+export interface EditRecordData {
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  editedBy?: string;
+  reason?: string;
+}
+
+export interface EditRecordResult {
+  success: boolean;
+  message: string;
+  record: {
+    id: number;
+    punch_1: string | null;
+    punch_2: string | null;
+    punch_3: string | null;
+    punch_4: string | null;
+    total_worked_minutes: number | null;
+    difference_minutes: number | null;
+    classification: string | null;
+  };
+}
+
+export async function editRecord(recordId: number, data: EditRecordData) {
+  return apiFetch<EditRecordResult>(`/api/admin/record/${recordId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+// ─── Reports ──────────────────────────────────────────────────
+
+export interface MonthlyReportData {
+  month: string;
+  late: number;
+  overtime: number;
+  normal: number;
+  lateMinutes: number;
+  overtimeMinutes: number;
+}
+
+export interface SectorReportData {
+  sector: string;
+  late: number;
+  overtime: number;
+  normal: number;
+  total: number;
+  lateMinutes: number;
+  overtimeMinutes: number;
+}
+
+export interface EmployeeReportData {
+  employee_id: number;
+  name: string;
+  late: number;
+  overtime: number;
+  lateMinutes: number;
+  overtimeMinutes: number;
+  totalRecords: number;
+}
+
+export async function getMonthlyReport(year: number) {
+  return apiFetch<{ year: number; data: MonthlyReportData[] }>(`/api/admin/reports/monthly?year=${year}`);
+}
+
+export async function getSectorReport(start: string, end: string) {
+  return apiFetch<{ start: string; end: string; data: SectorReportData[] }>(`/api/admin/reports/sector?start=${start}&end=${end}`);
+}
+
+export async function getEmployeeReport(start: string, end: string, limit = 10) {
+  return apiFetch<{ start: string; end: string; topLate: EmployeeReportData[]; topOvertime: EmployeeReportData[] }>(
+    `/api/admin/reports/employees?start=${start}&end=${end}&limit=${limit}`
+  );
+}
+
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface User {

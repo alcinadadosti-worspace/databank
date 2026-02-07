@@ -204,6 +204,40 @@ export async function getDailyRecord(employeeId: number, date: string): Promise<
   return docToObj<DailyRecord>(doc);
 }
 
+export async function getDailyRecordById(recordId: number): Promise<DailyRecord | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as DailyRecord;
+}
+
+export async function updateDailyRecordPunches(
+  recordId: number,
+  punch1: string | null,
+  punch2: string | null,
+  punch3: string | null,
+  punch4: string | null,
+  totalWorkedMinutes: number | null,
+  differenceMinutes: number | null,
+  classification: string | null
+) {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    punch_1: punch1,
+    punch_2: punch2,
+    punch_3: punch3,
+    punch_4: punch4,
+    total_worked_minutes: totalWorkedMinutes,
+    difference_minutes: differenceMinutes,
+    classification,
+    updated_at: new Date().toISOString(),
+  });
+  return true;
+}
+
 export async function getDailyRecordsByDate(date: string): Promise<DailyRecordFull[]> {
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('date', '==', date).get();
@@ -453,7 +487,17 @@ export async function getJustificationById(justificationId: number) {
   const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
     .where('id', '==', justificationId).limit(1).get();
   if (snap.empty) return undefined;
-  return snap.docs[0].data();
+  const justification = snap.docs[0].data();
+
+  // Get date from daily record
+  const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', justification.daily_record_id).limit(1).get();
+  const date = recordSnap.empty ? '' : recordSnap.docs[0].data().date;
+
+  return {
+    ...justification,
+    date,
+  };
 }
 
 export async function deleteJustificationByRecordId(dailyRecordId: number) {

@@ -7,9 +7,10 @@ interface RecordsTableProps {
   records: DailyRecord[];
   showEmployee?: boolean;
   showLeader?: boolean;
+  onEdit?: (record: DailyRecord) => void;
 }
 
-export default function RecordsTable({ records, showEmployee = true, showLeader = false }: RecordsTableProps) {
+export default function RecordsTable({ records, showEmployee = true, showLeader = false, onEdit }: RecordsTableProps) {
   if (records.length === 0) {
     return (
       <div className="card text-center py-12">
@@ -24,6 +25,7 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
+              {onEdit && <th className="text-left px-2 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider w-10"></th>}
               <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Data</th>
               {showEmployee && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Colaborador</th>}
               {showLeader && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Gestor</th>}
@@ -40,6 +42,20 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
           <tbody className="divide-y divide-border-subtle">
             {records.map((record) => (
               <tr key={record.id} className="hover:bg-bg-hover transition-colors">
+                {onEdit && (
+                  <td className="px-2 py-3">
+                    <button
+                      onClick={() => onEdit(record)}
+                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Editar registro"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  </td>
+                )}
                 <td className="px-4 py-3 text-text-secondary font-mono text-xs">{formatDate(record.date)}</td>
                 {showEmployee && <td className="px-4 py-3 text-text-primary">{record.employee_name || '—'}</td>}
                 {showLeader && <td className="px-4 py-3 text-text-secondary">{record.leader_name || '—'}</td>}
