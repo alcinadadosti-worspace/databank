@@ -223,6 +223,42 @@ router.get('/sync-status/:jobId', (req: Request, res: Response) => {
   res.json(status);
 });
 
+/** POST /api/admin/employee-schedule - Configure employee work schedule */
+router.post('/employee-schedule', async (req: Request, res: Response) => {
+  try {
+    const { employeeId, reducedSchedule, expectedMinutes } = req.body;
+
+    if (!employeeId || typeof reducedSchedule !== 'boolean' || !expectedMinutes) {
+      res.status(400).json({ error: 'employeeId, reducedSchedule (boolean), and expectedMinutes are required' });
+      return;
+    }
+
+    await queries.setApprentice(Number(employeeId), reducedSchedule, Number(expectedMinutes));
+
+    await queries.logAudit('EMPLOYEE_SCHEDULE_UPDATE', 'employee', employeeId,
+      `Set reducedSchedule=${reducedSchedule}, expectedMinutes=${expectedMinutes}`);
+
+    res.json({
+      success: true,
+      message: `Employee ${employeeId} schedule updated: ${expectedMinutes} min/day, reducedSchedule=${reducedSchedule}`
+    });
+  } catch (error) {
+    console.error('[admin] Error updating employee schedule:', error);
+    res.status(500).json({ error: 'Failed to update employee schedule' });
+  }
+});
+
+/** GET /api/admin/employees - List all employees with their settings */
+router.get('/employees', async (_req: Request, res: Response) => {
+  try {
+    const employees = await queries.getAllEmployees();
+    res.json({ employees });
+  } catch (error) {
+    console.error('[admin] Error fetching employees:', error);
+    res.status(500).json({ error: 'Failed to fetch employees' });
+  }
+});
+
 /** POST /api/admin/test-slack - Test Slack bot connection */
 router.post('/test-slack', async (req: Request, res: Response) => {
   try {
