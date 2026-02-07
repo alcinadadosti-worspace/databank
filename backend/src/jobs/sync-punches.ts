@@ -1,6 +1,6 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
 import { shouldAlert, CalculationResult } from '../services/hours-calculator';
-import { WORK_SCHEDULE, HourClassification } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isWorkingDay, isSaturday, getExpectedMinutes } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
 import { env } from '../config/env';
@@ -99,13 +99,36 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
       const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
+      // Skip non-working days (Sundays and holidays)
+      if (!isWorkingDay(date)) {
+        // Still save the punches but don't calculate/classify
+        await queries.upsertDailyRecord(
+          employee.id,
+          date,
+          punch1,
+          punch2,
+          punch3,
+          punch4,
+          null, // no calculation for non-working days
+          null,
+          null
+        );
+        processed++;
+        continue;
+      }
+
       // Calculate using epoch millis from API records (handles cross-midnight)
-      // Apprentices only need 1 complete pair; regular employees need 2
+      // Saturday: only need 1 pair (08:00-12:00), expected 4h
+      // Weekdays: need 2 pairs (morning + afternoon), expected 8h
+      // Apprentices: follow their custom schedule
       const isApprentice = employee.is_apprentice === true;
-      const expectedMinutes = isApprentice
-        ? (employee.expected_daily_minutes || 240)
-        : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
-      const minPairs = isApprentice ? 1 : 2;
+      const isSat = isSaturday(date);
+
+      // Get expected minutes based on day type
+      const expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240);
+
+      // Saturday and apprentices only need 1 complete pair; regular weekdays need 2
+      const minPairs = (isSat || isApprentice) ? 1 : 2;
 
       let result: CalculationResult | null = null;
       const completePairs = punches.filter(p => p.dateIn && p.dateOut);

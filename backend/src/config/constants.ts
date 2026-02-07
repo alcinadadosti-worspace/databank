@@ -10,15 +10,127 @@ export const WORK_SCHEDULE = {
   EXIT_TIME: '18:00',
   /** Lunch duration in minutes */
   LUNCH_DURATION_MINUTES: 120,
-  /** Expected daily work in minutes (8h) */
+  /** Expected daily work in minutes (8h) - Monday to Friday */
   EXPECTED_DAILY_MINUTES: 480,
-  /** Number of expected clock punches per day */
+  /** Expected Saturday work in minutes (4h) - 08:00 to 12:00 */
+  EXPECTED_SATURDAY_MINUTES: 240,
+  /** Number of expected clock punches per day (weekdays) */
   EXPECTED_PUNCHES: 4,
+  /** Number of expected clock punches on Saturday */
+  EXPECTED_SATURDAY_PUNCHES: 2,
   /** Tolerance in minutes for late/overtime */
   TOLERANCE_MINUTES: 10,
   /** Threshold that triggers alert (tolerance + 1) */
   ALERT_THRESHOLD_MINUTES: 11,
 } as const;
+
+/**
+ * Brazilian national holidays (fixed dates)
+ * Format: MM-DD
+ */
+export const FIXED_HOLIDAYS = [
+  '01-01', // Confraternizacao Universal
+  '04-21', // Tiradentes
+  '05-01', // Dia do Trabalho
+  '09-07', // Independencia do Brasil
+  '10-12', // Nossa Senhora Aparecida
+  '11-02', // Finados
+  '11-15', // Proclamacao da Republica
+  '12-25', // Natal
+] as const;
+
+/**
+ * Brazilian mobile holidays (varies by year)
+ * These need to be calculated or manually updated each year
+ * Format: YYYY-MM-DD
+ */
+export const MOBILE_HOLIDAYS: Record<number, string[]> = {
+  2025: [
+    '2025-03-03', // Carnaval (segunda)
+    '2025-03-04', // Carnaval (terca)
+    '2025-04-18', // Sexta-feira Santa
+    '2025-06-19', // Corpus Christi
+  ],
+  2026: [
+    '2026-02-16', // Carnaval (segunda)
+    '2026-02-17', // Carnaval (terca)
+    '2026-04-03', // Sexta-feira Santa
+    '2026-06-04', // Corpus Christi
+  ],
+  2027: [
+    '2027-02-08', // Carnaval (segunda)
+    '2027-02-09', // Carnaval (terca)
+    '2027-03-26', // Sexta-feira Santa
+    '2027-05-27', // Corpus Christi
+  ],
+};
+
+/**
+ * Check if a date is a Brazilian national holiday
+ */
+export function isHoliday(dateStr: string): boolean {
+  const date = new Date(dateStr + 'T12:00:00Z');
+  const year = date.getUTCFullYear();
+  const monthDay = dateStr.slice(5); // MM-DD
+
+  // Check fixed holidays
+  if (FIXED_HOLIDAYS.includes(monthDay as any)) {
+    return true;
+  }
+
+  // Check mobile holidays for the year
+  const mobileHolidays = MOBILE_HOLIDAYS[year] || [];
+  if (mobileHolidays.includes(dateStr)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check if a date is a working day (not Sunday, not holiday)
+ */
+export function isWorkingDay(dateStr: string): boolean {
+  const date = new Date(dateStr + 'T12:00:00Z');
+  const dayOfWeek = date.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+  // Sunday - not a working day
+  if (dayOfWeek === 0) {
+    return false;
+  }
+
+  // Check if it's a holiday
+  if (isHoliday(dateStr)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Check if a date is Saturday
+ */
+export function isSaturday(dateStr: string): boolean {
+  const date = new Date(dateStr + 'T12:00:00Z');
+  return date.getUTCDay() === 6;
+}
+
+/**
+ * Get expected work minutes for a given date
+ * Returns 0 for non-working days, 240 for Saturday, 480 for weekdays
+ */
+export function getExpectedMinutes(dateStr: string, isApprentice: boolean = false, apprenticeMinutes: number = 240): number {
+  if (!isWorkingDay(dateStr)) {
+    return 0;
+  }
+
+  if (isSaturday(dateStr)) {
+    // Apprentices may have different Saturday hours
+    return isApprentice ? Math.min(apprenticeMinutes, WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES) : WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES;
+  }
+
+  return isApprentice ? apprenticeMinutes : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
+}
 
 /** Justification options for lateness */
 export const LATE_JUSTIFICATIONS = [
