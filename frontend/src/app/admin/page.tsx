@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import StatsCard from '@/components/StatsCard';
 import RecordsTable from '@/components/RecordsTable';
-import { getDashboardStats, getRecordsByDate, getLeaders, type DashboardStats, type DailyRecord, type Leader } from '@/lib/api';
-import { daysAgo } from '@/lib/utils';
+import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
+import { daysAgo, todayISO } from '@/lib/utils';
 
 type Filter = 'all' | 'late' | 'overtime' | 'normal' | 'pending';
 
@@ -19,6 +19,15 @@ export default function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(daysAgo(1));
   const [selectedLeader, setSelectedLeader] = useState<string>('');
   const [searchName, setSearchName] = useState('');
+
+  // Sync states
+  const [syncStart, setSyncStart] = useState(daysAgo(30));
+  const [syncEnd, setSyncEnd] = useState(todayISO());
+  const [syncing, setSyncing] = useState(false);
+  const [syncJobId, setSyncJobId] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const syncPollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const loadRecords = useCallback(async (date: string) => {
     setLoading(true);
@@ -58,6 +67,56 @@ export default function AdminDashboard() {
       loadRecords(selectedDate);
     }
   }, [selectedDate]);
+
+  // Poll for sync status
+  useEffect(() => {
+    if (!syncJobId) return;
+
+    async function pollSyncStatus() {
+      try {
+        const data = await getSyncStatus(syncJobId!);
+        setSyncStatus(data);
+
+        if (data.status === 'completed' || data.status === 'error') {
+          if (syncPollingRef.current) {
+            clearInterval(syncPollingRef.current);
+            syncPollingRef.current = null;
+          }
+          setSyncing(false);
+          // Reload records after sync completes
+          if (data.status === 'completed') {
+            loadRecords(selectedDate);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to get sync status:', err);
+      }
+    }
+
+    pollSyncStatus();
+    syncPollingRef.current = setInterval(pollSyncStatus, 2000);
+
+    return () => {
+      if (syncPollingRef.current) {
+        clearInterval(syncPollingRef.current);
+      }
+    };
+  }, [syncJobId, selectedDate, loadRecords]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncStatus(null);
+    setSyncError(null);
+    setSyncJobId(null);
+
+    try {
+      const data = await syncPunchesRange(syncStart, syncEnd);
+      setSyncJobId(data.jobId);
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Erro ao iniciar sincronizacao');
+      setSyncing(false);
+    }
+  }
 
   // Apply all filters (classification, leader, name search)
   const filteredRecords = useMemo(() => {
@@ -160,6 +219,56 @@ export default function AdminDashboard() {
             sublabel={activeFilter === 'overtime' ? '← filtrando extras' : 'Clique para filtrar'}
           />
         </button>
+      </div>
+
+      {/* Sync Section */}
+      <div className="card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-tertiary font-medium">Sincronizar Pontos</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={syncStart}
+                onChange={(e) => setSyncStart(e.target.value)}
+                className="input max-w-[140px]"
+                disabled={syncing}
+              />
+              <span className="text-xs text-text-muted">ate</span>
+              <input
+                type="date"
+                value={syncEnd}
+                onChange={(e) => setSyncEnd(e.target.value)}
+                className="input max-w-[140px]"
+                disabled={syncing}
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="btn-primary px-4 py-2 text-sm"
+          >
+            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+          </button>
+          {syncStatus && (
+            <div className="flex items-center gap-2">
+              {syncStatus.status === 'running' && (
+                <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+              )}
+              {syncStatus.status === 'completed' && (
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+              )}
+              <span className="text-xs text-text-secondary">
+                {syncStatus.status === 'running' && `${syncStatus.synced}/${syncStatus.totalDays} dias`}
+                {syncStatus.status === 'completed' && `Concluido! ${syncStatus.synced} dias sincronizados`}
+              </span>
+            </div>
+          )}
+          {syncError && (
+            <span className="text-xs text-red-400">{syncError}</span>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
