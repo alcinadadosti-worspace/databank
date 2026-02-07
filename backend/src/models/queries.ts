@@ -483,11 +483,25 @@ export async function updateJustificationStatus(
   }
 }
 
-export async function getJustificationById(justificationId: number) {
+interface JustificationData {
+  id: number;
+  daily_record_id: number;
+  employee_id: number;
+  type: 'late' | 'overtime';
+  reason: string;
+  custom_note: string | null;
+  submitted_at: string;
+  status?: 'pending' | 'approved' | 'rejected';
+  reviewed_by?: string;
+  reviewed_at?: string;
+  manager_comment?: string;
+}
+
+export async function getJustificationById(justificationId: number): Promise<(JustificationData & { date: string }) | undefined> {
   const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
     .where('id', '==', justificationId).limit(1).get();
   if (snap.empty) return undefined;
-  const justification = snap.docs[0].data();
+  const justification = snap.docs[0].data() as JustificationData;
 
   // Get date from daily record
   const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
