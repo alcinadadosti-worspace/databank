@@ -1,14 +1,22 @@
 import * as queries from '../models/queries';
 import { sendManagerDailySummary } from '../slack/bot';
+import { isWorkingDay } from '../config/constants';
 
 /**
  * Send daily summary to managers every day at 08:00.
  * Always refers to the PREVIOUS day.
+ * Skips if previous day was a holiday or Sunday.
  */
 export async function sendDailyManagerAlerts(): Promise<void> {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const date = yesterday.toISOString().split('T')[0];
+
+  // Skip if yesterday was not a working day (Sunday or holiday)
+  if (!isWorkingDay(date)) {
+    console.log(`[daily-alert] Skipping ${date} - not a working day`);
+    return;
+  }
 
   console.log(`[daily-alert] Sending manager alerts for ${date}`);
 

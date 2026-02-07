@@ -5,9 +5,9 @@ import { sendDailyManagerAlerts } from './manager-daily-alert';
 const jobs: CronJob[] = [];
 
 export function startScheduler(): void {
-  // Sync punches every 5 minutes, Mon-Fri, 7:00–20:00
+  // Sync punches every 5 minutes, Mon-Sat, 7:00–20:00
   const syncJob = CronJob.from({
-    cronTime: '*/5 7-20 * * 1-5',
+    cronTime: '*/5 7-20 * * 1-6',
     onTick: async () => {
       try {
         await syncPunches();
@@ -19,7 +19,7 @@ export function startScheduler(): void {
     timeZone: 'America/Sao_Paulo',
   });
   jobs.push(syncJob);
-  console.log('[scheduler] Punch sync: every 5 min (Mon-Fri, 07:00-20:00)');
+  console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-20:00)');
 
   // Daily manager alert at 08:00, Mon-Sat
   const dailyAlertJob = CronJob.from({
