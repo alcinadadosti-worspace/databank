@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface NavItem {
   label: string;
@@ -39,6 +40,7 @@ interface SidebarProps {
 
 export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
 
   const navItems = role === 'admin' ? adminNav : managerNav;
 
@@ -50,7 +52,7 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
   }
 
   return (
-    <aside className="w-56 h-screen bg-bg-secondary border-r border-border flex flex-col fixed left-0 top-0">
+    <aside className="w-56 h-screen bg-bg-secondary border-r border-border flex flex-col fixed left-0 top-0 transition-colors duration-300">
       {/* Logo */}
       <div className="px-5 py-5 border-b border-border">
         <h1 className="text-base font-semibold text-text-primary tracking-tight">
@@ -60,7 +62,7 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => (
           <Link
             key={item.href}
@@ -77,6 +79,17 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
 
       {/* Footer */}
       <div className="px-3 py-4 border-t border-border space-y-2">
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="sidebar-link w-full flex items-center gap-2 text-text-muted hover:text-text-primary"
+        >
+          <span className="w-4 h-4 opacity-60">
+            {theme === 'dark' ? <IconSun /> : <IconMoon />}
+          </span>
+          {theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
+        </button>
+
         <div className="px-2">
           <p className="text-2xs text-text-muted">
             {role === 'admin' ? 'RH / Admin' : 'Gestor'}
@@ -101,6 +114,30 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
 }
 
 // ─── Minimal SVG Icons (inline, no external deps needed) ───────
+
+function IconSun() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
 
 function IconUser() {
   return (

@@ -4,39 +4,38 @@ const config: Config = {
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
   ],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        // Raycast-inspired dark palette
+        // CSS Variable based colors
         bg: {
-          primary: '#0a0a0b',
-          secondary: '#111113',
-          tertiary: '#18181b',
-          elevated: '#1e1e21',
-          hover: '#252529',
+          primary: 'var(--bg-primary)',
+          secondary: 'var(--bg-secondary)',
+          tertiary: 'var(--bg-tertiary)',
+          elevated: 'var(--bg-elevated)',
+          hover: 'var(--bg-hover)',
         },
         border: {
-          DEFAULT: '#27272a',
-          subtle: '#1e1e21',
-          focus: '#3f3f46',
+          DEFAULT: 'var(--border)',
+          subtle: 'var(--border-subtle)',
+          focus: 'var(--border-focus)',
         },
         text: {
-          primary: '#fafafa',
-          secondary: '#a1a1aa',
-          tertiary: '#71717a',
-          muted: '#52525b',
+          primary: 'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          tertiary: 'var(--text-tertiary)',
+          muted: 'var(--text-muted)',
         },
         accent: {
-          DEFAULT: '#6366f1',
-          hover: '#818cf8',
-          muted: '#4f46e5',
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          muted: 'var(--accent-muted)',
         },
         status: {
-          success: '#22c55e',
-          warning: '#eab308',
-          danger: '#ef4444',
-          info: '#3b82f6',
+          success: 'var(--status-success)',
+          warning: 'var(--status-warning)',
+          danger: 'var(--status-danger)',
+          info: 'var(--status-info)',
         },
       },
       fontFamily: {
