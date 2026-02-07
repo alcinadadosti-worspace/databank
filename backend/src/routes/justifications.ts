@@ -66,16 +66,21 @@ router.get('/leader/:leaderId/pending', async (req: Request, res: Response) => {
 router.post('/:id/approve', async (req: Request, res: Response) => {
   try {
     const justificationId = parseInt(req.params.id as string, 10);
-    const { reviewedBy } = req.body;
+    const { reviewedBy, comment } = req.body;
 
     if (isNaN(justificationId)) {
       res.status(400).json({ error: 'Invalid justification ID' });
       return;
     }
 
-    await queries.updateJustificationStatus(justificationId, 'approved', reviewedBy || 'manager');
+    if (!comment || comment.trim().length === 0) {
+      res.status(400).json({ error: 'Comentario obrigatorio ao aprovar' });
+      return;
+    }
+
+    await queries.updateJustificationStatus(justificationId, 'approved', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_APPROVED', 'justification', justificationId,
-      `Approved by ${reviewedBy || 'manager'}`);
+      `Approved by ${reviewedBy || 'manager'}: ${comment}`);
 
     res.json({ success: true, message: 'Justificativa aprovada' });
   } catch (error) {
@@ -88,21 +93,37 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
 router.post('/:id/reject', async (req: Request, res: Response) => {
   try {
     const justificationId = parseInt(req.params.id as string, 10);
-    const { reviewedBy } = req.body;
+    const { reviewedBy, comment } = req.body;
 
     if (isNaN(justificationId)) {
       res.status(400).json({ error: 'Invalid justification ID' });
       return;
     }
 
-    await queries.updateJustificationStatus(justificationId, 'rejected', reviewedBy || 'manager');
+    if (!comment || comment.trim().length === 0) {
+      res.status(400).json({ error: 'Comentario obrigatorio ao reprovar' });
+      return;
+    }
+
+    await queries.updateJustificationStatus(justificationId, 'rejected', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_REJECTED', 'justification', justificationId,
-      `Rejected by ${reviewedBy || 'manager'}`);
+      `Rejected by ${reviewedBy || 'manager'}: ${comment}`);
 
     res.json({ success: true, message: 'Justificativa rejeitada' });
   } catch (error) {
     console.error('[justifications] Error rejecting:', error);
     res.status(500).json({ error: 'Failed to reject justification' });
+  }
+});
+
+/** GET /api/justifications/reviewed - Get all reviewed justifications (for admin) */
+router.get('/reviewed', async (_req: Request, res: Response) => {
+  try {
+    const justifications = await queries.getReviewedJustifications();
+    res.json({ justifications });
+  } catch (error) {
+    console.error('[justifications] Error fetching reviewed:', error);
+    res.status(500).json({ error: 'Failed to fetch reviewed justifications' });
   }
 });
 

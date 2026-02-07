@@ -434,7 +434,8 @@ export async function insertJustification(
 export async function updateJustificationStatus(
   justificationId: number,
   status: 'approved' | 'rejected',
-  reviewedBy: string
+  reviewedBy: string,
+  managerComment?: string
 ) {
   const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
     .where('id', '==', justificationId).limit(1).get();
@@ -443,6 +444,7 @@ export async function updateJustificationStatus(
       status,
       reviewed_by: reviewedBy,
       reviewed_at: new Date().toISOString(),
+      manager_comment: managerComment || null,
     });
   }
 }
@@ -524,6 +526,10 @@ export interface JustificationFull {
   status: 'pending' | 'approved' | 'rejected';
   reviewed_by?: string;
   reviewed_at?: string;
+  manager_comment?: string | null;
+  leader_id?: number;
+  leader_name?: string;
+  unit_name?: string;
 }
 
 export async function getJustificationsByEmployee(employeeId: number): Promise<JustificationWithDate[]> {
@@ -550,6 +556,58 @@ export async function getJustificationsByEmployee(employeeId: number): Promise<J
       date: dateMap.get(j.daily_record_id) ?? '',
     }))
     .sort((a: any, b: any) => b.date.localeCompare(a.date));
+}
+
+// Unit name mapping for admin panel
+const UNIT_NAMES_MAP: Record<number, string> = {
+  2: 'Logistica',
+  3: 'VD Penedo',
+  4: 'VD Palmeira dos Indios',
+  5: 'Dados TI',
+  7: 'Loja Teotonio Vilela',
+  8: 'Loja Palmeira dos Indios',
+  9: 'Loja Penedo',
+  10: 'Loja Sao Sebastiao',
+  11: 'Loja Coruripe',
+  12: 'Loja Digital',
+  13: 'Financeiro/Administrativo',
+  14: 'Gente e Cultura',
+  15: 'Marketing',
+};
+
+export async function getReviewedJustifications(): Promise<JustificationFull[]> {
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  // Get all justifications that have been reviewed (approved or rejected)
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS).get();
+  const allJustifications = docsToArray<any>(snap);
+  const reviewed = allJustifications.filter(j => j.status === 'approved' || j.status === 'rejected');
+
+  // Get daily_record dates
+  const recordIds = [...new Set(reviewed.map(j => j.daily_record_id))];
+  const dateMap = new Map<number, string>();
+
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', 'in', chunk).get();
+    for (const doc of rSnap.docs) {
+      const data = doc.data();
+      dateMap.set(data.id, data.date);
+    }
+  }
+
+  return reviewed.map(j => {
+    const emp = empMap.get(j.employee_id);
+    return {
+      ...j,
+      date: dateMap.get(j.daily_record_id) ?? '',
+      employee_name: emp?.name ?? '',
+      leader_id: emp?.leader_id ?? 0,
+      leader_name: emp?.leader_name ?? '',
+      unit_name: UNIT_NAMES_MAP[emp?.leader_id ?? 0] ?? 'Outro',
+    };
+  }).sort((a: any, b: any) => b.reviewed_at?.localeCompare(a.reviewed_at ?? '') ?? 0);
 }
 
 // ─── Audit Log ─────────────────────────────────────────────────

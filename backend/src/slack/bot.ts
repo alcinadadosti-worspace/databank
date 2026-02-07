@@ -94,21 +94,37 @@ export async function sendEmployeeAlert(
     {
       type: 'actions' as const,
       block_id: `justification_${dailyRecordId}`,
-      elements: justifications.map((reason, index) => ({
-        type: 'button' as const,
-        text: {
-          type: 'plain_text' as const,
-          text: reason,
-          emoji: true,
+      elements: [
+        ...justifications.map((reason, index) => ({
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: reason,
+            emoji: true,
+          },
+          value: JSON.stringify({
+            daily_record_id: dailyRecordId,
+            employee_name: employeeName,
+            type: classification,
+            reason,
+          }),
+          action_id: `justify_${index}`,
+        })),
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: 'Outros...',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            daily_record_id: dailyRecordId,
+            employee_name: employeeName,
+            type: classification,
+          }),
+          action_id: 'justify_other',
         },
-        value: JSON.stringify({
-          daily_record_id: dailyRecordId,
-          employee_name: employeeName,
-          type: classification,
-          reason,
-        }),
-        action_id: `justify_${index}`,
-      })),
+      ],
     },
   ];
 
@@ -160,6 +176,8 @@ export async function sendManagerDailySummary(
     return `${emoji} *${r.employee_name}* — ${label}: ${mins}${justif}`;
   });
 
+  const panelUrl = `${env.FRONTEND_URL}/manager/justifications`;
+
   const blocks = [
     {
       type: 'header' as const,
@@ -180,6 +198,21 @@ export async function sendManagerDailySummary(
           ...lines,
         ].join('\n'),
       },
+    },
+    {
+      type: 'actions' as const,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📋 Revisar Justificativas',
+            emoji: true,
+          },
+          url: panelUrl,
+          action_id: 'open_manager_panel',
+        },
+      ],
     },
   ];
 
@@ -245,4 +278,126 @@ function registerInteractions(app: App): void {
       }
     });
   }
+
+  // Handle "Outros" button - opens modal for custom justification
+  app.action('justify_other', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { daily_record_id, employee_name, type } = payload;
+
+      // Store message info for later update
+      const messageTs = (body as any).message?.ts;
+      const channelId = (body as any).channel?.id || (body as any).user?.id;
+
+      await client.views.open({
+        trigger_id: (body as any).trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'custom_justification_modal',
+          private_metadata: JSON.stringify({
+            daily_record_id,
+            employee_name,
+            type,
+            message_ts: messageTs,
+            channel_id: channelId,
+          }),
+          title: {
+            type: 'plain_text',
+            text: 'Justificativa',
+          },
+          submit: {
+            type: 'plain_text',
+            text: 'Enviar',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Cancelar',
+          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Colaborador:* ${employee_name}\n*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}`,
+              },
+            },
+            {
+              type: 'input',
+              block_id: 'custom_reason_block',
+              element: {
+                type: 'plain_text_input',
+                action_id: 'custom_reason_input',
+                multiline: true,
+                placeholder: {
+                  type: 'plain_text',
+                  text: 'Descreva o motivo do atraso ou hora extra...',
+                },
+                max_length: 500,
+              },
+              label: {
+                type: 'plain_text',
+                text: 'Motivo',
+              },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error('[slack] Error opening custom justification modal:', error);
+    }
+  });
+
+  // Handle custom justification modal submission
+  app.view('custom_justification_modal', async ({ ack, body, view, client }) => {
+    await ack();
+
+    try {
+      const metadata = JSON.parse(view.private_metadata);
+      const { daily_record_id, employee_name, type, message_ts, channel_id } = metadata;
+
+      const customReason = view.state.values.custom_reason_block.custom_reason_input.value || '';
+
+      // Find the employee
+      const records = await queries.getDailyRecordsByDate(new Date().toISOString().split('T')[0]);
+      const record = records.find((r: any) => r.id === daily_record_id);
+      const employeeId = record ? (record as any).employee_id : null;
+
+      if (employeeId && customReason.trim()) {
+        await queries.insertJustification(daily_record_id, employeeId, type, 'Outros', customReason);
+        await queries.logAudit('JUSTIFICATION_VIA_SLACK', 'justification', undefined,
+          `${employee_name}: ${type} - Outros: ${customReason}`);
+      }
+
+      // Update the original message
+      if (message_ts && channel_id) {
+        await client.chat.update({
+          channel: channel_id,
+          ts: message_ts,
+          text: `Justificativa registrada: Outros`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `:white_check_mark: *Justificativa registrada com sucesso!*`,
+                  '',
+                  `*Colaborador:* ${employee_name}`,
+                  `*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}`,
+                  `*Motivo:* Outros`,
+                  `*Descricao:* ${customReason}`,
+                ].join('\n'),
+              },
+            },
+          ],
+        });
+      }
+
+      console.log(`[slack] Custom justification submitted for ${employee_name}`);
+    } catch (error) {
+      console.error('[slack] Error handling custom justification:', error);
+    }
+  });
 }

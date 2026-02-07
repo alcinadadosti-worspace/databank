@@ -19,6 +19,16 @@ export function formatDate(dateStr: string): string {
   return `${day}/${month}/${year}`;
 }
 
+export function formatDateTime(isoStr: string): string {
+  const date = new Date(isoStr);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+}
+
 export function classificationColor(c: string | null): string {
   switch (c) {
     case 'late': return 'text-status-danger';

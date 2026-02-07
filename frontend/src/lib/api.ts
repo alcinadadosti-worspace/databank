@@ -93,18 +93,22 @@ export async function getPendingJustifications(leaderId: number) {
   return apiFetch<{ justifications: JustificationFull[] }>(`/api/justifications/leader/${leaderId}/pending`);
 }
 
-export async function approveJustification(justificationId: number, reviewedBy: string) {
+export async function approveJustification(justificationId: number, reviewedBy: string, comment: string) {
   return apiFetch<{ success: boolean; message: string }>(`/api/justifications/${justificationId}/approve`, {
     method: 'POST',
-    body: JSON.stringify({ reviewedBy }),
+    body: JSON.stringify({ reviewedBy, comment }),
   });
 }
 
-export async function rejectJustification(justificationId: number, reviewedBy: string) {
+export async function rejectJustification(justificationId: number, reviewedBy: string, comment: string) {
   return apiFetch<{ success: boolean; message: string }>(`/api/justifications/${justificationId}/reject`, {
     method: 'POST',
-    body: JSON.stringify({ reviewedBy }),
+    body: JSON.stringify({ reviewedBy, comment }),
   });
+}
+
+export async function getReviewedJustifications() {
+  return apiFetch<{ justifications: JustificationFull[] }>('/api/justifications/reviewed');
 }
 
 export interface JustificationFull {
@@ -120,6 +124,10 @@ export interface JustificationFull {
   status: 'pending' | 'approved' | 'rejected';
   reviewed_by?: string;
   reviewed_at?: string;
+  manager_comment?: string | null;
+  leader_id?: number;
+  leader_name?: string;
+  unit_name?: string;
 }
 
 export async function submitJustification(data: {
