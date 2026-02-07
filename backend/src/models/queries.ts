@@ -454,6 +454,24 @@ export async function getJustificationById(justificationId: number) {
   return snap.docs[0].data();
 }
 
+export async function deleteJustificationByRecordId(dailyRecordId: number) {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('daily_record_id', '==', dailyRecordId).get();
+  if (snap.empty) return false;
+  for (const doc of snap.docs) {
+    await doc.ref.delete();
+  }
+  return true;
+}
+
+export async function deleteJustification(justificationId: number) {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('id', '==', justificationId).limit(1).get();
+  if (snap.empty) return false;
+  await snap.docs[0].ref.delete();
+  return true;
+}
+
 export async function getPendingJustificationsByLeader(leaderId: number): Promise<JustificationFull[]> {
   const employees = await getEmployeesByLeaderId(leaderId);
   const empIds = employees.map(e => e.id);
