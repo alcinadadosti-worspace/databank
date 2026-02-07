@@ -259,6 +259,25 @@ router.get('/employees', async (_req: Request, res: Response) => {
   }
 });
 
+/** DELETE /api/admin/employee/:id - Delete an employee */
+router.delete('/employee/:id', async (req: Request, res: Response) => {
+  try {
+    const employeeId = parseInt(req.params.id as string, 10);
+    if (isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid employee ID' });
+      return;
+    }
+
+    await queries.deleteEmployee(employeeId);
+    await queries.logAudit('EMPLOYEE_DELETED', 'employee', employeeId, `Employee ${employeeId} deleted`);
+
+    res.json({ success: true, message: `Employee ${employeeId} deleted` });
+  } catch (error) {
+    console.error('[admin] Error deleting employee:', error);
+    res.status(500).json({ error: 'Failed to delete employee' });
+  }
+});
+
 /** POST /api/admin/test-slack - Test Slack bot connection */
 router.post('/test-slack', async (req: Request, res: Response) => {
   try {

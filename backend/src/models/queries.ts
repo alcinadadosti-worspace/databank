@@ -138,6 +138,11 @@ export async function setNoPunchRequired(employeeId: number, noPunchRequired: bo
   invalidateCaches();
 }
 
+export async function deleteEmployee(employeeId: number) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).delete();
+  invalidateCaches();
+}
+
 export async function updateEmployeeNameAndSolidesId(
   employeeId: number,
   name: string,
@@ -424,6 +429,83 @@ export async function insertJustification(
     custom_note: customNote || null,
     submitted_at: new Date().toISOString(),
   });
+}
+
+export async function updateJustificationStatus(
+  justificationId: number,
+  status: 'approved' | 'rejected',
+  reviewedBy: string
+) {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('id', '==', justificationId).limit(1).get();
+  if (!snap.empty) {
+    await snap.docs[0].ref.update({
+      status,
+      reviewed_by: reviewedBy,
+      reviewed_at: new Date().toISOString(),
+    });
+  }
+}
+
+export async function getJustificationById(justificationId: number) {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('id', '==', justificationId).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data();
+}
+
+export async function getPendingJustificationsByLeader(leaderId: number): Promise<JustificationFull[]> {
+  const employees = await getEmployeesByLeaderId(leaderId);
+  const empIds = employees.map(e => e.id);
+  if (empIds.length === 0) return [];
+
+  const empIdSet = new Set(empIds);
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  // Get all justifications, filter by employee IDs in memory
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS).get();
+  const allJustifications = docsToArray<any>(snap).filter(j => empIdSet.has(j.employee_id));
+
+  // Filter for pending (no status or status = 'pending')
+  const pending = allJustifications.filter(j => !j.status || j.status === 'pending');
+
+  // Get daily_record dates
+  const recordIds = [...new Set(pending.map(j => j.daily_record_id))];
+  const dateMap = new Map<number, string>();
+
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', 'in', chunk).get();
+    for (const doc of rSnap.docs) {
+      const data = doc.data();
+      dateMap.set(data.id, data.date);
+    }
+  }
+
+  return pending.map(j => {
+    const emp = empMap.get(j.employee_id);
+    return {
+      ...j,
+      date: dateMap.get(j.daily_record_id) ?? '',
+      employee_name: emp?.name ?? '',
+      status: j.status || 'pending',
+    };
+  }).sort((a: any, b: any) => b.date.localeCompare(a.date));
+}
+
+export interface JustificationFull {
+  id: number;
+  daily_record_id: number;
+  employee_id: number;
+  type: string;
+  reason: string;
+  custom_note: string | null;
+  submitted_at: string;
+  date: string;
+  employee_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewed_by?: string;
+  reviewed_at?: string;
 }
 
 export async function getJustificationsByEmployee(employeeId: number): Promise<JustificationWithDate[]> {
