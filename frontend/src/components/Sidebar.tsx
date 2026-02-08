@@ -22,7 +22,6 @@ const adminNav: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: <IconGrid /> },
   { label: 'Colaboradores', href: '/admin/employees', icon: <IconUsers /> },
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
-  { label: 'Banco de Horas', href: '/admin/banco-horas', icon: <IconWallet /> },
   { label: 'Relatórios', href: '/admin/relatorios', icon: <IconChart /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },

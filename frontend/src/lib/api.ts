@@ -229,59 +229,6 @@ export async function getUnitRecords(date: string) {
   return apiFetch<{ units: UnitData[]; date: string }>(`/api/records/units?date=${date}`);
 }
 
-// ─── Banco de Horas ───────────────────────────────────────────
-
-export interface EmployeeBalance {
-  employee_id: number;
-  name: string;
-  leader_name: string;
-  total_difference: number;
-  days_worked: number;
-  late_count: number;
-  overtime_count: number;
-  normal_count: number;
-  monthly_breakdown: { [month: string]: number };
-}
-
-export interface BancoHorasResponse {
-  year: number;
-  month: string | null;
-  startDate: string;
-  endDate: string;
-  employees: EmployeeBalance[];
-}
-
-export interface EmployeeMonthlyBalance {
-  month: string;
-  monthKey: string;
-  difference: number;
-  days: number;
-  late: number;
-  overtime: number;
-  normal: number;
-  running_balance: number;
-}
-
-export interface EmployeeBancoHorasResponse {
-  employee_id: number;
-  employee_name: string;
-  year: number;
-  total_difference: number;
-  total_days: number;
-  monthly: EmployeeMonthlyBalance[];
-  records: DailyRecord[];
-}
-
-export async function getBancoHoras(year: number, month?: string) {
-  const params = new URLSearchParams({ year: String(year) });
-  if (month) params.set('month', month);
-  return apiFetch<BancoHorasResponse>(`/api/admin/banco-horas?${params}`);
-}
-
-export async function getEmployeeBancoHoras(employeeId: number, year: number) {
-  return apiFetch<EmployeeBancoHorasResponse>(`/api/admin/banco-horas/${employeeId}?year=${year}`);
-}
-
 // ─── Record Editing ───────────────────────────────────────────
 
 export interface EditRecordData {
