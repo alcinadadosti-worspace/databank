@@ -367,10 +367,9 @@ function registerInteractions(app: App): void {
         const payload = JSON.parse((action as any).value);
         const { daily_record_id, employee_name, type, reason } = payload;
 
-        // Find the employee
-        const records = await queries.getDailyRecordsByDate(new Date().toISOString().split('T')[0]);
-        const record = records.find((r: any) => r.id === daily_record_id);
-        const employeeId = record ? (record as any).employee_id : null;
+        // Find the employee by record ID
+        const record = await queries.getDailyRecordById(daily_record_id);
+        const employeeId = record?.employee_id || null;
 
         if (employeeId) {
           await queries.insertJustification(daily_record_id, employeeId, type, reason);
@@ -485,10 +484,9 @@ function registerInteractions(app: App): void {
 
       const customReason = view.state.values.custom_reason_block.custom_reason_input.value || '';
 
-      // Find the employee
-      const records = await queries.getDailyRecordsByDate(new Date().toISOString().split('T')[0]);
-      const record = records.find((r: any) => r.id === daily_record_id);
-      const employeeId = record ? (record as any).employee_id : null;
+      // Find the employee by record ID
+      const record = await queries.getDailyRecordById(daily_record_id);
+      const employeeId = record?.employee_id || null;
 
       if (employeeId && customReason.trim()) {
         await queries.insertJustification(daily_record_id, employeeId, type, 'Outros', customReason);
