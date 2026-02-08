@@ -354,6 +354,7 @@ export interface DailyRecord {
   leader_name?: string;
   justification_reason?: string | null;
   justification_type?: string | null;
+  justification_status?: 'pending' | 'approved' | 'rejected' | null;
 }
 
 export interface Justification {

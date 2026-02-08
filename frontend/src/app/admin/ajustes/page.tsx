@@ -7,14 +7,17 @@ import { formatDate, formatDateTime } from '@/lib/utils';
 export default function AdminAjustes() {
   const [justifications, setJustifications] = useState<JustificationFull[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterUnit, setFilterUnit] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
 
   async function loadJustifications() {
     setLoading(true);
     try {
       const data = await getReviewedJustifications();
       setJustifications(data.justifications);
+      // Expand all managers by default
+      const managers = new Set(data.justifications.map(j => j.leader_name || 'Sem Gestor'));
+      setExpandedManagers(managers);
     } catch (error) {
       console.error('Failed to load justifications:', error);
     } finally {
@@ -26,23 +29,41 @@ export default function AdminAjustes() {
     loadJustifications();
   }, []);
 
-  // Get unique units for filter
-  const units = [...new Set(justifications.map(j => j.unit_name || 'Outro'))].sort();
-
   // Filter justifications
   const filtered = justifications.filter(j => {
-    if (filterUnit !== 'all' && j.unit_name !== filterUnit) return false;
     if (filterStatus !== 'all' && j.status !== filterStatus) return false;
     return true;
   });
 
-  // Group by unit
-  const groupedByUnit = filtered.reduce((acc, j) => {
-    const unit = j.unit_name || 'Outro';
-    if (!acc[unit]) acc[unit] = [];
-    acc[unit].push(j);
+  // Group by manager, then by employee
+  const groupedByManager = filtered.reduce((acc, j) => {
+    const manager = j.leader_name || 'Sem Gestor';
+    if (!acc[manager]) acc[manager] = {};
+
+    const employee = j.employee_name;
+    if (!acc[manager][employee]) acc[manager][employee] = [];
+    acc[manager][employee].push(j);
+
     return acc;
-  }, {} as Record<string, JustificationFull[]>);
+  }, {} as Record<string, Record<string, JustificationFull[]>>);
+
+  function toggleManager(manager: string) {
+    const newExpanded = new Set(expandedManagers);
+    if (newExpanded.has(manager)) {
+      newExpanded.delete(manager);
+    } else {
+      newExpanded.add(manager);
+    }
+    setExpandedManagers(newExpanded);
+  }
+
+  function expandAll() {
+    setExpandedManagers(new Set(Object.keys(groupedByManager)));
+  }
+
+  function collapseAll() {
+    setExpandedManagers(new Set());
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -53,17 +74,7 @@ export default function AdminAjustes() {
             Justificativas revisadas pelos gestores
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <select
-            value={filterUnit}
-            onChange={(e) => setFilterUnit(e.target.value)}
-            className="input text-sm"
-          >
-            <option value="all">Todas as Unidades</option>
-            {units.map(unit => (
-              <option key={unit} value={unit}>{unit}</option>
-            ))}
-          </select>
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
@@ -73,6 +84,12 @@ export default function AdminAjustes() {
             <option value="approved">Aprovadas</option>
             <option value="rejected">Reprovadas</option>
           </select>
+          <button onClick={expandAll} className="btn-secondary text-xs px-2 py-1">
+            Expandir
+          </button>
+          <button onClick={collapseAll} className="btn-secondary text-xs px-2 py-1">
+            Recolher
+          </button>
           <button
             onClick={loadJustifications}
             className="btn-secondary text-sm"
@@ -90,71 +107,93 @@ export default function AdminAjustes() {
           <p className="text-text-tertiary text-sm">Nenhuma justificativa revisada encontrada</p>
         </div>
       ) : (
-        <div className="space-y-6">
-          {Object.entries(groupedByUnit).sort(([a], [b]) => a.localeCompare(b)).map(([unit, items]) => (
-            <div key={unit} className="space-y-3">
-              {/* Unit Header */}
-              <div className="flex items-center gap-3">
-                <h3 className="text-sm font-semibold text-text-primary">{unit}</h3>
-                <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
-                  {items.length} justificativa{items.length !== 1 ? 's' : ''}
-                </span>
-              </div>
+        <div className="space-y-4">
+          {Object.entries(groupedByManager).sort(([a], [b]) => a.localeCompare(b)).map(([manager, employees]) => {
+            const isExpanded = expandedManagers.has(manager);
+            const totalForManager = Object.values(employees).flat().length;
+            const approvedCount = Object.values(employees).flat().filter(j => j.status === 'approved').length;
+            const rejectedCount = Object.values(employees).flat().filter(j => j.status === 'rejected').length;
 
-              {/* Justifications */}
-              <div className="space-y-2">
-                {items.map((j) => (
-                  <div key={j.id} className="card">
-                    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                      {/* Left side - Employee info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-text-primary font-medium">{j.employee_name}</span>
-                          <span className={`badge ${j.type === 'late' ? 'badge-danger' : 'badge-info'}`}>
-                            {j.type === 'late' ? 'Atraso' : 'Hora Extra'}
-                          </span>
-                          <span className={`badge ${j.status === 'approved' ? 'badge-success' : 'badge-danger'}`}>
-                            {j.status === 'approved' ? 'Aprovada' : 'Reprovada'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-text-muted mt-1">
-                          {formatDate(j.date)} | Gestor: {j.leader_name}
-                        </p>
-
-                        {/* Employee justification */}
-                        <div className="mt-3 bg-bg-secondary rounded-md p-3">
-                          <p className="text-xs font-medium text-text-muted mb-1">Justificativa do Colaborador:</p>
-                          <p className="text-sm text-text-secondary">{j.reason}</p>
-                          {j.custom_note && (
-                            <p className="text-sm text-text-tertiary mt-1 italic">{j.custom_note}</p>
-                          )}
-                        </div>
-
-                        {/* Manager comment */}
-                        {j.manager_comment && (
-                          <div className="mt-2 bg-bg-tertiary rounded-md p-3 border-l-2 border-accent-primary">
-                            <p className="text-xs font-medium text-text-muted mb-1">Comentario do Gestor:</p>
-                            <p className="text-sm text-text-secondary">{j.manager_comment}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right side - Review info */}
-                      <div className="flex-shrink-0 text-right">
-                        <p className="text-xs text-text-muted">Revisado por:</p>
-                        <p className="text-sm text-text-secondary font-medium">{j.reviewed_by}</p>
-                        {j.reviewed_at && (
-                          <p className="text-xs text-text-tertiary mt-1">
-                            {formatDateTime(j.reviewed_at)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
+            return (
+              <div key={manager} className="card p-0 overflow-hidden">
+                {/* Manager Header */}
+                <button
+                  onClick={() => toggleManager(manager)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-bg-secondary hover:bg-bg-hover transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                      ▶
+                    </span>
+                    <span className="font-semibold text-text-primary">{manager}</span>
+                    <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
+                      {Object.keys(employees).length} colaborador{Object.keys(employees).length !== 1 ? 'es' : ''}
+                    </span>
                   </div>
-                ))}
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-green-500">{approvedCount} ✓</span>
+                    <span className="text-red-500">{rejectedCount} ✗</span>
+                    <span className="text-text-muted">{totalForManager} total</span>
+                  </div>
+                </button>
+
+                {/* Employees under this manager */}
+                {isExpanded && (
+                  <div className="divide-y divide-border-subtle">
+                    {Object.entries(employees).sort(([a], [b]) => a.localeCompare(b)).map(([employee, items]) => (
+                      <div key={employee} className="px-4 py-3">
+                        {/* Employee name */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-text-primary">{employee}</span>
+                          <span className="text-xs text-text-muted">
+                            ({items.length} justificativa{items.length !== 1 ? 's' : ''})
+                          </span>
+                        </div>
+
+                        {/* Justifications list - compact */}
+                        <div className="space-y-2 pl-3 border-l-2 border-border-subtle">
+                          {items.map((j) => (
+                            <div key={j.id} className="flex items-start gap-3 text-sm">
+                              {/* Status indicator */}
+                              <span className={`flex-shrink-0 mt-0.5 ${j.status === 'approved' ? 'text-green-500' : 'text-red-500'}`}>
+                                {j.status === 'approved' ? '✓' : '✗'}
+                              </span>
+
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-text-muted font-mono">{formatDate(j.date)}</span>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${j.type === 'late' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                    {j.type === 'late' ? 'Atraso' : 'H.Extra'}
+                                  </span>
+                                </div>
+                                <p className="text-text-secondary mt-0.5">{j.reason}</p>
+                                {j.custom_note && (
+                                  <p className="text-text-tertiary text-xs italic mt-0.5">{j.custom_note}</p>
+                                )}
+                                {j.manager_comment && (
+                                  <p className="text-xs text-accent-primary mt-1">
+                                    <span className="font-medium">Gestor:</span> {j.manager_comment}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Review info */}
+                              <div className="flex-shrink-0 text-right text-xs text-text-muted">
+                                {j.reviewed_at && (
+                                  <span>{formatDateTime(j.reviewed_at)}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

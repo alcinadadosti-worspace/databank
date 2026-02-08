@@ -273,16 +273,17 @@ export async function getDailyRecordsByEmployeeRange(
   // Get justifications for these records
   const justSnap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
     .where('employee_id', '==', employeeId).get();
-  const justMap = new Map<number, { reason: string; type: string }>();
+  const justMap = new Map<number, { reason: string; type: string; status: string | null }>();
   for (const doc of justSnap.docs) {
     const j = doc.data();
-    justMap.set(j.daily_record_id, { reason: j.reason, type: j.type });
+    justMap.set(j.daily_record_id, { reason: j.reason, type: j.type, status: j.status || null });
   }
 
   return records.map(r => ({
     ...r,
     justification_reason: justMap.get(r.id)?.reason ?? null,
     justification_type: justMap.get(r.id)?.type ?? null,
+    justification_status: justMap.get(r.id)?.status ?? null,
   }));
 }
 
@@ -320,6 +321,7 @@ export async function getDailyRecordsByLeaderRange(
         leader_id: emp?.leader_id ?? 0,
         justification_reason: justMap.get(r.id)?.reason ?? null,
         justification_type: justMap.get(r.id)?.type ?? null,
+        justification_status: justMap.get(r.id)?.status ?? null,
       };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
@@ -350,6 +352,7 @@ export async function getAllRecordsRange(startDate: string, endDate: string): Pr
       leader_id: emp?.leader_id ?? 0,
       justification_reason: justMap.get(r.id)?.reason ?? null,
       justification_type: justMap.get(r.id)?.type ?? null,
+      justification_status: justMap.get(r.id)?.status ?? null,
     };
   }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
 }
@@ -1033,8 +1036,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string }>> {
-  const map = new Map<number, { reason: string; type: string }>();
+async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string; status: string | null }>> {
+  const map = new Map<number, { reason: string; type: string; status: string | null }>();
   if (recordIds.length === 0) return map;
 
   for (const chunk of chunkArray(recordIds, 30)) {
@@ -1042,7 +1045,7 @@ async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { 
       .where('daily_record_id', 'in', chunk).get();
     for (const doc of snap.docs) {
       const data = doc.data();
-      map.set(data.daily_record_id, { reason: data.reason, type: data.type });
+      map.set(data.daily_record_id, { reason: data.reason, type: data.type, status: data.status || null });
     }
   }
   return map;

@@ -78,8 +78,24 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                     {classificationLabel(record.classification)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate">
-                  {record.justification_reason || '—'}
+                <td className="px-4 py-3 text-text-secondary text-xs max-w-[180px]">
+                  {record.justification_reason ? (
+                    <span className="flex items-center gap-1.5">
+                      {record.justification_status === 'approved' && (
+                        <span className="text-green-500 flex-shrink-0" title="Aprovada">✓</span>
+                      )}
+                      {record.justification_status === 'rejected' && (
+                        <span className="text-red-500 flex-shrink-0" title="Rejeitada">✗</span>
+                      )}
+                      {record.justification_status === 'pending' && (
+                        <span className="text-yellow-500 flex-shrink-0" title="Pendente">⏳</span>
+                      )}
+                      {!record.justification_status && (
+                        <span className="text-yellow-500 flex-shrink-0" title="Pendente">⏳</span>
+                      )}
+                      <span className="truncate">{record.justification_reason}</span>
+                    </span>
+                  ) : '—'}
                 </td>
               </tr>
             ))}
