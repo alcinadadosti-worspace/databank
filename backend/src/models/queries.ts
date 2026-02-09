@@ -596,7 +596,28 @@ export async function deleteJustification(justificationId: number) {
     .where('id', '==', justificationId).limit(1).get();
   if (snap.empty) return false;
   await snap.docs[0].ref.delete();
+  // Invalidate cache
+  invalidateCache('justifications');
+  invalidateCache('records');
   return true;
+}
+
+export async function deleteMultipleJustifications(justificationIds: number[]) {
+  if (justificationIds.length === 0) return 0;
+
+  let deleted = 0;
+  for (const chunk of chunkArray(justificationIds, 30)) {
+    const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('id', 'in', chunk).get();
+    for (const doc of snap.docs) {
+      await doc.ref.delete();
+      deleted++;
+    }
+  }
+  // Invalidate cache
+  invalidateCache('justifications');
+  invalidateCache('records');
+  return deleted;
 }
 
 export async function getPendingJustificationsByLeader(leaderId: number): Promise<JustificationFull[]> {

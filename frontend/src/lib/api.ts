@@ -111,6 +111,19 @@ export async function getReviewedJustifications() {
   return apiFetch<{ justifications: JustificationFull[] }>('/api/justifications/reviewed');
 }
 
+export async function deleteJustification(justificationId: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/justifications/${justificationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deleteMultipleJustifications(ids: number[]) {
+  return apiFetch<{ success: boolean; deleted: number; message: string }>('/api/justifications/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+}
+
 export interface JustificationFull {
   id: number;
   daily_record_id: number;

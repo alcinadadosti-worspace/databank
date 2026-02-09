@@ -220,4 +220,24 @@ router.delete('/record/:recordId', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/justifications/bulk-delete - Delete multiple justifications */
+router.post('/bulk-delete', async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: 'ids array is required' });
+      return;
+    }
+
+    const deleted = await queries.deleteMultipleJustifications(ids);
+    await queries.logAudit('JUSTIFICATIONS_BULK_DELETED', 'justification', undefined, `Deleted ${deleted} justifications`);
+
+    res.json({ success: true, deleted, message: `${deleted} justificativa(s) removida(s)` });
+  } catch (error) {
+    console.error('[justifications] Error bulk deleting:', error);
+    res.status(500).json({ error: 'Failed to delete justifications' });
+  }
+});
+
 export default router;

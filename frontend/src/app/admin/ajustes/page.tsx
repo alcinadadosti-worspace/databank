@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getReviewedJustifications, type JustificationFull } from '@/lib/api';
-import { formatDate, formatDateTime } from '@/lib/utils';
+import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, type JustificationFull } from '@/lib/api';
+import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
 
 function formatMinutes(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) return '-';
@@ -24,7 +24,10 @@ export default function AdminAjustes() {
   const [justifications, setJustifications] = useState<JustificationFull[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [endDate, setEndDate] = useState(todayISO());
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<number | null>(null);
 
   async function loadJustifications() {
     setLoading(true);
@@ -45,9 +48,10 @@ export default function AdminAjustes() {
     loadJustifications();
   }, []);
 
-  // Filter justifications
+  // Filter justifications by status and date
   const filtered = justifications.filter(j => {
     if (filterStatus !== 'all' && j.status !== filterStatus) return false;
+    if (j.date < startDate || j.date > endDate) return false;
     return true;
   });
 
@@ -79,6 +83,59 @@ export default function AdminAjustes() {
 
   function collapseAll() {
     setExpandedManagers(new Set());
+  }
+
+  async function handleDeleteOne(id: number) {
+    if (!confirm('Tem certeza que deseja excluir esta justificativa?')) return;
+
+    setDeleting(id);
+    try {
+      await deleteJustification(id);
+      setJustifications(prev => prev.filter(j => j.id !== id));
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      alert('Erro ao excluir justificativa');
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  async function handleDeleteManager(manager: string) {
+    const items = Object.values(groupedByManager[manager] || {}).flat();
+    if (items.length === 0) return;
+
+    if (!confirm(`Tem certeza que deseja excluir todas as ${items.length} justificativas de ${manager}?`)) return;
+
+    setDeleting(-1);
+    try {
+      const ids = items.map(j => j.id);
+      await deleteMultipleJustifications(ids);
+      setJustifications(prev => prev.filter(j => !ids.includes(j.id)));
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      alert('Erro ao excluir justificativas');
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  async function handleDeleteEmployee(manager: string, employee: string) {
+    const items = groupedByManager[manager]?.[employee] || [];
+    if (items.length === 0) return;
+
+    if (!confirm(`Tem certeza que deseja excluir todas as ${items.length} justificativas de ${employee}?`)) return;
+
+    setDeleting(-1);
+    try {
+      const ids = items.map(j => j.id);
+      await deleteMultipleJustifications(ids);
+      setJustifications(prev => prev.filter(j => !ids.includes(j.id)));
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      alert('Erro ao excluir justificativas');
+    } finally {
+      setDeleting(null);
+    }
   }
 
   return (
@@ -116,6 +173,34 @@ export default function AdminAjustes() {
         </div>
       </div>
 
+      {/* Date Filter */}
+      <div className="card bg-bg-secondary">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-sm text-text-muted">Filtrar por data:</span>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-text-muted">De:</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-text-muted">Ate:</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="input text-sm"
+            />
+          </div>
+          <span className="text-xs text-text-muted">
+            {filtered.length} de {justifications.length} justificativas
+          </span>
+        </div>
+      </div>
+
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>
       ) : filtered.length === 0 ? (
@@ -133,37 +218,63 @@ export default function AdminAjustes() {
             return (
               <div key={manager} className="card p-0 overflow-hidden">
                 {/* Manager Header */}
-                <button
-                  onClick={() => toggleManager(manager)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-bg-secondary hover:bg-bg-hover transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                      ▶
-                    </span>
-                    <span className="font-semibold text-text-primary">{manager}</span>
-                    <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
-                      {Object.keys(employees).length} colaborador{Object.keys(employees).length !== 1 ? 'es' : ''}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-green-500">{approvedCount} ✓</span>
-                    <span className="text-red-500">{rejectedCount} ✗</span>
-                    <span className="text-text-muted">{totalForManager} total</span>
-                  </div>
-                </button>
+                <div className="flex items-center bg-bg-secondary">
+                  <button
+                    onClick={() => toggleManager(manager)}
+                    className="flex-1 px-4 py-3 flex items-center justify-between hover:bg-bg-hover transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                        ▶
+                      </span>
+                      <span className="font-semibold text-text-primary">{manager}</span>
+                      <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
+                        {Object.keys(employees).length} colaborador{Object.keys(employees).length !== 1 ? 'es' : ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-green-500">{approvedCount} ✓</span>
+                      <span className="text-red-500">{rejectedCount} ✗</span>
+                      <span className="text-text-muted">{totalForManager} total</span>
+                    </div>
+                  </button>
+                  {/* Delete manager button */}
+                  <button
+                    onClick={() => handleDeleteManager(manager)}
+                    disabled={deleting !== null}
+                    className="px-3 py-3 text-red-500 hover:bg-red-500/10 transition-colors"
+                    title={`Excluir todas ${totalForManager} justificativas de ${manager}`}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
 
                 {/* Employees under this manager */}
                 {isExpanded && (
                   <div className="divide-y divide-border-subtle">
                     {Object.entries(employees).sort(([a], [b]) => a.localeCompare(b)).map(([employee, items]) => (
                       <div key={employee} className="px-4 py-3">
-                        {/* Employee name */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-text-primary">{employee}</span>
-                          <span className="text-xs text-text-muted">
-                            ({items.length} justificativa{items.length !== 1 ? 's' : ''})
-                          </span>
+                        {/* Employee name with delete button */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-text-primary">{employee}</span>
+                            <span className="text-xs text-text-muted">
+                              ({items.length} justificativa{items.length !== 1 ? 's' : ''})
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteEmployee(manager, employee)}
+                            disabled={deleting !== null}
+                            className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"
+                            title={`Excluir todas ${items.length} justificativas de ${employee}`}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                            Excluir todas
+                          </button>
                         </div>
 
                         {/* Justifications table */}
@@ -179,6 +290,7 @@ export default function AdminAjustes() {
                                 <th className="px-2 py-1">Saida</th>
                                 <th className="px-2 py-1">Resultado</th>
                                 <th className="px-2 py-1">Motivo</th>
+                                <th className="px-2 py-1 w-8"></th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border-subtle">
@@ -241,6 +353,23 @@ export default function AdminAjustes() {
                                           Gestor: {j.manager_comment}
                                         </div>
                                       )}
+                                    </td>
+                                    {/* Delete button */}
+                                    <td className="px-2 py-2">
+                                      <button
+                                        onClick={() => handleDeleteOne(j.id)}
+                                        disabled={deleting === j.id}
+                                        className="text-red-500 hover:text-red-600 disabled:opacity-50"
+                                        title="Excluir justificativa"
+                                      >
+                                        {deleting === j.id ? (
+                                          <span className="animate-spin">...</span>
+                                        ) : (
+                                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                          </svg>
+                                        )}
+                                      </button>
                                     </td>
                                   </tr>
                                 );
