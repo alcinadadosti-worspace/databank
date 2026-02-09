@@ -34,9 +34,10 @@ interface SidebarProps {
   role: 'manager' | 'admin';
   managerName?: string;
   onLogout?: () => void;
+  pendingJustifications?: number;
 }
 
-export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
+export default function Sidebar({ role, managerName, onLogout, pendingJustifications = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
 
@@ -61,18 +62,27 @@ export default function Sidebar({ role, managerName, onLogout }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              pathname === item.href ? 'sidebar-link-active' : 'sidebar-link'
-            )}
-          >
-            <span className="w-4 h-4 opacity-60">{item.icon}</span>
-            {item.label}
-          </Link>
-        ))}
+        {navItems.map((item) => {
+          const showBadge = role === 'manager' && item.href === '/manager/justifications' && pendingJustifications > 0;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                pathname === item.href ? 'sidebar-link-active' : 'sidebar-link',
+                'relative'
+              )}
+            >
+              <span className="w-4 h-4 opacity-60">{item.icon}</span>
+              {item.label}
+              {showBadge && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-2xs font-bold rounded-full px-1">
+                  {pendingJustifications > 99 ? '99+' : pendingJustifications}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Footer */}

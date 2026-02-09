@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, type JustificationFull } from '@/lib/api';
 import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
+import * as XLSX from 'xlsx';
 
 function formatMinutes(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) return '-';
@@ -138,6 +139,77 @@ export default function AdminAjustes() {
     }
   }
 
+  function exportToExcel() {
+    if (filtered.length === 0) {
+      alert('Nenhuma justificativa para exportar');
+      return;
+    }
+
+    // Prepare data for Excel
+    const excelData = filtered.map(j => {
+      const saturday = isSaturday(j.date);
+      return {
+        'Status': j.status === 'approved' ? 'Aprovada' : 'Reprovada',
+        'Gestor': j.leader_name || 'Sem Gestor',
+        'Colaborador': j.employee_name,
+        'Data': formatDate(j.date),
+        'Dia': saturday ? 'Sabado' : 'Semana',
+        'Entrada': j.punch_1 || '-',
+        'Intervalo': saturday ? '-' : (j.punch_2 || '-'),
+        'Retorno': saturday ? '-' : (j.punch_3 || '-'),
+        'Saida': saturday ? (j.punch_2 || '-') : (j.punch_4 || '-'),
+        'Classificacao': j.classification === 'late' ? 'Atraso' :
+                         j.classification === 'overtime' ? 'Hora Extra' : 'Normal',
+        'Diferenca (min)': j.difference_minutes ?? '-',
+        'Motivo': j.reason,
+        'Nota Colaborador': j.custom_note || '-',
+        'Comentario Gestor': j.manager_comment || '-',
+        'Revisado por': j.reviewed_by || '-',
+        'Data Revisao': j.reviewed_at ? formatDateTime(j.reviewed_at) : '-',
+      };
+    });
+
+    // Sort by manager, then employee, then date
+    excelData.sort((a, b) => {
+      if (a['Gestor'] !== b['Gestor']) return a['Gestor'].localeCompare(b['Gestor']);
+      if (a['Colaborador'] !== b['Colaborador']) return a['Colaborador'].localeCompare(b['Colaborador']);
+      return a['Data'].localeCompare(b['Data']);
+    });
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 10 },  // Status
+      { wch: 20 },  // Gestor
+      { wch: 25 },  // Colaborador
+      { wch: 12 },  // Data
+      { wch: 8 },   // Dia
+      { wch: 8 },   // Entrada
+      { wch: 8 },   // Intervalo
+      { wch: 8 },   // Retorno
+      { wch: 8 },   // Saida
+      { wch: 12 },  // Classificacao
+      { wch: 14 },  // Diferenca
+      { wch: 25 },  // Motivo
+      { wch: 25 },  // Nota Colaborador
+      { wch: 25 },  // Comentario Gestor
+      { wch: 15 },  // Revisado por
+      { wch: 18 },  // Data Revisao
+    ];
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Ajustes');
+
+    // Generate filename with date range
+    const filename = `ajustes_${startDate}_a_${endDate}.xlsx`;
+
+    // Download the file
+    XLSX.writeFile(wb, filename);
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -162,6 +234,17 @@ export default function AdminAjustes() {
           </button>
           <button onClick={collapseAll} className="btn-secondary text-xs px-2 py-1">
             Recolher
+          </button>
+          <button
+            onClick={exportToExcel}
+            className="btn-secondary text-sm flex items-center gap-1"
+            disabled={loading || filtered.length === 0}
+            title="Exportar para Excel"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Excel
           </button>
           <button
             onClick={loadJustifications}
