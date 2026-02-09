@@ -149,7 +149,6 @@ export default function AdminAjustes() {
     const excelData = filtered.map(j => {
       const saturday = isSaturday(j.date);
       return {
-        'Status': j.status === 'approved' ? 'Aprovada' : 'Reprovada',
         'Gestor': j.leader_name || 'Sem Gestor',
         'Colaborador': j.employee_name,
         'Data': formatDate(j.date),
@@ -163,6 +162,7 @@ export default function AdminAjustes() {
         'Diferenca (min)': j.difference_minutes ?? '-',
         'Motivo': j.reason,
         'Nota Colaborador': j.custom_note || '-',
+        'Aprovado': j.status === 'approved' ? 'Sim' : 'Nao',
         'Comentario Gestor': j.manager_comment || '-',
         'Revisado por': j.reviewed_by || '-',
         'Data Revisao': j.reviewed_at ? formatDateTime(j.reviewed_at) : '-',
@@ -182,7 +182,6 @@ export default function AdminAjustes() {
 
     // Set column widths
     ws['!cols'] = [
-      { wch: 10 },  // Status
       { wch: 20 },  // Gestor
       { wch: 25 },  // Colaborador
       { wch: 12 },  // Data
@@ -195,6 +194,7 @@ export default function AdminAjustes() {
       { wch: 14 },  // Diferenca
       { wch: 25 },  // Motivo
       { wch: 25 },  // Nota Colaborador
+      { wch: 10 },  // Aprovado
       { wch: 25 },  // Comentario Gestor
       { wch: 15 },  // Revisado por
       { wch: 18 },  // Data Revisao
