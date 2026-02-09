@@ -262,51 +262,6 @@ export async function editRecord(recordId: number, data: EditRecordData) {
   });
 }
 
-// ─── Reports ──────────────────────────────────────────────────
-
-export interface MonthlyReportData {
-  month: string;
-  late: number;
-  overtime: number;
-  normal: number;
-  lateMinutes: number;
-  overtimeMinutes: number;
-}
-
-export interface SectorReportData {
-  sector: string;
-  late: number;
-  overtime: number;
-  normal: number;
-  total: number;
-  lateMinutes: number;
-  overtimeMinutes: number;
-}
-
-export interface EmployeeReportData {
-  employee_id: number;
-  name: string;
-  late: number;
-  overtime: number;
-  lateMinutes: number;
-  overtimeMinutes: number;
-  totalRecords: number;
-}
-
-export async function getMonthlyReport(year: number) {
-  return apiFetch<{ year: number; data: MonthlyReportData[] }>(`/api/admin/reports/monthly?year=${year}`);
-}
-
-export async function getSectorReport(start: string, end: string) {
-  return apiFetch<{ start: string; end: string; data: SectorReportData[] }>(`/api/admin/reports/sector?start=${start}&end=${end}`);
-}
-
-export async function getEmployeeReport(start: string, end: string, limit = 10) {
-  return apiFetch<{ start: string; end: string; topLate: EmployeeReportData[]; topOvertime: EmployeeReportData[] }>(
-    `/api/admin/reports/employees?start=${start}&end=${end}&limit=${limit}`
-  );
-}
-
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface User {

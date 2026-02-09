@@ -11,13 +11,57 @@ function docsToArray<T>(snapshot: FirebaseFirestore.QuerySnapshot): T[] {
   return snapshot.docs.map(doc => ({ ...doc.data(), _docId: doc.id }) as unknown as T);
 }
 
-// In-memory caches for leaders/employees (refreshed on insert)
+// ─── Cache System with TTL ────────────────────────────────────
+interface CacheEntry<T> {
+  data: T;
+  expiry: number;
+}
+
+const cache = new Map<string, CacheEntry<any>>();
+
+// Cache TTLs in milliseconds
+const CACHE_TTL = {
+  LEADERS: 10 * 60 * 1000,      // 10 minutes - rarely changes
+  EMPLOYEES: 10 * 60 * 1000,    // 10 minutes - rarely changes
+  RECORDS: 2 * 60 * 1000,       // 2 minutes - changes more often
+  JUSTIFICATIONS: 2 * 60 * 1000, // 2 minutes
+  UNITS: 1 * 60 * 1000,         // 1 minute - for presence data
+};
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (entry && Date.now() < entry.expiry) {
+    return entry.data as T;
+  }
+  cache.delete(key);
+  return null;
+}
+
+function setCache<T>(key: string, data: T, ttl: number): T {
+  cache.set(key, { data, expiry: Date.now() + ttl });
+  return data;
+}
+
+function invalidateCache(pattern?: string) {
+  if (!pattern) {
+    cache.clear();
+    return;
+  }
+  for (const key of cache.keys()) {
+    if (key.includes(pattern)) {
+      cache.delete(key);
+    }
+  }
+}
+
+// Legacy cache variables for compatibility
 let leadersCache: Leader[] | null = null;
 let employeesCache: EmployeeWithLeader[] | null = null;
 
 function invalidateCaches() {
   leadersCache = null;
   employeesCache = null;
+  invalidateCache(); // Clear all cache
 }
 
 // ─── Leaders ───────────────────────────────────────────────────
@@ -290,6 +334,10 @@ export async function getDailyRecordsByEmployeeRange(
 export async function getDailyRecordsByLeaderRange(
   leaderId: number, startDate: string, endDate: string
 ): Promise<DailyRecordFull[]> {
+  const cacheKey = `leader_records_${leaderId}_${startDate}_${endDate}`;
+  const cached = getCached<DailyRecordFull[]>(cacheKey);
+  if (cached) return cached;
+
   const employees = await getEmployeesByLeaderId(leaderId);
   const empIds = employees.map(e => e.id);
   if (empIds.length === 0) return [];
@@ -309,7 +357,7 @@ export async function getDailyRecordsByLeaderRange(
 
   const empMap = new Map(employees.map(e => [e.id, e]));
 
-  return allRecords
+  const result = allRecords
     .map(r => {
       const emp = empMap.get(r.employee_id);
       return {
@@ -325,9 +373,15 @@ export async function getDailyRecordsByLeaderRange(
       };
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+
+  return setCache(cacheKey, result, CACHE_TTL.RECORDS);
 }
 
 export async function getAllRecordsRange(startDate: string, endDate: string): Promise<DailyRecordFull[]> {
+  const cacheKey = `records_${startDate}_${endDate}`;
+  const cached = getCached<DailyRecordFull[]>(cacheKey);
+  if (cached) return cached;
+
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('date', '>=', startDate)
     .where('date', '<=', endDate)
@@ -341,7 +395,7 @@ export async function getAllRecordsRange(startDate: string, endDate: string): Pr
   const recordIds = records.map(r => r.id);
   const justMap = await getJustificationsMap(recordIds);
 
-  return records.map(r => {
+  const result = records.map(r => {
     const emp = empMap.get(r.employee_id);
     return {
       ...r,
@@ -355,6 +409,8 @@ export async function getAllRecordsRange(startDate: string, endDate: string): Pr
       justification_status: justMap.get(r.id)?.status ?? null,
     };
   }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+
+  return setCache(cacheKey, result, CACHE_TTL.RECORDS);
 }
 
 export async function upsertDailyRecord(
@@ -397,6 +453,8 @@ export async function upsertDailyRecord(
       updated_at: now,
     });
   }
+  // Invalidate records cache for this date
+  invalidateCache('records');
 }
 
 export async function markAlertSent(recordId: number) {
@@ -466,6 +524,9 @@ export async function insertJustification(
     custom_note: customNote || null,
     submitted_at: new Date().toISOString(),
   });
+  // Invalidate justifications and records cache
+  invalidateCache('justifications');
+  invalidateCache('records');
 }
 
 export async function updateJustificationStatus(
@@ -483,6 +544,9 @@ export async function updateJustificationStatus(
       reviewed_at: new Date().toISOString(),
       manager_comment: managerComment || null,
     });
+    // Invalidate justifications and records cache
+    invalidateCache('justifications');
+    invalidateCache('records');
   }
 }
 
@@ -1040,6 +1104,17 @@ async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { 
   const map = new Map<number, { reason: string; type: string; status: string | null }>();
   if (recordIds.length === 0) return map;
 
+  // Create a cache key based on sorted record IDs
+  const sortedIds = [...recordIds].sort((a, b) => a - b);
+  const cacheKey = `justifications_${sortedIds.slice(0, 10).join('_')}_${sortedIds.length}`;
+  const cached = getCached<[number, { reason: string; type: string; status: string | null }][]>(cacheKey);
+  if (cached) {
+    for (const [id, data] of cached) {
+      map.set(id, data);
+    }
+    return map;
+  }
+
   for (const chunk of chunkArray(recordIds, 30)) {
     const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
       .where('daily_record_id', 'in', chunk).get();
@@ -1048,6 +1123,9 @@ async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { 
       map.set(data.daily_record_id, { reason: data.reason, type: data.type, status: data.status || null });
     }
   }
+
+  // Cache the result
+  setCache(cacheKey, Array.from(map.entries()), CACHE_TTL.JUSTIFICATIONS);
   return map;
 }
 
