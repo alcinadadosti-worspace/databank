@@ -128,6 +128,13 @@ export interface JustificationFull {
   leader_id?: number;
   leader_name?: string;
   unit_name?: string;
+  // Punch data
+  punch_1?: string | null;
+  punch_2?: string | null;
+  punch_3?: string | null;
+  punch_4?: string | null;
+  difference_minutes?: number | null;
+  classification?: string | null;
 }
 
 export async function submitJustification(data: {

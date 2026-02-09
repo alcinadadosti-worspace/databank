@@ -709,24 +709,47 @@ export async function getReviewedJustifications(): Promise<JustificationFull[]> 
   const allJustifications = docsToArray<any>(snap);
   const reviewed = allJustifications.filter(j => j.status === 'approved' || j.status === 'rejected');
 
-  // Get daily_record dates
+  // Get daily_record data (date + punches)
   const recordIds = [...new Set(reviewed.map(j => j.daily_record_id))];
-  const dateMap = new Map<number, string>();
+  const recordMap = new Map<number, {
+    date: string;
+    punch_1: string | null;
+    punch_2: string | null;
+    punch_3: string | null;
+    punch_4: string | null;
+    difference_minutes: number | null;
+    classification: string | null;
+  }>();
 
   for (const chunk of chunkArray(recordIds, 30)) {
     const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
       .where('id', 'in', chunk).get();
     for (const doc of rSnap.docs) {
       const data = doc.data();
-      dateMap.set(data.id, data.date);
+      recordMap.set(data.id, {
+        date: data.date,
+        punch_1: data.punch_1 || null,
+        punch_2: data.punch_2 || null,
+        punch_3: data.punch_3 || null,
+        punch_4: data.punch_4 || null,
+        difference_minutes: data.difference_minutes ?? null,
+        classification: data.classification || null,
+      });
     }
   }
 
   return reviewed.map(j => {
     const emp = empMap.get(j.employee_id);
+    const record = recordMap.get(j.daily_record_id);
     return {
       ...j,
-      date: dateMap.get(j.daily_record_id) ?? '',
+      date: record?.date ?? '',
+      punch_1: record?.punch_1 ?? null,
+      punch_2: record?.punch_2 ?? null,
+      punch_3: record?.punch_3 ?? null,
+      punch_4: record?.punch_4 ?? null,
+      difference_minutes: record?.difference_minutes ?? null,
+      classification: record?.classification ?? null,
       employee_name: emp?.name ?? '',
       leader_id: emp?.leader_id ?? 0,
       leader_name: emp?.leader_name ?? '',

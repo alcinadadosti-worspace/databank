@@ -4,6 +4,22 @@ import { useState, useEffect } from 'react';
 import { getReviewedJustifications, type JustificationFull } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/utils';
 
+function formatMinutes(minutes: number | null | undefined): string {
+  if (minutes === null || minutes === undefined) return '-';
+  const absMinutes = Math.abs(minutes);
+  const h = Math.floor(absMinutes / 60);
+  const m = absMinutes % 60;
+  const sign = minutes < 0 ? '-' : '+';
+  if (h === 0) return `${sign}${m}min`;
+  if (m === 0) return `${sign}${h}h`;
+  return `${sign}${h}h${m}min`;
+}
+
+function isSaturday(dateStr: string): boolean {
+  const date = new Date(dateStr + 'T12:00:00');
+  return date.getDay() === 6;
+}
+
 export default function AdminAjustes() {
   const [justifications, setJustifications] = useState<JustificationFull[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,42 +166,87 @@ export default function AdminAjustes() {
                           </span>
                         </div>
 
-                        {/* Justifications list - compact */}
-                        <div className="space-y-2 pl-3 border-l-2 border-border-subtle">
-                          {items.map((j) => (
-                            <div key={j.id} className="flex items-start gap-3 text-sm">
-                              {/* Status indicator */}
-                              <span className={`flex-shrink-0 mt-0.5 ${j.status === 'approved' ? 'text-green-500' : 'text-red-500'}`}>
-                                {j.status === 'approved' ? '✓' : '✗'}
-                              </span>
-
-                              {/* Content */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-text-muted font-mono">{formatDate(j.date)}</span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded ${j.type === 'late' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                    {j.type === 'late' ? 'Atraso' : 'H.Extra'}
-                                  </span>
-                                </div>
-                                <p className="text-text-secondary mt-0.5">{j.reason}</p>
-                                {j.custom_note && (
-                                  <p className="text-text-tertiary text-xs italic mt-0.5">{j.custom_note}</p>
-                                )}
-                                {j.manager_comment && (
-                                  <p className="text-xs text-accent-primary mt-1">
-                                    <span className="font-medium">Gestor:</span> {j.manager_comment}
-                                  </p>
-                                )}
-                              </div>
-
-                              {/* Review info */}
-                              <div className="flex-shrink-0 text-right text-xs text-text-muted">
-                                {j.reviewed_at && (
-                                  <span>{formatDateTime(j.reviewed_at)}</span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
+                        {/* Justifications table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-text-muted">
+                                <th className="pr-2 py-1 w-6"></th>
+                                <th className="px-2 py-1">Data</th>
+                                <th className="px-2 py-1">Entrada</th>
+                                <th className="px-2 py-1">Intervalo</th>
+                                <th className="px-2 py-1">Retorno</th>
+                                <th className="px-2 py-1">Saida</th>
+                                <th className="px-2 py-1">Resultado</th>
+                                <th className="px-2 py-1">Motivo</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-subtle">
+                              {items.map((j) => {
+                                const saturday = isSaturday(j.date);
+                                return (
+                                  <tr key={j.id} className="hover:bg-bg-hover">
+                                    {/* Status */}
+                                    <td className="pr-2 py-2">
+                                      <span className={j.status === 'approved' ? 'text-green-500' : 'text-red-500'}>
+                                        {j.status === 'approved' ? '✓' : '✗'}
+                                      </span>
+                                    </td>
+                                    {/* Date */}
+                                    <td className="px-2 py-2 font-mono text-text-secondary">
+                                      {formatDate(j.date)}
+                                      {saturday && <span className="ml-1 text-text-muted">(Sab)</span>}
+                                    </td>
+                                    {/* Entrada */}
+                                    <td className="px-2 py-2 font-mono text-text-secondary">
+                                      {j.punch_1 || '-'}
+                                    </td>
+                                    {/* Intervalo */}
+                                    <td className="px-2 py-2 font-mono text-text-secondary">
+                                      {saturday ? <span className="text-text-muted">-</span> : (j.punch_2 || '-')}
+                                    </td>
+                                    {/* Retorno */}
+                                    <td className="px-2 py-2 font-mono text-text-secondary">
+                                      {saturday ? <span className="text-text-muted">-</span> : (j.punch_3 || '-')}
+                                    </td>
+                                    {/* Saida */}
+                                    <td className="px-2 py-2 font-mono text-text-secondary">
+                                      {saturday ? (j.punch_2 || '-') : (j.punch_4 || '-')}
+                                    </td>
+                                    {/* Resultado */}
+                                    <td className="px-2 py-2">
+                                      <span className={`font-medium ${
+                                        j.classification === 'late' ? 'text-red-500' :
+                                        j.classification === 'overtime' ? 'text-blue-500' :
+                                        'text-green-500'
+                                      }`}>
+                                        {j.classification === 'late' ? 'Atraso' :
+                                         j.classification === 'overtime' ? 'H.Extra' :
+                                         'Normal'}
+                                        {j.difference_minutes !== null && j.difference_minutes !== undefined && (
+                                          <span className="ml-1 text-text-muted">
+                                            ({formatMinutes(j.difference_minutes)})
+                                          </span>
+                                        )}
+                                      </span>
+                                    </td>
+                                    {/* Motivo */}
+                                    <td className="px-2 py-2 text-text-secondary max-w-[200px]">
+                                      <div className="truncate" title={j.reason + (j.custom_note ? ` - ${j.custom_note}` : '')}>
+                                        {j.reason}
+                                        {j.custom_note && <span className="text-text-muted italic"> - {j.custom_note}</span>}
+                                      </div>
+                                      {j.manager_comment && (
+                                        <div className="text-accent-primary truncate mt-0.5" title={`Gestor: ${j.manager_comment}`}>
+                                          Gestor: {j.manager_comment}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     ))}
