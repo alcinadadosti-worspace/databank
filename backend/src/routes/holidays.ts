@@ -17,7 +17,7 @@ router.get('/', async (_req: Request, res: Response) => {
 /** GET /api/holidays/year/:year - Get holidays for a specific year */
 router.get('/year/:year', async (req: Request, res: Response) => {
   try {
-    const year = parseInt(req.params.year, 10);
+    const year = parseInt(req.params.year as string, 10);
     if (isNaN(year) || year < 2000 || year > 2100) {
       res.status(400).json({ error: 'Invalid year' });
       return;
@@ -33,7 +33,7 @@ router.get('/year/:year', async (req: Request, res: Response) => {
 /** GET /api/holidays/check/:date - Check if a date is a holiday */
 router.get('/check/:date', async (req: Request, res: Response) => {
   try {
-    const { date } = req.params;
+    const date = req.params.date as string;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
       return;
@@ -83,7 +83,7 @@ router.post('/', async (req: Request, res: Response) => {
 /** PUT /api/holidays/:id - Update a holiday */
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid holiday ID' });
       return;
@@ -125,7 +125,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 /** DELETE /api/holidays/:id - Delete a holiday */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
       res.status(400).json({ error: 'Invalid holiday ID' });
       return;
