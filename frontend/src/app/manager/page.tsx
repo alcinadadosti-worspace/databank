@@ -5,6 +5,7 @@ import RecordsTable from '@/components/RecordsTable';
 import { getLeaderRecords, getUnitRecords, type DailyRecord, type UnitData } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 import { useManagerAuth } from './ManagerAuthContext';
+import { useDebounce } from '@/lib/hooks';
 
 export default function ManagerDashboard() {
   const { manager } = useManagerAuth();
@@ -15,6 +16,11 @@ export default function ManagerDashboard() {
   const [endDate, setEndDate] = useState(todayISO());
   const [unitDate, setUnitDate] = useState(todayISO());
 
+  // Debounce dates to avoid multiple API calls when rapidly changing dates
+  const debouncedStartDate = useDebounce(startDate, 300);
+  const debouncedEndDate = useDebounce(endDate, 300);
+  const debouncedUnitDate = useDebounce(unitDate, 300);
+
   useEffect(() => {
     if (!manager) return;
 
@@ -22,8 +28,8 @@ export default function ManagerDashboard() {
       setLoading(true);
       try {
         const [recData, unitsData] = await Promise.all([
-          getLeaderRecords(manager!.id, startDate, endDate),
-          getUnitRecords(unitDate),
+          getLeaderRecords(manager!.id, debouncedStartDate, debouncedEndDate),
+          getUnitRecords(debouncedUnitDate),
         ]);
         setRecords(recData.records);
 
@@ -37,7 +43,7 @@ export default function ManagerDashboard() {
       }
     }
     loadData();
-  }, [manager, startDate, endDate, unitDate]);
+  }, [manager, debouncedStartDate, debouncedEndDate, debouncedUnitDate]);
 
   if (!manager) {
     return null;

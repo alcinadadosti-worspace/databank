@@ -331,16 +331,47 @@ export async function getDailyRecordsByEmployeeRange(
   }));
 }
 
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 export async function getDailyRecordsByLeaderRange(
-  leaderId: number, startDate: string, endDate: string
-): Promise<DailyRecordFull[]> {
+  leaderId: number, startDate: string, endDate: string,
+  options?: { limit?: number; offset?: number }
+): Promise<DailyRecordFull[] | PaginatedResult<DailyRecordFull>> {
+  const { limit, offset } = options || {};
+  const isPaginated = limit !== undefined && offset !== undefined;
+
   const cacheKey = `leader_records_${leaderId}_${startDate}_${endDate}`;
   const cached = getCached<DailyRecordFull[]>(cacheKey);
-  if (cached) return cached;
+
+  // If we have cached data and pagination is requested, slice it
+  if (cached) {
+    if (isPaginated) {
+      const sliced = cached.slice(offset, offset + limit);
+      return {
+        data: sliced,
+        total: cached.length,
+        limit,
+        offset,
+        hasMore: offset + limit < cached.length,
+      };
+    }
+    return cached;
+  }
 
   const employees = await getEmployeesByLeaderId(leaderId);
   const empIds = employees.map(e => e.id);
-  if (empIds.length === 0) return [];
+  if (empIds.length === 0) {
+    if (isPaginated) {
+      return { data: [], total: 0, limit, offset, hasMore: false };
+    }
+    return [];
+  }
 
   // Query by date range only, then filter by employee IDs in memory
   // (avoids Firestore composite index requirement for 'in' + range)
@@ -374,13 +405,46 @@ export async function getDailyRecordsByLeaderRange(
     })
     .sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
 
-  return setCache(cacheKey, result, CACHE_TTL.RECORDS);
+  // Cache the full result
+  setCache(cacheKey, result, CACHE_TTL.RECORDS);
+
+  // Return paginated or full result
+  if (isPaginated) {
+    const sliced = result.slice(offset, offset + limit);
+    return {
+      data: sliced,
+      total: result.length,
+      limit,
+      offset,
+      hasMore: offset + limit < result.length,
+    };
+  }
+  return result;
 }
 
-export async function getAllRecordsRange(startDate: string, endDate: string): Promise<DailyRecordFull[]> {
+export async function getAllRecordsRange(
+  startDate: string, endDate: string,
+  options?: { limit?: number; offset?: number }
+): Promise<DailyRecordFull[] | PaginatedResult<DailyRecordFull>> {
+  const { limit, offset } = options || {};
+  const isPaginated = limit !== undefined && offset !== undefined;
+
   const cacheKey = `records_${startDate}_${endDate}`;
   const cached = getCached<DailyRecordFull[]>(cacheKey);
-  if (cached) return cached;
+
+  if (cached) {
+    if (isPaginated) {
+      const sliced = cached.slice(offset, offset + limit);
+      return {
+        data: sliced,
+        total: cached.length,
+        limit,
+        offset,
+        hasMore: offset + limit < cached.length,
+      };
+    }
+    return cached;
+  }
 
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('date', '>=', startDate)
@@ -410,7 +474,20 @@ export async function getAllRecordsRange(startDate: string, endDate: string): Pr
     };
   }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
 
-  return setCache(cacheKey, result, CACHE_TTL.RECORDS);
+  // Cache the full result
+  setCache(cacheKey, result, CACHE_TTL.RECORDS);
+
+  if (isPaginated) {
+    const sliced = result.slice(offset, offset + limit);
+    return {
+      data: sliced,
+      total: result.length,
+      limit,
+      offset,
+      hasMore: offset + limit < result.length,
+    };
+  }
+  return result;
 }
 
 export async function upsertDailyRecord(
@@ -606,12 +683,18 @@ export async function deleteMultipleJustifications(justificationIds: number[]) {
   if (justificationIds.length === 0) return 0;
 
   let deleted = 0;
+  // OPTIMIZATION: Use batch API for deletes (up to 500 operations per batch)
   for (const chunk of chunkArray(justificationIds, 30)) {
     const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
       .where('id', 'in', chunk).get();
-    for (const doc of snap.docs) {
-      await doc.ref.delete();
-      deleted++;
+
+    if (snap.docs.length > 0) {
+      const batch = getDb().batch();
+      for (const doc of snap.docs) {
+        batch.delete(doc.ref);
+        deleted++;
+      }
+      await batch.commit();
     }
   }
   // Invalidate cache
@@ -620,17 +703,32 @@ export async function deleteMultipleJustifications(justificationIds: number[]) {
   return deleted;
 }
 
-export async function getPendingJustificationsByLeader(leaderId: number): Promise<JustificationFull[]> {
+export async function getPendingJustificationsByLeader(
+  leaderId: number,
+  options?: { limit?: number; offset?: number }
+): Promise<JustificationFull[] | PaginatedResult<JustificationFull>> {
+  const { limit, offset } = options || {};
+  const isPaginated = limit !== undefined && offset !== undefined;
+
   const employees = await getEmployeesByLeaderId(leaderId);
   const empIds = employees.map(e => e.id);
-  if (empIds.length === 0) return [];
+  if (empIds.length === 0) {
+    if (isPaginated) {
+      return { data: [], total: 0, limit, offset, hasMore: false };
+    }
+    return [];
+  }
 
-  const empIdSet = new Set(empIds);
   const empMap = new Map(employees.map(e => [e.id, e]));
 
-  // Get all justifications, filter by employee IDs in memory
-  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS).get();
-  const allJustifications = docsToArray<any>(snap).filter(j => empIdSet.has(j.employee_id));
+  // OPTIMIZATION: Query justifications by employee IDs in batches instead of full scan
+  const allJustifications: any[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('employee_id', 'in', chunk)
+      .get();
+    allJustifications.push(...docsToArray<any>(snap));
+  }
 
   // Filter for pending (no status or status = 'pending')
   const pending = allJustifications.filter(j => !j.status || j.status === 'pending');
@@ -648,7 +746,7 @@ export async function getPendingJustificationsByLeader(leaderId: number): Promis
     }
   }
 
-  return pending.map(j => {
+  const result = pending.map(j => {
     const emp = empMap.get(j.employee_id);
     return {
       ...j,
@@ -657,6 +755,18 @@ export async function getPendingJustificationsByLeader(leaderId: number): Promis
       status: j.status || 'pending',
     };
   }).sort((a: any, b: any) => b.date.localeCompare(a.date));
+
+  if (isPaginated) {
+    const sliced = result.slice(offset, offset + limit);
+    return {
+      data: sliced,
+      total: result.length,
+      limit,
+      offset,
+      hasMore: offset + limit < result.length,
+    };
+  }
+  return result;
 }
 
 export interface JustificationFull {
@@ -721,14 +831,26 @@ const UNIT_NAMES_MAP: Record<number, string> = {
   15: 'Marketing',
 };
 
-export async function getReviewedJustifications(): Promise<JustificationFull[]> {
+export async function getReviewedJustifications(
+  options?: { limit?: number; offset?: number }
+): Promise<JustificationFull[] | PaginatedResult<JustificationFull>> {
+  const { limit, offset } = options || {};
+  const isPaginated = limit !== undefined && offset !== undefined;
+
   const employees = await getAllEmployees();
   const empMap = new Map(employees.map(e => [e.id, e]));
 
-  // Get all justifications that have been reviewed (approved or rejected)
-  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS).get();
-  const allJustifications = docsToArray<any>(snap);
-  const reviewed = allJustifications.filter(j => j.status === 'approved' || j.status === 'rejected');
+  // OPTIMIZATION: Query only reviewed justifications instead of full scan
+  // Firestore 'in' query for status field
+  const [approvedSnap, rejectedSnap] = await Promise.all([
+    getDb().collection(COLLECTIONS.JUSTIFICATIONS).where('status', '==', 'approved').get(),
+    getDb().collection(COLLECTIONS.JUSTIFICATIONS).where('status', '==', 'rejected').get(),
+  ]);
+
+  const reviewed = [
+    ...docsToArray<any>(approvedSnap),
+    ...docsToArray<any>(rejectedSnap),
+  ];
 
   // Get daily_record data (date + punches)
   const recordIds = [...new Set(reviewed.map(j => j.daily_record_id))];
@@ -759,7 +881,7 @@ export async function getReviewedJustifications(): Promise<JustificationFull[]> 
     }
   }
 
-  return reviewed.map(j => {
+  const result = reviewed.map(j => {
     const emp = empMap.get(j.employee_id);
     const record = recordMap.get(j.daily_record_id);
     return {
@@ -777,6 +899,18 @@ export async function getReviewedJustifications(): Promise<JustificationFull[]> 
       unit_name: UNIT_NAMES_MAP[emp?.leader_id ?? 0] ?? 'Outro',
     };
   }).sort((a: any, b: any) => b.reviewed_at?.localeCompare(a.reviewed_at ?? '') ?? 0);
+
+  if (isPaginated) {
+    const sliced = result.slice(offset, offset + limit);
+    return {
+      data: sliced,
+      total: result.length,
+      limit,
+      offset,
+      hasMore: offset + limit < result.length,
+    };
+  }
+  return result;
 }
 
 // ─── Audit Log ─────────────────────────────────────────────────

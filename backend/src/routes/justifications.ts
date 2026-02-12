@@ -47,16 +47,38 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /api/justifications/leader/:leaderId/pending - Get pending justifications for a leader */
+/** GET /api/justifications/leader/:leaderId/pending?limit=50&offset=0 - Get pending justifications for a leader */
 router.get('/leader/:leaderId/pending', async (req: Request, res: Response) => {
   try {
     const leaderId = parseInt(req.params.leaderId as string, 10);
+    const { limit, offset } = req.query;
+
     if (isNaN(leaderId)) {
       res.status(400).json({ error: 'Invalid leader ID' });
       return;
     }
-    const justifications = await queries.getPendingJustificationsByLeader(leaderId);
-    res.json({ justifications });
+
+    // Support optional pagination
+    const paginationOptions = limit && offset !== undefined
+      ? { limit: parseInt(limit as string, 10), offset: parseInt(offset as string, 10) }
+      : undefined;
+
+    const result = await queries.getPendingJustificationsByLeader(leaderId, paginationOptions);
+
+    // Return consistent response format
+    if (paginationOptions && 'data' in result) {
+      res.json({
+        justifications: result.data,
+        pagination: {
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+          hasMore: result.hasMore,
+        },
+      });
+    } else {
+      res.json({ justifications: result });
+    }
   } catch (error) {
     console.error('[justifications] Error fetching pending:', error);
     res.status(500).json({ error: 'Failed to fetch pending justifications' });
@@ -159,11 +181,32 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /api/justifications/reviewed - Get all reviewed justifications (for admin) */
-router.get('/reviewed', async (_req: Request, res: Response) => {
+/** GET /api/justifications/reviewed?limit=100&offset=0 - Get all reviewed justifications (for admin) */
+router.get('/reviewed', async (req: Request, res: Response) => {
   try {
-    const justifications = await queries.getReviewedJustifications();
-    res.json({ justifications });
+    const { limit, offset } = req.query;
+
+    // Support optional pagination
+    const paginationOptions = limit && offset !== undefined
+      ? { limit: parseInt(limit as string, 10), offset: parseInt(offset as string, 10) }
+      : undefined;
+
+    const result = await queries.getReviewedJustifications(paginationOptions);
+
+    // Return consistent response format
+    if (paginationOptions && 'data' in result) {
+      res.json({
+        justifications: result.data,
+        pagination: {
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+          hasMore: result.hasMore,
+        },
+      });
+    } else {
+      res.json({ justifications: result });
+    }
   } catch (error) {
     console.error('[justifications] Error fetching reviewed:', error);
     res.status(500).json({ error: 'Failed to fetch reviewed justifications' });

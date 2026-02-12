@@ -14,6 +14,20 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return res.json();
 }
 
+// ─── Pagination Types ──────────────────────────────────────────
+
+export interface PaginationParams {
+  limit?: number;
+  offset?: number;
+}
+
+export interface PaginationInfo {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 // ─── Auth ──────────────────────────────────────────────────────
 
 export async function identifyUser(slackId: string) {
@@ -75,12 +89,29 @@ export async function getEmployeeRecords(employeeId: number, start: string, end:
   return apiFetch<{ records: DailyRecord[] }>(`/api/records/employee/${employeeId}?start=${start}&end=${end}`);
 }
 
-export async function getLeaderRecords(leaderId: number, start: string, end: string) {
-  return apiFetch<{ records: DailyRecord[] }>(`/api/records/leader/${leaderId}?start=${start}&end=${end}`);
+export async function getLeaderRecords(
+  leaderId: number,
+  start: string,
+  end: string,
+  pagination?: PaginationParams
+) {
+  let url = `/api/records/leader/${leaderId}?start=${start}&end=${end}`;
+  if (pagination?.limit !== undefined && pagination?.offset !== undefined) {
+    url += `&limit=${pagination.limit}&offset=${pagination.offset}`;
+  }
+  return apiFetch<{ records: DailyRecord[]; pagination?: PaginationInfo }>(url);
 }
 
-export async function getAllRecords(start: string, end: string) {
-  return apiFetch<{ records: DailyRecord[] }>(`/api/records/all?start=${start}&end=${end}`);
+export async function getAllRecords(
+  start: string,
+  end: string,
+  pagination?: PaginationParams
+) {
+  let url = `/api/records/all?start=${start}&end=${end}`;
+  if (pagination?.limit !== undefined && pagination?.offset !== undefined) {
+    url += `&limit=${pagination.limit}&offset=${pagination.offset}`;
+  }
+  return apiFetch<{ records: DailyRecord[]; pagination?: PaginationInfo }>(url);
 }
 
 // ─── Justifications ────────────────────────────────────────────
@@ -89,8 +120,15 @@ export async function getEmployeeJustifications(employeeId: number) {
   return apiFetch<{ justifications: Justification[] }>(`/api/justifications/employee/${employeeId}`);
 }
 
-export async function getPendingJustifications(leaderId: number) {
-  return apiFetch<{ justifications: JustificationFull[] }>(`/api/justifications/leader/${leaderId}/pending`);
+export async function getPendingJustifications(
+  leaderId: number,
+  pagination?: PaginationParams
+) {
+  let url = `/api/justifications/leader/${leaderId}/pending`;
+  if (pagination?.limit !== undefined && pagination?.offset !== undefined) {
+    url += `?limit=${pagination.limit}&offset=${pagination.offset}`;
+  }
+  return apiFetch<{ justifications: JustificationFull[]; pagination?: PaginationInfo }>(url);
 }
 
 export async function approveJustification(justificationId: number, reviewedBy: string, comment: string) {
@@ -107,8 +145,12 @@ export async function rejectJustification(justificationId: number, reviewedBy: s
   });
 }
 
-export async function getReviewedJustifications() {
-  return apiFetch<{ justifications: JustificationFull[] }>('/api/justifications/reviewed');
+export async function getReviewedJustifications(pagination?: PaginationParams) {
+  let url = '/api/justifications/reviewed';
+  if (pagination?.limit !== undefined && pagination?.offset !== undefined) {
+    url += `?limit=${pagination.limit}&offset=${pagination.offset}`;
+  }
+  return apiFetch<{ justifications: JustificationFull[]; pagination?: PaginationInfo }>(url);
 }
 
 export async function deleteJustification(justificationId: number) {

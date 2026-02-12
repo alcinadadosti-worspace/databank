@@ -54,11 +54,11 @@ router.get('/employee/:employeeId', async (req: Request, res: Response) => {
   }
 });
 
-/** GET /api/records/leader/:leaderId?start=YYYY-MM-DD&end=YYYY-MM-DD */
+/** GET /api/records/leader/:leaderId?start=YYYY-MM-DD&end=YYYY-MM-DD&limit=100&offset=0 */
 router.get('/leader/:leaderId', async (req: Request, res: Response) => {
   try {
     const leaderId = parseInt(req.params.leaderId as string, 10);
-    const { start, end } = req.query;
+    const { start, end, limit, offset } = req.query;
 
     if (isNaN(leaderId)) {
       res.status(400).json({ error: 'Invalid leader ID' });
@@ -69,25 +69,63 @@ router.get('/leader/:leaderId', async (req: Request, res: Response) => {
       return;
     }
 
-    const records = await queries.getDailyRecordsByLeaderRange(leaderId, start, end);
-    res.json({ records });
+    // Support optional pagination
+    const paginationOptions = limit && offset !== undefined
+      ? { limit: parseInt(limit as string, 10), offset: parseInt(offset as string, 10) }
+      : undefined;
+
+    const result = await queries.getDailyRecordsByLeaderRange(leaderId, start, end, paginationOptions);
+
+    // Return consistent response format
+    if (paginationOptions && 'data' in result) {
+      res.json({
+        records: result.data,
+        pagination: {
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+          hasMore: result.hasMore,
+        },
+      });
+    } else {
+      res.json({ records: result });
+    }
   } catch (error) {
     console.error('[records] Error fetching leader records:', error);
     res.status(500).json({ error: 'Failed to fetch records' });
   }
 });
 
-/** GET /api/records/all?start=YYYY-MM-DD&end=YYYY-MM-DD (Admin only) */
+/** GET /api/records/all?start=YYYY-MM-DD&end=YYYY-MM-DD&limit=100&offset=0 (Admin only) */
 router.get('/all', async (req: Request, res: Response) => {
   try {
-    const { start, end } = req.query;
+    const { start, end, limit, offset } = req.query;
     if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
       res.status(400).json({ error: 'start and end query parameters required (YYYY-MM-DD)' });
       return;
     }
 
-    const records = await queries.getAllRecordsRange(start, end);
-    res.json({ records });
+    // Support optional pagination
+    const paginationOptions = limit && offset !== undefined
+      ? { limit: parseInt(limit as string, 10), offset: parseInt(offset as string, 10) }
+      : undefined;
+
+    const result = await queries.getAllRecordsRange(start, end, paginationOptions);
+
+    // Return consistent response format
+    if (paginationOptions && 'data' in result) {
+      res.json({
+        records: result.data,
+        pagination: {
+          total: result.total,
+          limit: result.limit,
+          offset: result.offset,
+          hasMore: result.hasMore,
+        },
+      });
+    } else {
+      res.json({ records: result });
+    }
   } catch (error) {
     console.error('[records] Error fetching all records:', error);
     res.status(500).json({ error: 'Failed to fetch records' });
