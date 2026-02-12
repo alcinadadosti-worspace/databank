@@ -28,7 +28,9 @@ router.get('/export', async (req: Request, res: Response) => {
       return;
     }
 
-    const records = await queries.getAllRecordsRange(start, end);
+    const result = await queries.getAllRecordsRange(start, end);
+    // Without pagination options, getAllRecordsRange returns an array
+    const records = Array.isArray(result) ? result : result.data;
 
     const csvHeader = 'Data,Colaborador,Líder,Entrada,Saída Almoço,Retorno Almoço,Saída,Total(min),Diferença(min),Classificação,Justificativa\n';
     const csvRows = records.map((r: any) =>
