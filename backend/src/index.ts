@@ -13,6 +13,7 @@ import recordsRouter from './routes/records';
 import justificationsRouter from './routes/justifications';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
+import holidaysRouter from './routes/holidays';
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/leaders', leadersRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/justifications', justificationsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/holidays', holidaysRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

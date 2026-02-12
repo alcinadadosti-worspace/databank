@@ -422,3 +422,56 @@ export interface UnitData {
   present_count: number;
   total_count: number;
 }
+
+// ─── Holidays ─────────────────────────────────────────────────
+
+export interface Holiday {
+  id: number;
+  date: string;
+  name: string;
+  type: 'national' | 'state' | 'municipal' | 'company';
+  recurring: boolean;
+  created_at: string;
+}
+
+export async function getHolidays() {
+  return apiFetch<{ holidays: Holiday[] }>('/api/holidays');
+}
+
+export async function getHolidaysForYear(year: number) {
+  return apiFetch<{ holidays: Holiday[]; year: number }>(`/api/holidays/year/${year}`);
+}
+
+export async function checkHoliday(date: string) {
+  return apiFetch<{ isHoliday: boolean; holiday: Holiday | null }>(`/api/holidays/check/${date}`);
+}
+
+export async function createHoliday(data: {
+  date: string;
+  name: string;
+  type: Holiday['type'];
+  recurring: boolean;
+}) {
+  return apiFetch<{ success: boolean; id: number; message: string }>('/api/holidays', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateHoliday(id: number, data: {
+  date: string;
+  name: string;
+  type: Holiday['type'];
+  recurring: boolean;
+}) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/holidays/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteHoliday(id: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/holidays/${id}`, {
+    method: 'DELETE',
+  });
+}

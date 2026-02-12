@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
-import { isWorkingDay, isSaturday } from '../config/constants';
+import { isSaturday } from '../config/constants';
 
 // Track which reminders have been sent today (resets daily)
 // Format: "YYYY-MM-DD:employeeId:type"
@@ -35,8 +35,9 @@ export async function sendEntryReminders(): Promise<void> {
   resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
-  // Skip non-working days
-  if (!isWorkingDay(today)) {
+  // Skip non-working days (checks both static and database holidays)
+  const workingDay = await queries.isWorkingDayAsync(today);
+  if (!workingDay) {
     console.log('[reminders] Skipping entry reminder - not a working day');
     return;
   }
@@ -75,8 +76,9 @@ export async function sendExitReminders(): Promise<void> {
   resetIfNewDay();
   const today = new Date().toISOString().split('T')[0];
 
-  // Skip non-working days
-  if (!isWorkingDay(today)) {
+  // Skip non-working days (checks both static and database holidays)
+  const workingDay = await queries.isWorkingDayAsync(today);
+  if (!workingDay) {
     console.log('[reminders] Skipping exit reminder - not a working day');
     return;
   }
@@ -170,7 +172,8 @@ export async function checkLunchReturnReminders(): Promise<void> {
   const today = new Date().toISOString().split('T')[0];
 
   // Skip non-working days and Saturdays (no lunch break on Saturday)
-  if (!isWorkingDay(today) || isSaturday(today)) {
+  const workingDay = await queries.isWorkingDayAsync(today);
+  if (!workingDay || isSaturday(today)) {
     return;
   }
 

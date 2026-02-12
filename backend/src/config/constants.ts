@@ -66,7 +66,8 @@ export const MOBILE_HOLIDAYS: Record<number, string[]> = {
 };
 
 /**
- * Check if a date is a Brazilian national holiday
+ * Check if a date is a Brazilian national holiday (static list only)
+ * For dynamic holidays from database, use isHolidayAsync from queries.ts
  */
 export function isHoliday(dateStr: string): boolean {
   const date = new Date(dateStr + 'T12:00:00Z');
@@ -89,6 +90,7 @@ export function isHoliday(dateStr: string): boolean {
 
 /**
  * Check if a date is a working day (not Sunday, not holiday)
+ * Uses static holiday list only. For dynamic check, use isWorkingDayAsync
  */
 export function isWorkingDay(dateStr: string): boolean {
   const date = new Date(dateStr + 'T12:00:00Z');
@@ -99,13 +101,16 @@ export function isWorkingDay(dateStr: string): boolean {
     return false;
   }
 
-  // Check if it's a holiday
+  // Check if it's a holiday (static list)
   if (isHoliday(dateStr)) {
     return false;
   }
 
   return true;
 }
+
+// Dynamic holiday check functions will be called from queries.ts
+// which has access to the database
 
 /**
  * Check if a date is Saturday

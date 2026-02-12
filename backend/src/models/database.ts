@@ -43,6 +43,7 @@ export const COLLECTIONS = {
   AUDIT_LOG: 'audit_log',
   USERS: 'users',
   COUNTERS: 'counters',
+  HOLIDAYS: 'holidays',
 } as const;
 
 /**

@@ -1407,3 +1407,168 @@ export interface User {
   leader_id: number | null;
   created_at: string;
 }
+
+// ─── Holidays ─────────────────────────────────────────────────
+
+export interface Holiday {
+  id: number;
+  date: string; // YYYY-MM-DD
+  name: string;
+  type: 'national' | 'state' | 'municipal' | 'company'; // tipo do feriado
+  recurring: boolean; // se repete todo ano (ignora o ano na comparação)
+  created_at: string;
+}
+
+let holidaysCache: Holiday[] | null = null;
+
+export async function getAllHolidays(): Promise<Holiday[]> {
+  if (holidaysCache) return holidaysCache;
+  const snap = await getDb().collection(COLLECTIONS.HOLIDAYS).orderBy('date', 'desc').get();
+  holidaysCache = docsToArray<Holiday>(snap);
+  return holidaysCache;
+}
+
+export async function getHolidayById(id: number): Promise<Holiday | undefined> {
+  const holidays = await getAllHolidays();
+  return holidays.find(h => h.id === id);
+}
+
+export async function insertHoliday(
+  date: string,
+  name: string,
+  type: Holiday['type'],
+  recurring: boolean
+): Promise<{ id: number }> {
+  const id = await getNextId(COLLECTIONS.HOLIDAYS);
+  const data: Holiday = {
+    id,
+    date,
+    name,
+    type,
+    recurring,
+    created_at: new Date().toISOString(),
+  };
+  await getDb().collection(COLLECTIONS.HOLIDAYS).doc(String(id)).set(data);
+  holidaysCache = null; // Invalidate cache
+  return { id };
+}
+
+export async function updateHoliday(
+  id: number,
+  date: string,
+  name: string,
+  type: Holiday['type'],
+  recurring: boolean
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.HOLIDAYS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    date,
+    name,
+    type,
+    recurring,
+  });
+  holidaysCache = null; // Invalidate cache
+  return true;
+}
+
+export async function deleteHoliday(id: number): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.HOLIDAYS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.delete();
+  holidaysCache = null; // Invalidate cache
+  return true;
+}
+
+/**
+ * Check if a given date is a holiday.
+ * For recurring holidays, only compares month and day.
+ */
+export async function isHoliday(date: string): Promise<boolean> {
+  const holidays = await getAllHolidays();
+  const [year, month, day] = date.split('-');
+
+  return holidays.some(h => {
+    if (h.recurring) {
+      // For recurring holidays, only compare month and day
+      const [, hMonth, hDay] = h.date.split('-');
+      return hMonth === month && hDay === day;
+    }
+    return h.date === date;
+  });
+}
+
+/**
+ * Get holiday info for a specific date (if exists).
+ */
+export async function getHolidayForDate(date: string): Promise<Holiday | undefined> {
+  const holidays = await getAllHolidays();
+  const [year, month, day] = date.split('-');
+
+  return holidays.find(h => {
+    if (h.recurring) {
+      const [, hMonth, hDay] = h.date.split('-');
+      return hMonth === month && hDay === day;
+    }
+    return h.date === date;
+  });
+}
+
+/**
+ * Get all holidays for a given year (including recurring ones).
+ */
+export async function getHolidaysForYear(year: number): Promise<Holiday[]> {
+  const holidays = await getAllHolidays();
+
+  return holidays.filter(h => {
+    if (h.recurring) return true; // Recurring holidays apply to all years
+    return h.date.startsWith(String(year));
+  }).map(h => {
+    if (h.recurring) {
+      // Adjust recurring holiday date to the requested year
+      const [, month, day] = h.date.split('-');
+      return { ...h, date: `${year}-${month}-${day}` };
+    }
+    return h;
+  }).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Import static holiday check
+import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay } from '../config/constants';
+
+/**
+ * Check if a date is a holiday (combines static + database holidays)
+ */
+export async function isHolidayAsync(date: string): Promise<boolean> {
+  // First check static holidays (faster)
+  if (isStaticHoliday(date)) {
+    return true;
+  }
+  // Then check database holidays
+  return await isHoliday(date);
+}
+
+/**
+ * Check if a date is a working day (not Sunday, not holiday)
+ * Uses both static and database holidays
+ */
+export async function isWorkingDayAsync(dateStr: string): Promise<boolean> {
+  const dateObj = new Date(dateStr + 'T12:00:00Z');
+  const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+  // Sunday - not a working day
+  if (dayOfWeek === 0) {
+    return false;
+  }
+
+  // Check if it's a holiday (static + database)
+  if (await isHolidayAsync(dateStr)) {
+    return false;
+  }
+
+  return true;
+}
