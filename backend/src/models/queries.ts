@@ -160,6 +160,30 @@ export async function insertEmployee(
   return { lastInsertRowid: id };
 }
 
+export async function insertEmployeeFull(
+  name: string,
+  slackId: string | null,
+  leaderId: number,
+  solidesId: string | null
+) {
+  const id = await getNextId(COLLECTIONS.EMPLOYEES);
+  const data = {
+    id,
+    name,
+    slack_id: slackId,
+    leader_id: leaderId,
+    secondary_approver_id: null,
+    solides_employee_id: solidesId,
+    is_apprentice: false,
+    expected_daily_minutes: 528,
+    no_punch_required: false,
+    created_at: new Date().toISOString(),
+  };
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(id)).set(data);
+  invalidateCaches();
+  return { lastInsertRowid: id };
+}
+
 export async function updateEmployeeSolidesId(employeeId: number, solidesId: string) {
   await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
     solides_employee_id: solidesId,
@@ -221,6 +245,36 @@ export async function updateLeaderSector(leaderId: number, sector: string, paren
     parent_leader_id: parentLeaderId,
   });
   invalidateCaches();
+}
+
+export async function updateEmployeeLeader(employeeId: number, leaderId: number) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    leader_id: leaderId,
+  });
+  invalidateCaches();
+}
+
+export async function updateEmployeeSlackId(employeeId: number, slackId: string) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    slack_id: slackId,
+  });
+  invalidateCaches();
+}
+
+export async function updateEmployeeFull(
+  employeeId: number,
+  data: { name?: string; leader_id?: number; slack_id?: string; solides_employee_id?: string }
+) {
+  const updateData: Record<string, any> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.leader_id !== undefined) updateData.leader_id = data.leader_id;
+  if (data.slack_id !== undefined) updateData.slack_id = data.slack_id;
+  if (data.solides_employee_id !== undefined) updateData.solides_employee_id = data.solides_employee_id;
+
+  if (Object.keys(updateData).length > 0) {
+    await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update(updateData);
+    invalidateCaches();
+  }
 }
 
 export async function getLeadersBySector(sector: string): Promise<Leader[]> {
