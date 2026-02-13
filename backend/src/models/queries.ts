@@ -1096,8 +1096,9 @@ const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
   'maria tatiane basto cardoso',
 ];
 
-// Maria Taciane's original employees from Loja Coruripe
+// Maria Taciane's original employees from Loja Coruripe (including herself as manager)
 const LOJA_CORURIPE_EMPLOYEES = [
+  'maria taciane pereira barbosa',
   'ana paula amaral santos ismerim',
   'bruna rayane oliveira dos santos',
   'thamirys silvestrini morales',
@@ -1110,19 +1111,23 @@ const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
   'valesca meirelle bezerra vitória',
 ];
 
-// Kemilly's original employees for Loja Sao Sebastiao
+// Kemilly's original employees for Loja Sao Sebastiao (including herself as manager)
 const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
+  'kemilly rafaelly souza silva',
   'gabrielle vitoria dos santos',
   'maryanna francielly trajano da silva',
 ];
 
-// Store leaders from Canal Loja (leader_id=6) that should appear in their own stores
-// Maps employee name (lowercase) → target leader_id (their store)
+// Store leaders from Canal Loja (leader_id=6) that should appear in their own units
+// Maps employee name (lowercase) → target leader_id (their unit)
 const STORE_LEADER_MAPPING: Record<string, number> = {
   'maria taciane pereira barbosa': 11,      // → Loja Coruripe
-  'kemilly rafaelly souza silva': 10,       // → Loja Palmeira dos Indios
-  // Ana Clara and Erick Café moved to VD - no longer in store mapping
+  'kemilly rafaelly souza silva': 10,       // → Loja Sao Sebastiao
+  'ana clara de matos chagas': 9,           // → Salão de vendas Penedo
+  'erick café santos júnior': 7,            // → Supervisoras Penedo
+  'erick cafe santos junior': 7,            // → Supervisoras Penedo (without accent)
   // Leidiane Souza excluded - Alta Liderança
+  // Mariane Santos Sousa excluded - not a unit leader
 };
 
 // VD leaders from Canal VD (leader_id=1) that should appear in their own VD units
