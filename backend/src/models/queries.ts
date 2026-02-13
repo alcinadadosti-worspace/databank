@@ -177,6 +177,7 @@ export async function insertEmployeeFull(
     is_apprentice: false,
     expected_daily_minutes: 528,
     no_punch_required: false,
+    works_saturday: true,
     created_at: new Date().toISOString(),
   };
   await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(id)).set(data);
@@ -202,6 +203,13 @@ export async function setApprentice(employeeId: number, isApprentice: boolean, e
 export async function setNoPunchRequired(employeeId: number, noPunchRequired: boolean) {
   await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
     no_punch_required: noPunchRequired,
+  });
+  invalidateCaches();
+}
+
+export async function setWorksSaturday(employeeId: number, worksSaturday: boolean) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    works_saturday: worksSaturday,
   });
   invalidateCaches();
 }
@@ -1544,6 +1552,7 @@ export interface Employee {
   is_apprentice: boolean;
   expected_daily_minutes: number;
   no_punch_required: boolean;
+  works_saturday: boolean;
   created_at: string;
 }
 
@@ -1770,6 +1779,36 @@ export async function isWorkingDayAsync(dateStr: string): Promise<boolean> {
   // Sunday - not a working day
   if (dayOfWeek === 0) {
     return false;
+  }
+
+  // Check if it's a holiday (static + database)
+  if (await isHolidayAsync(dateStr)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Check if a specific employee should work on a given day.
+ * Considers: Sunday, holidays, and employee's works_saturday flag.
+ */
+export async function isWorkingDayForEmployee(dateStr: string, employee: Employee | EmployeeWithLeader): Promise<boolean> {
+  const dateObj = new Date(dateStr + 'T12:00:00Z');
+  const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday, 6 = Saturday
+
+  // Sunday - not a working day for anyone
+  if (dayOfWeek === 0) {
+    return false;
+  }
+
+  // Saturday - check if employee works on Saturday
+  if (dayOfWeek === 6) {
+    // If works_saturday is undefined, default to true (most employees work Saturday)
+    const worksSaturday = employee.works_saturday !== false;
+    if (!worksSaturday) {
+      return false;
+    }
   }
 
   // Check if it's a holiday (static + database)
