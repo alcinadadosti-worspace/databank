@@ -1062,15 +1062,13 @@ export async function getDashboardStats() {
 const UNIT_NAMES: Record<number, string> = {
   // 1: 'Canal VD' - removed, leaders moved to their respective VD units
   2: 'Logistica Penedo',
-  3: 'VD Penedo',
+  3: 'Supervisoras de base',          // Joao Antonio - VD team
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
   // 6: 'Canal Loja' - removed, leaders moved to their respective stores
   7: 'Supervisoras Penedo',           // Erick Café - VD team
-  // 8: removed - Loja Palmeira dos Indios now under Kemilly (10)
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
-  10: 'Loja Palmeira dos Indios',     // Kemilly
-  11: 'Loja Coruripe',                // Maria Taciane (original employees)
+  // 10, 11: Kemilly and Maria Taciane have multiple virtual units (handled separately)
   12: 'Loja Digital',
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
@@ -1096,6 +1094,26 @@ const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
   'camille kauane da silva nunes',
   'eliene da silva santos',
   'maria tatiane basto cardoso',
+];
+
+// Maria Taciane's original employees from Loja Coruripe
+const LOJA_CORURIPE_EMPLOYEES = [
+  'ana paula amaral santos ismerim',
+  'bruna rayane oliveira dos santos',
+  'thamirys silvestrini morales',
+];
+
+// Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
+const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
+  'yasmin abilia ferro da silva',
+  'robéria gilo da silva',
+  'valesca meirelle bezerra vitória',
+];
+
+// Kemilly's original employees for Loja Sao Sebastiao
+const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
+  'gabrielle vitoria dos santos',
+  'maryanna francielly trajano da silva',
 ];
 
 // Store leaders from Canal Loja (leader_id=6) that should appear in their own stores
@@ -1124,11 +1142,12 @@ const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Digital': 2,
   'Loja Palmeira dos Indios': 3,
   'Loja Penedo': 4,
-  'Loja Teotonio Vilela': 5,
-  'Salão de vendas Penedo': 6,
-  'Supervisoras Penedo': 7,
-  'VD Palmeira dos Indios': 8,
-  'VD Penedo': 9,
+  'Loja Sao Sebastiao': 5,
+  'Loja Teotonio Vilela': 6,
+  'Salão de vendas Penedo': 7,
+  'Supervisoras de base': 8,
+  'Supervisoras Penedo': 9,
+  'VD Palmeira dos Indios': 10,
   // All other units will get a high number and sort alphabetically
 };
 
@@ -1320,9 +1339,76 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
-  // Split Maria Taciane's employees into virtual units (Loja Penedo and Loja Teotonio Vilela)
+  // Split Kemilly's employees into virtual units (Loja Palmeira dos Indios and Loja Sao Sebastiao)
+  const kemillyLeader = leaderMap.get(10); // Kemilly ID
+  const kemillyEmps = grouped.get(10) || [];
+
+  // Loja Palmeira dos Indios (Kemilly's employees - transferred from Leidiane)
+  const lojaPalmeiraKemillyEmps = kemillyEmps.filter(emp =>
+    LOJA_PALMEIRA_KEMILLY_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaPalmeiraKemillyEmps.length > 0) {
+    const unitEmployees = lojaPalmeiraKemillyEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 10,
+      unit_name: 'Loja Palmeira dos Indios',
+      leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Loja Sao Sebastiao (Kemilly's original employees)
+  const lojaSaoSebEmps = kemillyEmps.filter(emp =>
+    LOJA_SAO_SEBASTIAO_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaSaoSebEmps.length > 0) {
+    const unitEmployees = lojaSaoSebEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 10,
+      unit_name: 'Loja Sao Sebastiao',
+      leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Split Maria Taciane's employees into virtual units (Loja Coruripe, Loja Penedo, Loja Teotonio Vilela)
   const mariaTacianeLeader = leaderMap.get(11); // Maria Taciane ID
   const mariaTacianeEmps = grouped.get(11) || [];
+
+  // Loja Coruripe (Maria Taciane's original employees)
+  const lojaCoruriEmps = mariaTacianeEmps.filter(emp =>
+    LOJA_CORURIPE_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaCoruriEmps.length > 0) {
+    const unitEmployees = lojaCoruriEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 11,
+      unit_name: 'Loja Coruripe',
+      leader_name: mariaTacianeLeader?.name ?? 'Maria Taciane Pereira Barbosa',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
 
   // Loja Penedo (employees that came from Ana Clara's old team)
   const lojaPenedoEmps = mariaTacianeEmps.filter(emp =>
