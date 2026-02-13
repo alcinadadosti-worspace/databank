@@ -874,11 +874,10 @@ const UNIT_NAMES_MAP: Record<number, string> = {
   3: 'VD Penedo',
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
-  7: 'Loja Teotonio Vilela',
-  8: 'Loja Palmeira dos Indios',
-  9: 'Loja Penedo',
-  10: 'Loja Sao Sebastiao',
-  11: 'Loja Coruripe',
+  7: 'Supervisoras Penedo',           // Erick Café - VD team
+  9: 'Salão de vendas Penedo',        // Ana Clara - VD team
+  10: 'Loja Palmeira dos Indios',     // Kemilly
+  11: 'Loja Coruripe',                // Maria Taciane
   12: 'Loja Digital',
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
@@ -1067,11 +1066,11 @@ const UNIT_NAMES: Record<number, string> = {
   4: 'VD Palmeira dos Indios',
   5: 'Dados TI',
   // 6: 'Canal Loja' - removed, leaders moved to their respective stores
-  7: 'Loja Teotonio Vilela',
-  8: 'Loja Palmeira dos Indios',
-  9: 'Loja Penedo',
-  10: 'Loja Sao Sebastiao',
-  11: 'Loja Coruripe',
+  7: 'Supervisoras Penedo',           // Erick Café - VD team
+  // 8: removed - Loja Palmeira dos Indios now under Kemilly (10)
+  9: 'Salão de vendas Penedo',        // Ana Clara - VD team
+  10: 'Loja Palmeira dos Indios',     // Kemilly
+  11: 'Loja Coruripe',                // Maria Taciane (original employees)
   12: 'Loja Digital',
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
@@ -1085,14 +1084,27 @@ const LOGISTICA_PALMEIRA_EMPLOYEES = [
   'Pedro Lucas Rocha da Fonseca',
 ].map(n => n.toLowerCase());
 
+// Maria Taciane's employees that came from Loja Penedo (virtual unit)
+const LOJA_PENEDO_EMPLOYEES = [
+  'cristielle pereira lima da silva',
+  'deise gislaine silva vitor',
+  'samyra anchieta bispo',
+];
+
+// Maria Taciane's employees that came from Loja Teotonio Vilela (virtual unit)
+const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
+  'camille kauane da silva nunes',
+  'eliene da silva santos',
+  'maria tatiane basto cardoso',
+];
+
 // Store leaders from Canal Loja (leader_id=6) that should appear in their own stores
 // Maps employee name (lowercase) → target leader_id (their store)
 const STORE_LEADER_MAPPING: Record<string, number> = {
   'maria taciane pereira barbosa': 11,      // → Loja Coruripe
-  'ana clara de matos chagas': 9,           // → Loja Penedo
-  'kemilly rafaelly souza silva': 10,       // → Loja Sao Sebastiao
-  'erick café santos júnior': 7,            // → Loja Teotonio Vilela
-  // Leidiane Souza excluded - should not appear in Loja Palmeira dos Indios
+  'kemilly rafaelly souza silva': 10,       // → Loja Palmeira dos Indios
+  // Ana Clara and Erick Café moved to VD - no longer in store mapping
+  // Leidiane Souza excluded - Alta Liderança
 };
 
 // VD leaders from Canal VD (leader_id=1) that should appear in their own VD units
@@ -1101,18 +1113,22 @@ const VD_LEADER_MAPPING: Record<string, number> = {
   'joão antonio tavares santos': 3,              // → VD Penedo (with accent)
   'jonathan henrique da conceição silva': 4,     // → VD Palmeira dos Indios
   'jonathan henrique da conceicao silva': 4,     // → VD Palmeira dos Indios (without accent)
+  'ana clara de matos chagas': 9,                // → Salão de vendas Penedo
+  'erick café santos júnior': 7,                 // → Supervisoras Penedo
+  'erick cafe santos junior': 7,                 // → Supervisoras Penedo (without accent)
 };
 
-// Custom sort order: Loja first, then VD, then others alphabetically
+// Custom sort order: Loja first, then VD/Salão, then others alphabetically
 const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Coruripe': 1,
   'Loja Digital': 2,
   'Loja Palmeira dos Indios': 3,
   'Loja Penedo': 4,
-  'Loja Sao Sebastiao': 5,
-  'Loja Teotonio Vilela': 6,
-  'VD Palmeira dos Indios': 7,
-  'VD Penedo': 8,
+  'Loja Teotonio Vilela': 5,
+  'Salão de vendas Penedo': 6,
+  'Supervisoras Penedo': 7,
+  'VD Palmeira dos Indios': 8,
+  'VD Penedo': 9,
   // All other units will get a high number and sort alphabetically
 };
 
@@ -1298,6 +1314,52 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       leader_id: 2,
       unit_name: 'Logistica Palmeira dos Indios',
       leader_name: leader?.name ?? '',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Split Maria Taciane's employees into virtual units (Loja Penedo and Loja Teotonio Vilela)
+  const mariaTacianeLeader = leaderMap.get(11); // Maria Taciane ID
+  const mariaTacianeEmps = grouped.get(11) || [];
+
+  // Loja Penedo (employees that came from Ana Clara's old team)
+  const lojaPenedoEmps = mariaTacianeEmps.filter(emp =>
+    LOJA_PENEDO_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaPenedoEmps.length > 0) {
+    const unitEmployees = lojaPenedoEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 11,
+      unit_name: 'Loja Penedo',
+      leader_name: mariaTacianeLeader?.name ?? 'Maria Taciane Pereira Barbosa',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Loja Teotonio Vilela (employees that came from Erick's old team)
+  const lojaTeotoniEmps = mariaTacianeEmps.filter(emp =>
+    LOJA_TEOTONIO_VILELA_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaTeotoniEmps.length > 0) {
+    const unitEmployees = lojaTeotoniEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 11,
+      unit_name: 'Loja Teotonio Vilela',
+      leader_name: mariaTacianeLeader?.name ?? 'Maria Taciane Pereira Barbosa',
       employees: unitEmployees,
       present_count: unitEmployees.filter(e => e.present).length,
       total_count: unitEmployees.length,
