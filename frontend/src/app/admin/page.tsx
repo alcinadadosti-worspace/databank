@@ -227,7 +227,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats Grid - Clickable */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 lg:gap-4">
         <button onClick={() => handleFilterClick('all')} className="text-left">
           <StatsCard
             label="Colaboradores"

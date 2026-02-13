@@ -20,9 +20,79 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
   }
 
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+    <>
+      {/* Mobile Cards View */}
+      <div className="lg:hidden space-y-3">
+        {records.map((record) => (
+          <div key={record.id} className="card p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-text-secondary">{formatDate(record.date)}</span>
+              <span className={classificationBadge(record.classification)}>
+                {classificationLabel(record.classification)}
+              </span>
+            </div>
+            {showEmployee && (
+              <p className="text-sm font-medium text-text-primary truncate">{record.employee_name || '—'}</p>
+            )}
+            {showLeader && (
+              <p className="text-xs text-text-secondary">Gestor: {record.leader_name || '—'}</p>
+            )}
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              <div>
+                <p className="text-text-muted">Entrada</p>
+                <p className="font-mono text-text-secondary">{record.punch_1 || '—'}</p>
+              </div>
+              <div>
+                <p className="text-text-muted">Almoco</p>
+                <p className="font-mono text-text-secondary">{record.punch_2 || '—'}</p>
+              </div>
+              <div>
+                <p className="text-text-muted">Retorno</p>
+                <p className="font-mono text-text-secondary">{record.punch_3 || '—'}</p>
+              </div>
+              <div>
+                <p className="text-text-muted">Saida</p>
+                <p className="font-mono text-text-secondary">{record.punch_4 || '—'}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-border-subtle">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-text-muted">Total: <span className="font-mono text-text-primary">{record.total_worked_minutes ? formatMinutes(record.total_worked_minutes) : '—'}</span></span>
+                {record.difference_minutes !== null && (
+                  <span className={`text-xs font-mono font-medium ${record.difference_minutes < 0 ? 'text-status-danger' : record.difference_minutes > 0 ? 'text-status-warning' : 'text-status-success'}`}>
+                    {record.difference_minutes > 0 ? '+' : ''}{formatMinutes(record.difference_minutes)}
+                  </span>
+                )}
+              </div>
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(record)}
+                  className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                  title="Editar registro"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {record.justification_reason && (
+              <div className="text-xs text-text-secondary flex items-center gap-1.5">
+                {record.justification_status === 'approved' && <span className="text-green-500" title="Aprovada">✓</span>}
+                {record.justification_status === 'rejected' && <span className="text-red-500" title="Rejeitada">✗</span>}
+                {(!record.justification_status || record.justification_status === 'pending') && <span className="text-yellow-500" title="Pendente">⏳</span>}
+                <span className="truncate">{record.justification_reason}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden lg:block card p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
               {onEdit && <th className="text-left px-2 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider w-10"></th>}
@@ -101,7 +171,8 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
             ))}
           </tbody>
         </table>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

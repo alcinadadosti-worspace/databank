@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -41,8 +42,25 @@ interface SidebarProps {
 export default function Sidebar({ role, managerName, onLogout, pendingJustifications = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
 
   const navItems = role === 'admin' ? adminNav : managerNav;
+
+  // Close sidebar when route changes (mobile)
+  useEffect(() => {
+    setIsOpen(false);
+  }, [pathname]);
+
+  // Close sidebar when clicking outside (mobile)
+  useEffect(() => {
+    function handleResize() {
+      if (window.innerWidth >= 1024) {
+        setIsOpen(false);
+      }
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   function handleLogout(e: React.MouseEvent) {
     if (onLogout) {
@@ -52,7 +70,34 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
   }
 
   return (
-    <aside className="w-56 h-screen bg-bg-secondary border-r border-border flex flex-col fixed left-0 top-0 transition-colors duration-300">
+    <>
+      {/* Mobile Header */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-bg-secondary border-b border-border flex items-center justify-between px-4 z-40">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-2 text-text-secondary hover:text-text-primary transition-colors"
+          aria-label="Menu"
+        >
+          <IconMenu />
+        </button>
+        <h1 className="text-base font-semibold text-text-primary">DataBank</h1>
+        <div className="w-10" /> {/* Spacer for centering */}
+      </header>
+
+      {/* Overlay */}
+      {isOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={cn(
+        "w-56 h-screen bg-bg-secondary border-r border-border flex flex-col fixed left-0 top-0 transition-all duration-300 z-50",
+        "lg:translate-x-0",
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
       {/* Logo */}
       <div className="px-5 py-5 border-b border-border">
         <h1 className="text-base font-semibold text-text-primary tracking-tight">
@@ -119,10 +164,19 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
         </Link>
       </div>
     </aside>
+    </>
   );
 }
 
 // ─── Minimal SVG Icons (inline, no external deps needed) ───────
+
+function IconMenu() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
 
 function IconSun() {
   return (

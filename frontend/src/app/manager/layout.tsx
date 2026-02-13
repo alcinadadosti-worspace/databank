@@ -49,7 +49,7 @@ function ManagerContent({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex">
       <Sidebar role="manager" managerName={manager.name} onLogout={handleLogout} pendingJustifications={pendingCount} />
-      <main className="ml-56 flex-1 min-h-screen p-8">
+      <main className="flex-1 min-h-screen p-4 pt-[72px] lg:pt-8 lg:ml-56 lg:p-8">
         {children}
       </main>
     </div>
