@@ -182,39 +182,39 @@ export default function ManagerDashboard() {
         </div>
         <div className="flex items-center justify-between">
           <p className="text-xs text-text-muted">{records.length} registros encontrados</p>
-          {records.length > 0 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => exportWeeklySummaryToPDF(records, {
-                  managerName: manager.name,
-                  dateRange: { start: startDate, end: endDate },
-                })}
-                className="btn-secondary text-xs flex items-center gap-1"
-                title="Exportar resumo semanal"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                </svg>
-                Resumo
-              </button>
-              <button
-                onClick={() => exportRecordsToPDF(records, {
-                  title: 'Relatorio de Ponto - Equipe',
-                  dateRange: { start: startDate, end: endDate },
-                  leaderName: manager.name,
-                })}
-                className="btn-secondary text-xs flex items-center gap-1"
-                title="Exportar todos os registros"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                </svg>
-                Completo
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportWeeklySummaryToPDF(records, {
+                managerName: manager.name,
+                dateRange: { start: startDate, end: endDate },
+              })}
+              disabled={records.length === 0}
+              className="btn-secondary text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Exportar resumo semanal"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              Resumo PDF
+            </button>
+            <button
+              onClick={() => exportRecordsToPDF(records, {
+                title: 'Relatorio de Ponto - Equipe',
+                dateRange: { start: startDate, end: endDate },
+                leaderName: manager.name,
+              })}
+              disabled={records.length === 0}
+              className="btn-secondary text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Exportar todos os registros"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              Completo PDF
+            </button>
+          </div>
         </div>
         <RecordsTable records={records} showEmployee />
       </div>
