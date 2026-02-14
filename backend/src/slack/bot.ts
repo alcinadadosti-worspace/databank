@@ -355,6 +355,251 @@ export async function sendJustificationReviewNotification(
   }
 }
 
+// ─── Send No Record Notification (to Manager) ─────────────────
+
+export async function sendNoRecordNotification(
+  employee: { id: number; name: string; leader_id: number; leader_name?: string; leader_slack_id?: string | null },
+  date: string
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employee.leader_slack_id || null);
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: ':clipboard: Decisão Necessária - Sem Registro',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employee.name}`,
+          `*Data:* ${date}`,
+          '',
+          'Este colaborador não bateu nenhum ponto nesta data.',
+          'Por favor, indique se foi *folga* ou *falta*:',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `no_record_${date}_${employee.id}`,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🏖️ Folga',
+            emoji: true,
+          },
+          style: 'primary' as const,
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            decision: 'folga',
+          }),
+          action_id: 'set_folga',
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '❌ Falta',
+            emoji: true,
+          },
+          style: 'danger' as const,
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            decision: 'falta',
+          }),
+          action_id: 'set_falta',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Decisão necessária: ${employee.name} não bateu ponto em ${date}`,
+      blocks,
+    });
+
+    await queries.logAudit('SLACK_NO_RECORD_NOTIFICATION', 'employee', employee.id,
+      `Sent to manager for ${employee.name} on ${date}`);
+
+    console.log(`[slack] No record notification sent for ${employee.name} (${date})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send no record notification:`, error);
+  }
+}
+
+// ─── Send Missing Punch Notification (to Employee) ─────────────
+
+export async function sendMissingPunchNotification(
+  employee: { id: number; name: string; slack_id?: string | null },
+  record: { id: number; punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null },
+  date: string,
+  missingPunches: string[]
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employee.slack_id || null);
+
+  const missingCount = missingPunches.length;
+  const punchesText = missingPunches.map(p => `• ${p}`).join('\n');
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: '⚠️ Ponto Incompleto',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employee.name}`,
+          `*Data:* ${date}`,
+          '',
+          `Você esqueceu de bater *${missingCount} ponto(s)*:`,
+          punchesText,
+          '',
+          'Por favor, solicite um ajuste explicando o motivo.',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `missing_punch_${date}_${employee.id}`,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📝 Solicitar Ajuste',
+            emoji: true,
+          },
+          style: 'primary' as const,
+          value: JSON.stringify({
+            daily_record_id: record.id,
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            missing_punches: missingPunches,
+            type: 'missing_punch',
+          }),
+          action_id: 'request_punch_adjustment',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Você esqueceu de bater ${missingCount} ponto(s) no dia ${date}`,
+      blocks,
+    });
+
+    await queries.logAudit('SLACK_MISSING_PUNCH_NOTIFICATION', 'daily_record', record.id,
+      `Sent to ${employee.name} for ${date}`);
+
+    console.log(`[slack] Missing punch notification sent to ${employee.name} (${date})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send missing punch notification:`, error);
+  }
+}
+
+// ─── Send Late Start Notification (to Employee) ────────────────
+
+export async function sendLateStartNotification(
+  employee: { id: number; name: string; slack_id?: string | null },
+  record: { id: number; punch_1?: string | null },
+  date: string
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employee.slack_id || null);
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: '⚠️ Entrada Após 12:00',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employee.name}`,
+          `*Data:* ${date}`,
+          `*Primeiro ponto:* ${record.punch_1}`,
+          '',
+          'Seu primeiro ponto foi registrado após 12:00.',
+          'Por favor, solicite um ajuste explicando o motivo.',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `late_start_${date}_${employee.id}`,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📝 Solicitar Ajuste',
+            emoji: true,
+          },
+          style: 'primary' as const,
+          value: JSON.stringify({
+            daily_record_id: record.id,
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            missing_punches: [],
+            type: 'late_start',
+          }),
+          action_id: 'request_punch_adjustment',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Seu primeiro ponto em ${date} foi após 12:00`,
+      blocks,
+    });
+
+    await queries.logAudit('SLACK_LATE_START_NOTIFICATION', 'daily_record', record.id,
+      `Sent to ${employee.name} for ${date}`);
+
+    console.log(`[slack] Late start notification sent to ${employee.name} (${date})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send late start notification:`, error);
+  }
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {
@@ -522,6 +767,236 @@ function registerInteractions(app: App): void {
       console.log(`[slack] Custom justification submitted for ${employee_name}`);
     } catch (error) {
       console.error('[slack] Error handling custom justification:', error);
+    }
+  });
+
+  // ─── Handle Manager Folga/Falta Decisions ───────────────────────
+
+  app.action('set_folga', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+
+      // Find the record for this employee/date
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassification(record.id, 'folga');
+        await queries.logAudit('MANAGER_SET_FOLGA', 'daily_record', record.id,
+          `${employee_name} on ${date} marked as folga`);
+      }
+
+      // Update the message to confirm
+      await client.chat.update({
+        channel: (body as any).channel?.id || (body as any).user?.id,
+        ts: (body as any).message?.ts,
+        text: `Marcado como Folga: ${employee_name} - ${date}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Decisão registrada!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Data:* ${date}`,
+                `*Status:* 🏖️ Folga`,
+              ].join('\n'),
+            },
+          },
+        ],
+      });
+
+      console.log(`[slack] Manager set folga for ${employee_name} (${date})`);
+    } catch (error) {
+      console.error('[slack] Error setting folga:', error);
+    }
+  });
+
+  app.action('set_falta', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+
+      // Find the record for this employee/date
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassification(record.id, 'falta');
+        await queries.logAudit('MANAGER_SET_FALTA', 'daily_record', record.id,
+          `${employee_name} on ${date} marked as falta`);
+      }
+
+      // Update the message to confirm
+      await client.chat.update({
+        channel: (body as any).channel?.id || (body as any).user?.id,
+        ts: (body as any).message?.ts,
+        text: `Marcado como Falta: ${employee_name} - ${date}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Decisão registrada!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Data:* ${date}`,
+                `*Status:* ❌ Falta`,
+              ].join('\n'),
+            },
+          },
+        ],
+      });
+
+      console.log(`[slack] Manager set falta for ${employee_name} (${date})`);
+    } catch (error) {
+      console.error('[slack] Error setting falta:', error);
+    }
+  });
+
+  // ─── Handle Punch Adjustment Request ────────────────────────────
+
+  app.action('request_punch_adjustment', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { daily_record_id, employee_id, employee_name, date, missing_punches, type } = payload;
+
+      const messageTs = (body as any).message?.ts;
+      const channelId = (body as any).channel?.id || (body as any).user?.id;
+
+      const missingText = missing_punches.length > 0
+        ? `*Pontos faltando:* ${missing_punches.join(', ')}`
+        : '*Tipo:* Entrada após 12:00';
+
+      await client.views.open({
+        trigger_id: (body as any).trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'punch_adjustment_modal',
+          private_metadata: JSON.stringify({
+            daily_record_id,
+            employee_id,
+            employee_name,
+            date,
+            missing_punches,
+            type,
+            message_ts: messageTs,
+            channel_id: channelId,
+          }),
+          title: {
+            type: 'plain_text',
+            text: 'Solicitar Ajuste',
+          },
+          submit: {
+            type: 'plain_text',
+            text: 'Enviar',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Cancelar',
+          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `*Colaborador:* ${employee_name}`,
+                  `*Data:* ${date}`,
+                  missingText,
+                ].join('\n'),
+              },
+            },
+            {
+              type: 'input',
+              block_id: 'adjustment_reason_block',
+              element: {
+                type: 'plain_text_input',
+                action_id: 'adjustment_reason_input',
+                multiline: true,
+                placeholder: {
+                  type: 'plain_text',
+                  text: 'Ex: Estava em reunião externa, Problemas com a máquina de ponto...',
+                },
+                max_length: 500,
+              },
+              label: {
+                type: 'plain_text',
+                text: 'Por que você esqueceu de bater o ponto?',
+              },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error('[slack] Error opening punch adjustment modal:', error);
+    }
+  });
+
+  // Handle punch adjustment modal submission
+  app.view('punch_adjustment_modal', async ({ ack, body, view, client }) => {
+    await ack();
+
+    try {
+      const metadata = JSON.parse(view.private_metadata);
+      const { daily_record_id, employee_id, employee_name, date, missing_punches, type, message_ts, channel_id } = metadata;
+
+      const reason = view.state.values.adjustment_reason_block.adjustment_reason_input.value || '';
+
+      if (reason.trim()) {
+        // Create punch adjustment request
+        await queries.insertPunchAdjustmentRequest({
+          daily_record_id,
+          employee_id,
+          type,
+          missing_punches,
+          reason: reason.trim(),
+        });
+
+        await queries.logAudit('PUNCH_ADJUSTMENT_REQUESTED', 'daily_record', daily_record_id,
+          `${employee_name}: ${type} - ${reason}`);
+      }
+
+      // Update the original message
+      if (message_ts && channel_id) {
+        const missingText = missing_punches.length > 0
+          ? `*Pontos faltando:* ${missing_punches.join(', ')}`
+          : '*Tipo:* Entrada após 12:00';
+
+        await client.chat.update({
+          channel: channel_id,
+          ts: message_ts,
+          text: `Ajuste solicitado para ${date}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `:white_check_mark: *Solicitação de ajuste enviada!*`,
+                  '',
+                  `*Colaborador:* ${employee_name}`,
+                  `*Data:* ${date}`,
+                  missingText,
+                  `*Motivo:* ${reason}`,
+                  '',
+                  '_Aguarde a revisão do seu gestor._',
+                ].join('\n'),
+              },
+            },
+          ],
+        });
+      }
+
+      console.log(`[slack] Punch adjustment requested by ${employee_name} for ${date}`);
+    } catch (error) {
+      console.error('[slack] Error handling punch adjustment modal:', error);
     }
   });
 }

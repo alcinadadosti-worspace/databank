@@ -11,6 +11,7 @@ import employeesRouter from './routes/employees';
 import leadersRouter from './routes/leaders';
 import recordsRouter from './routes/records';
 import justificationsRouter from './routes/justifications';
+import punchAdjustmentsRouter from './routes/punch-adjustments';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import holidaysRouter from './routes/holidays';
@@ -30,6 +31,7 @@ app.use('/api/employees', employeesRouter);
 app.use('/api/leaders', leadersRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/justifications', justificationsRouter);
+app.use('/api/punch-adjustments', punchAdjustmentsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/holidays', holidaysRouter);
 

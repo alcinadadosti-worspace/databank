@@ -1818,3 +1818,213 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
 
   return true;
 }
+
+// ─── Punch Adjustments ────────────────────────────────────────
+
+export interface PunchAdjustmentRequest {
+  id: number;
+  daily_record_id: number;
+  employee_id: number;
+  type: 'missing_punch' | 'late_start';
+  missing_punches: string[]; // ['entrada', 'saída', 'intervalo', 'retorno']
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  corrected_punch_1?: string | null;
+  corrected_punch_2?: string | null;
+  corrected_punch_3?: string | null;
+  corrected_punch_4?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  manager_comment?: string | null;
+  submitted_at: string;
+  notification_sent?: boolean;
+}
+
+export interface PunchAdjustmentFull extends PunchAdjustmentRequest {
+  employee_name: string;
+  date: string;
+  current_punch_1: string | null;
+  current_punch_2: string | null;
+  current_punch_3: string | null;
+  current_punch_4: string | null;
+}
+
+export async function insertPunchAdjustmentRequest(data: {
+  daily_record_id: number;
+  employee_id: number;
+  type: 'missing_punch' | 'late_start';
+  missing_punches: string[];
+  reason: string;
+}): Promise<{ id: number }> {
+  const id = await getNextId(COLLECTIONS.PUNCH_ADJUSTMENTS);
+  const record: PunchAdjustmentRequest = {
+    id,
+    daily_record_id: data.daily_record_id,
+    employee_id: data.employee_id,
+    type: data.type,
+    missing_punches: data.missing_punches,
+    reason: data.reason,
+    status: 'pending',
+    submitted_at: new Date().toISOString(),
+    notification_sent: false,
+  };
+  await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS).doc(String(id)).set(record);
+  invalidateCache('punch_adjustments');
+  return { id };
+}
+
+export async function getPendingPunchAdjustments(leaderId: number): Promise<PunchAdjustmentFull[]> {
+  const employees = await getEmployeesByLeaderId(leaderId);
+  const empIds = employees.map(e => e.id);
+  if (empIds.length === 0) return [];
+
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  // Get all pending adjustments for these employees
+  const allAdjustments: PunchAdjustmentRequest[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+      .where('employee_id', 'in', chunk)
+      .where('status', '==', 'pending')
+      .get();
+    allAdjustments.push(...docsToArray<PunchAdjustmentRequest>(snap));
+  }
+
+  // Get daily records for these adjustments
+  const recordIds = [...new Set(allAdjustments.map(a => a.daily_record_id))];
+  const recordMap = new Map<number, DailyRecord>();
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', 'in', chunk).get();
+    for (const doc of snap.docs) {
+      const data = doc.data() as DailyRecord;
+      recordMap.set(data.id, data);
+    }
+  }
+
+  return allAdjustments.map(a => {
+    const emp = empMap.get(a.employee_id);
+    const record = recordMap.get(a.daily_record_id);
+    return {
+      ...a,
+      employee_name: emp?.name ?? '',
+      date: record?.date ?? '',
+      current_punch_1: record?.punch_1 ?? null,
+      current_punch_2: record?.punch_2 ?? null,
+      current_punch_3: record?.punch_3 ?? null,
+      current_punch_4: record?.punch_4 ?? null,
+    };
+  }).sort((a, b) => b.submitted_at.localeCompare(a.submitted_at));
+}
+
+export async function approvePunchAdjustment(
+  adjustmentId: number,
+  reviewedBy: string,
+  correctedTimes: {
+    punch_1?: string | null;
+    punch_2?: string | null;
+    punch_3?: string | null;
+    punch_4?: string | null;
+  },
+  managerComment?: string
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('id', '==', adjustmentId).limit(1).get();
+  if (snap.empty) return false;
+
+  const adjustment = snap.docs[0].data() as PunchAdjustmentRequest;
+
+  // Update the adjustment
+  await snap.docs[0].ref.update({
+    status: 'approved',
+    reviewed_by: reviewedBy,
+    reviewed_at: new Date().toISOString(),
+    manager_comment: managerComment || null,
+    corrected_punch_1: correctedTimes.punch_1 ?? null,
+    corrected_punch_2: correctedTimes.punch_2 ?? null,
+    corrected_punch_3: correctedTimes.punch_3 ?? null,
+    corrected_punch_4: correctedTimes.punch_4 ?? null,
+  });
+
+  // Update the daily record with corrected times
+  const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', adjustment.daily_record_id).limit(1).get();
+  if (!recordSnap.empty) {
+    const updateData: Record<string, any> = {};
+    if (correctedTimes.punch_1 !== undefined) updateData.punch_1 = correctedTimes.punch_1;
+    if (correctedTimes.punch_2 !== undefined) updateData.punch_2 = correctedTimes.punch_2;
+    if (correctedTimes.punch_3 !== undefined) updateData.punch_3 = correctedTimes.punch_3;
+    if (correctedTimes.punch_4 !== undefined) updateData.punch_4 = correctedTimes.punch_4;
+    updateData.updated_at = new Date().toISOString();
+    // After approval, recalculate classification (will be done by caller)
+    await recordSnap.docs[0].ref.update(updateData);
+  }
+
+  invalidateCache('punch_adjustments');
+  invalidateCache('records');
+  return true;
+}
+
+export async function rejectPunchAdjustment(
+  adjustmentId: number,
+  reviewedBy: string,
+  managerComment?: string
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('id', '==', adjustmentId).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    status: 'rejected',
+    reviewed_by: reviewedBy,
+    reviewed_at: new Date().toISOString(),
+    manager_comment: managerComment || null,
+  });
+
+  invalidateCache('punch_adjustments');
+  return true;
+}
+
+export async function getPunchAdjustmentById(id: number): Promise<PunchAdjustmentRequest | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as PunchAdjustmentRequest;
+}
+
+export async function updateRecordClassification(recordId: number, classification: string): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    classification,
+    updated_at: new Date().toISOString(),
+  });
+
+  invalidateCache('records');
+  return true;
+}
+
+export async function markPunchAdjustmentNotificationSent(recordId: number): Promise<void> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('daily_record_id', '==', recordId).get();
+  for (const doc of snap.docs) {
+    await doc.ref.update({ notification_sent: true });
+  }
+}
+
+export async function getPunchAdjustmentByRecordId(recordId: number): Promise<PunchAdjustmentRequest | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('daily_record_id', '==', recordId).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as PunchAdjustmentRequest;
+}
+
+export async function deletePunchAdjustment(adjustmentId: number): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('id', '==', adjustmentId).limit(1).get();
+  if (snap.empty) return false;
+  await snap.docs[0].ref.delete();
+  return true;
+}

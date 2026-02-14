@@ -16,6 +16,7 @@ const managerNav: NavItem[] = [
   { label: 'Visao Geral', href: '/manager', icon: <IconUsers /> },
   { label: 'Equipe', href: '/manager/team', icon: <IconList /> },
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
+  { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
 ];
 
@@ -37,9 +38,10 @@ interface SidebarProps {
   managerName?: string;
   onLogout?: () => void;
   pendingJustifications?: number;
+  pendingAdjustments?: number;
 }
 
-export default function Sidebar({ role, managerName, onLogout, pendingJustifications = 0 }: SidebarProps) {
+export default function Sidebar({ role, managerName, onLogout, pendingJustifications = 0, pendingAdjustments = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
@@ -109,7 +111,10 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          const showBadge = role === 'manager' && item.href === '/manager/justifications' && pendingJustifications > 0;
+          const showJustificationBadge = role === 'manager' && item.href === '/manager/justifications' && pendingJustifications > 0;
+          const showAdjustmentBadge = role === 'manager' && item.href === '/manager/ajustes' && pendingAdjustments > 0;
+          const badgeCount = showJustificationBadge ? pendingJustifications : showAdjustmentBadge ? pendingAdjustments : 0;
+          const showBadge = showJustificationBadge || showAdjustmentBadge;
           return (
             <Link
               key={item.href}
@@ -123,7 +128,7 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
               {item.label}
               {showBadge && (
                 <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-2xs font-bold rounded-full px-1">
-                  {pendingJustifications > 99 ? '99+' : pendingJustifications}
+                  {badgeCount > 99 ? '99+' : badgeCount}
                 </span>
               )}
             </Link>

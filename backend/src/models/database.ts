@@ -40,6 +40,7 @@ export const COLLECTIONS = {
   EMPLOYEES: 'employees',
   DAILY_RECORDS: 'daily_records',
   JUSTIFICATIONS: 'justifications',
+  PUNCH_ADJUSTMENTS: 'punch_adjustments',
   AUDIT_LOG: 'audit_log',
   USERS: 'users',
   COUNTERS: 'counters',

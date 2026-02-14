@@ -475,3 +475,64 @@ export async function deleteHoliday(id: number) {
     method: 'DELETE',
   });
 }
+
+// ─── Punch Adjustments ─────────────────────────────────────────
+
+export interface PunchAdjustmentFull {
+  id: number;
+  daily_record_id: number;
+  employee_id: number;
+  type: 'missing_punch' | 'late_start';
+  missing_punches: string[];
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  corrected_punch_1?: string | null;
+  corrected_punch_2?: string | null;
+  corrected_punch_3?: string | null;
+  corrected_punch_4?: string | null;
+  reviewed_by?: string;
+  reviewed_at?: string;
+  manager_comment?: string;
+  submitted_at: string;
+  // Joined fields
+  employee_name: string;
+  date: string;
+  current_punch_1: string | null;
+  current_punch_2: string | null;
+  current_punch_3: string | null;
+  current_punch_4: string | null;
+}
+
+export async function getPendingPunchAdjustments(leaderId: number) {
+  return apiFetch<{ adjustments: PunchAdjustmentFull[] }>(`/api/punch-adjustments/leader/${leaderId}/pending`);
+}
+
+export async function approvePunchAdjustment(
+  adjustmentId: number,
+  reviewedBy: string,
+  comment: string,
+  correctedTimes: {
+    corrected_punch_1?: string | null;
+    corrected_punch_2?: string | null;
+    corrected_punch_3?: string | null;
+    corrected_punch_4?: string | null;
+  }
+) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/punch-adjustments/${adjustmentId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewedBy, comment, ...correctedTimes }),
+  });
+}
+
+export async function rejectPunchAdjustment(adjustmentId: number, reviewedBy: string, comment: string) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/punch-adjustments/${adjustmentId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reviewedBy, comment }),
+  });
+}
+
+export async function deletePunchAdjustment(adjustmentId: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/punch-adjustments/${adjustmentId}`, {
+    method: 'DELETE',
+  });
+}
