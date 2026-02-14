@@ -438,6 +438,29 @@ router.post('/test-slack', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/run-daily-check - Run the end-of-day check manually */
+router.post('/run-daily-check', async (req: Request, res: Response) => {
+  try {
+    const { checkPreviousDayRecords, sendDailyManagerAlerts } = await import('../jobs/manager-daily-alert');
+    const { date } = req.body;
+
+    if (date) {
+      // Run for specific date (not implemented yet, just run for yesterday)
+      console.log(`[admin] Running daily check for: ${date}`);
+    }
+
+    await sendDailyManagerAlerts();
+
+    res.json({
+      success: true,
+      message: 'Verificacao de fim de dia executada! Registros do dia anterior foram processados.'
+    });
+  } catch (error) {
+    console.error('[admin] Error running daily check:', error);
+    res.status(500).json({ error: 'Falha ao executar verificacao: ' + (error as Error).message });
+  }
+});
+
 /** POST /api/admin/test-reminder - Test punch reminder */
 router.post('/test-reminder', async (req: Request, res: Response) => {
   try {
