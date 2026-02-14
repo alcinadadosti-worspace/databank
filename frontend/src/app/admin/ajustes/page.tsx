@@ -160,6 +160,7 @@ export default function AdminAjustes() {
       const saturday = isSaturday(j.date);
       return {
         'Gestor': j.leader_name || 'Sem Gestor',
+        'ID': j.employee_id,
         'Colaborador': j.employee_name,
         'Data': formatDate(j.date),
         'Dia': saturday ? 'Sabado' : 'Semana',
@@ -193,6 +194,7 @@ export default function AdminAjustes() {
     // Set column widths
     ws['!cols'] = [
       { wch: 20 },  // Gestor
+      { wch: 8 },   // ID
       { wch: 25 },  // Colaborador
       { wch: 12 },  // Data
       { wch: 8 },   // Dia

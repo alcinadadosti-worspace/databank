@@ -26,6 +26,7 @@ const adminNav: NavItem[] = [
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },
+  { label: 'Relatorios', href: '/admin/relatorios', icon: <IconFile /> },
   { label: 'Feriados', href: '/admin/holidays', icon: <IconCalendar /> },
   { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },
   { label: 'Sincronizar', href: '/admin/sync', icon: <IconRefresh /> },

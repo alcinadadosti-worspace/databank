@@ -540,3 +540,43 @@ export async function deletePunchAdjustment(adjustmentId: number) {
 export async function getReviewedPunchAdjustments() {
   return apiFetch<{ adjustments: PunchAdjustmentFull[] }>('/api/punch-adjustments/reviewed');
 }
+
+// ─── Reports ─────────────────────────────────────────────────────
+
+export interface Report {
+  id: number;
+  title: string;
+  description?: string;
+  filename: string;
+  fileUrl: string;
+  fileSize: number;
+  weekStart?: string;
+  weekEnd?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export async function getReports() {
+  return apiFetch<{ reports: Report[] }>('/api/reports');
+}
+
+export async function uploadReport(formData: FormData) {
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const res = await fetch(`${API_BASE}/api/reports`, {
+    method: 'POST',
+    body: formData, // Don't set Content-Type header - browser will set it with boundary
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+
+  return res.json() as Promise<{ success: boolean; report: Report }>;
+}
+
+export async function deleteReport(reportId: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/reports/${reportId}`, {
+    method: 'DELETE',
+  });
+}
