@@ -1,10 +1,12 @@
 import * as queries from '../models/queries';
-import { sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification } from '../slack/bot';
+import { sendManagerWeeklySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification } from '../slack/bot';
 import { WORK_SCHEDULE } from '../config/constants';
 
 /**
  * Check previous day's records for issues and send appropriate notifications.
- * This runs at 08:00 along with manager daily alerts.
+ * This runs at 08:00 Mon-Sat.
+ * - Sends notifications to EMPLOYEES about missing punches, late starts
+ * - Sends notifications to MANAGERS only for "no record" decisions (folga/falta/aparelho)
  */
 export async function checkPreviousDayRecords(): Promise<void> {
   const yesterday = new Date();
@@ -97,32 +99,72 @@ function getMissingPunches(record: queries.DailyRecord, isSaturday: boolean): st
 }
 
 /**
- * Send daily summary to managers every day at 08:00.
- * Always refers to the PREVIOUS day.
- * Skips if previous day was a holiday or Sunday.
+ * Run daily checks at 08:00 Mon-Sat.
+ * Only sends notifications to employees (missing punches, late starts).
+ * Manager "no record" decisions are still sent daily.
  */
-export async function sendDailyManagerAlerts(): Promise<void> {
+export async function runDailyChecks(): Promise<void> {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const date = yesterday.toISOString().split('T')[0];
 
-  // Skip if yesterday was not a working day (Sunday or holiday - checks database)
+  // Skip if yesterday was not a working day (Sunday or holiday)
   const workingDay = await queries.isWorkingDayAsync(date);
   if (!workingDay) {
-    console.log(`[daily-alert] Skipping ${date} - not a working day`);
+    console.log(`[daily-check] Skipping ${date} - not a working day`);
     return;
   }
 
-  // First run the end-of-day checks
+  // Run the end-of-day checks (sends notifications to employees and managers for no-record)
   await checkPreviousDayRecords();
+  console.log(`[daily-check] Completed for ${date}`);
+}
 
-  console.log(`[daily-alert] Sending manager alerts for ${date}`);
+/**
+ * Send weekly summary to managers every Friday at 08:00.
+ * Includes all records from Mon-Thu of current week + Fri-Sat of previous week.
+ */
+export async function sendWeeklyManagerAlerts(): Promise<void> {
+  console.log('[weekly-alert] Starting weekly manager summary');
 
   try {
-    const records = await queries.getDailyRecordsByDate(date);
+    // Calculate date range: last 7 days (Mon-Sat of the past week ending today)
+    const today = new Date();
+    const dates: string[] = [];
 
-    if (!records || records.length === 0) {
-      console.log('[daily-alert] No records for yesterday');
+    // Go back 7 days to cover the full work week
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayOfWeek = d.getDay();
+
+      // Skip Sundays (0)
+      if (dayOfWeek !== 0) {
+        const isWorkingDay = await queries.isWorkingDayAsync(dateStr);
+        if (isWorkingDay) {
+          dates.push(dateStr);
+        }
+      }
+    }
+
+    if (dates.length === 0) {
+      console.log('[weekly-alert] No working days in the past week');
+      return;
+    }
+
+    dates.sort(); // Sort chronologically
+    console.log(`[weekly-alert] Collecting records for dates: ${dates.join(', ')}`);
+
+    // Collect all records for the week
+    const allRecords: queries.DailyRecord[] = [];
+    for (const date of dates) {
+      const records = await queries.getDailyRecordsByDate(date);
+      allRecords.push(...records);
+    }
+
+    if (allRecords.length === 0) {
+      console.log('[weekly-alert] No records for the past week');
       return;
     }
 
@@ -130,10 +172,10 @@ export async function sendDailyManagerAlerts(): Promise<void> {
     const byLeader = new Map<number, {
       leaderName: string;
       leaderSlackId: string | null;
-      records: typeof records;
+      records: typeof allRecords;
     }>();
 
-    for (const record of records) {
+    for (const record of allRecords) {
       const leaderId = (record as any).leader_id;
       if (!byLeader.has(leaderId)) {
         byLeader.set(leaderId, {
@@ -145,14 +187,16 @@ export async function sendDailyManagerAlerts(): Promise<void> {
       byLeader.get(leaderId)!.records.push(record);
     }
 
-    // Send summary to each leader
+    // Send weekly summary to each leader
     for (const [_leaderId, data] of byLeader) {
-      await sendManagerDailySummary(
+      await sendManagerWeeklySummary(
         data.leaderSlackId,
         data.leaderName,
-        date,
+        dates[0], // start date
+        dates[dates.length - 1], // end date
         data.records.map(r => ({
           employee_name: (r as any).employee_name,
+          date: r.date,
           classification: r.classification || 'normal',
           difference_minutes: r.difference_minutes || 0,
           justification_reason: (r as any).justification_reason,
@@ -160,11 +204,13 @@ export async function sendDailyManagerAlerts(): Promise<void> {
       );
     }
 
-    await queries.markManagerAlertSent(date);
-    await queries.logAudit('MANAGER_ALERTS_SENT', 'system', undefined, `Alerts for ${date}`);
-    console.log(`[daily-alert] Completed for ${date}`);
+    await queries.logAudit('MANAGER_WEEKLY_ALERTS_SENT', 'system', undefined, `Week ending ${dates[dates.length - 1]}`);
+    console.log(`[weekly-alert] Completed for week ending ${dates[dates.length - 1]}`);
   } catch (error) {
-    console.error('[daily-alert] Error:', error);
-    await queries.logAudit('MANAGER_ALERT_ERROR', 'system', undefined, String(error));
+    console.error('[weekly-alert] Error:', error);
+    await queries.logAudit('MANAGER_WEEKLY_ALERT_ERROR', 'system', undefined, String(error));
   }
 }
+
+// Keep backwards compatibility alias
+export const sendDailyManagerAlerts = runDailyChecks;

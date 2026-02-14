@@ -229,6 +229,129 @@ export async function sendManagerDailySummary(
   }
 }
 
+// ─── Send Weekly Manager Summary (Friday) ─────────────────────────
+
+export async function sendManagerWeeklySummary(
+  leaderSlackId: string | null,
+  leaderName: string,
+  startDate: string,
+  endDate: string,
+  records: Array<{
+    employee_name: string;
+    date: string;
+    classification: string;
+    difference_minutes: number;
+    justification_reason?: string | null;
+  }>
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(leaderSlackId);
+
+  // Filter only records with alerts (late/overtime with >= 11 min difference)
+  const alertRecords = records.filter(
+    r => r.classification !== 'normal' && Math.abs(r.difference_minutes) >= 11
+  );
+
+  if (alertRecords.length === 0) {
+    console.log(`[slack] No alerts for ${leaderName} this week, skipping`);
+    return;
+  }
+
+  // Group by employee
+  const byEmployee = new Map<string, typeof alertRecords>();
+  for (const r of alertRecords) {
+    if (!byEmployee.has(r.employee_name)) {
+      byEmployee.set(r.employee_name, []);
+    }
+    byEmployee.get(r.employee_name)!.push(r);
+  }
+
+  // Calculate totals per employee
+  const employeeSummaries: string[] = [];
+  for (const [empName, empRecords] of byEmployee) {
+    const lateCount = empRecords.filter(r => r.classification === 'late').length;
+    const overtimeCount = empRecords.filter(r => r.classification === 'overtime').length;
+    const totalLateMin = empRecords
+      .filter(r => r.classification === 'late')
+      .reduce((sum, r) => sum + Math.abs(r.difference_minutes), 0);
+    const totalOvertimeMin = empRecords
+      .filter(r => r.classification === 'overtime')
+      .reduce((sum, r) => sum + Math.abs(r.difference_minutes), 0);
+
+    const parts: string[] = [];
+    if (lateCount > 0) {
+      parts.push(`:red_circle: ${lateCount} atraso(s) = ${formatMinutes(totalLateMin)}`);
+    }
+    if (overtimeCount > 0) {
+      parts.push(`:large_blue_circle: ${overtimeCount} hora(s) extra = ${formatMinutes(totalOvertimeMin)}`);
+    }
+
+    employeeSummaries.push(`*${empName}*\n  ${parts.join('\n  ')}`);
+  }
+
+  const panelUrl = `${env.FRONTEND_URL}/manager/justifications`;
+  const dateRange = `${formatDateBR(startDate)} a ${formatDateBR(endDate)}`;
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: `:calendar: Resumo Semanal — ${dateRange}`,
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Gestor:* ${leaderName}`,
+          `*Colaboradores com alertas:* ${byEmployee.size}`,
+          `*Total de ocorrencias:* ${alertRecords.length}`,
+          '',
+          '---',
+          '',
+          ...employeeSummaries,
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📋 Revisar Justificativas',
+            emoji: true,
+          },
+          url: panelUrl,
+          action_id: 'open_manager_panel',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Resumo semanal de banco de horas — ${dateRange}`,
+      blocks,
+    });
+
+    console.log(`[slack] Weekly summary sent to ${leaderName} for ${dateRange}`);
+  } catch (error) {
+    console.error(`[slack] Failed to send weekly summary:`, error);
+  }
+}
+
+function formatDateBR(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}`;
+}
+
 // ─── Send Punch Reminders ──────────────────────────────────────
 
 export type ReminderType = 'entry' | 'lunch_return' | 'exit';
@@ -422,6 +545,21 @@ export async function sendNoRecordNotification(
             decision: 'falta',
           }),
           action_id: 'set_falta',
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🔧 Aparelho Danificado',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            decision: 'aparelho_danificado',
+          }),
+          action_id: 'set_aparelho_danificado',
         },
       ],
     },
@@ -855,6 +993,49 @@ function registerInteractions(app: App): void {
       console.log(`[slack] Manager set falta for ${employee_name} (${date})`);
     } catch (error) {
       console.error('[slack] Error setting falta:', error);
+    }
+  });
+
+  app.action('set_aparelho_danificado', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+
+      // Find the record for this employee/date
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassification(record.id, 'aparelho_danificado');
+        await queries.logAudit('MANAGER_SET_APARELHO_DANIFICADO', 'daily_record', record.id,
+          `${employee_name} on ${date} marked as aparelho danificado`);
+      }
+
+      // Update the message to confirm
+      await client.chat.update({
+        channel: (body as any).channel?.id || (body as any).user?.id,
+        ts: (body as any).message?.ts,
+        text: `Marcado como Aparelho Danificado: ${employee_name} - ${date}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Decisão registrada!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Data:* ${date}`,
+                `*Status:* 🔧 Aparelho Danificado`,
+              ].join('\n'),
+            },
+          },
+        ],
+      });
+
+      console.log(`[slack] Manager set aparelho_danificado for ${employee_name} (${date})`);
+    } catch (error) {
+      console.error('[slack] Error setting aparelho_danificado:', error);
     }
   });
 

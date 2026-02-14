@@ -1,6 +1,6 @@
 import { CronJob } from 'cron';
 import { syncPunches } from './sync-punches';
-import { sendDailyManagerAlerts } from './manager-daily-alert';
+import { runDailyChecks, sendWeeklyManagerAlerts } from './manager-daily-alert';
 import { sendEntryReminders, sendExitReminders, sendSaturdayExitReminders, checkLunchReturnReminders } from './punch-reminders';
 
 const jobs: CronJob[] = [];
@@ -22,21 +22,37 @@ export function startScheduler(): void {
   jobs.push(syncJob);
   console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-20:00)');
 
-  // Daily manager alert at 08:00, Mon-Sat
-  const dailyAlertJob = CronJob.from({
+  // Daily checks at 08:00, Mon-Sat (employee notifications only)
+  const dailyCheckJob = CronJob.from({
     cronTime: '0 8 * * 1-6',
     onTick: async () => {
       try {
-        await sendDailyManagerAlerts();
+        await runDailyChecks();
       } catch (error) {
-        console.error('[scheduler] Daily alert error:', error);
+        console.error('[scheduler] Daily check error:', error);
       }
     },
     start: true,
     timeZone: 'America/Sao_Paulo',
   });
-  jobs.push(dailyAlertJob);
-  console.log('[scheduler] Manager daily alert: 08:00 (Mon-Sat)');
+  jobs.push(dailyCheckJob);
+  console.log('[scheduler] Daily employee check: 08:00 (Mon-Sat)');
+
+  // Weekly manager summary at 08:00 on Friday
+  const weeklyManagerJob = CronJob.from({
+    cronTime: '0 8 * * 5',
+    onTick: async () => {
+      try {
+        await sendWeeklyManagerAlerts();
+      } catch (error) {
+        console.error('[scheduler] Weekly manager alert error:', error);
+      }
+    },
+    start: true,
+    timeZone: 'America/Sao_Paulo',
+  });
+  jobs.push(weeklyManagerJob);
+  console.log('[scheduler] Weekly manager summary: 08:00 (Friday)');
 
   // ─── Punch Reminders ─────────────────────────────────────────────
 
