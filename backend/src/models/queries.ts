@@ -2030,12 +2030,21 @@ export async function deletePunchAdjustment(adjustmentId: number): Promise<boole
 }
 
 export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull[]> {
-  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
-    .where('status', 'in', ['approved', 'rejected'])
-    .orderBy('reviewed_at', 'desc')
-    .get();
+  // Query approved and rejected separately to avoid needing composite index
+  const [approvedSnap, rejectedSnap] = await Promise.all([
+    getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS).where('status', '==', 'approved').get(),
+    getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS).where('status', '==', 'rejected').get(),
+  ]);
 
-  const adjustments = docsToArray<PunchAdjustmentRequest>(snap);
+  const adjustments = [
+    ...docsToArray<PunchAdjustmentRequest>(approvedSnap),
+    ...docsToArray<PunchAdjustmentRequest>(rejectedSnap),
+  ].sort((a, b) => {
+    // Sort by reviewed_at descending
+    const dateA = a.reviewed_at || '';
+    const dateB = b.reviewed_at || '';
+    return dateB.localeCompare(dateA);
+  });
 
   // Get employee and record info
   const employees = await getAllEmployees();
