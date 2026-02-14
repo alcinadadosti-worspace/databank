@@ -1,9 +1,14 @@
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
+import multer, { FileFilterCallback } from 'multer';
 import { getDb, getStorageBucket, COLLECTIONS, getNextId } from '../models/database';
 import { logAudit } from '../models/queries';
 
 const router = Router();
+
+// Extend Request type to include multer file
+interface MulterRequest extends Request {
+  file?: Express.Multer.File;
+}
 
 // Configure multer for file upload (memory storage)
 const upload = multer({
@@ -11,7 +16,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     if (file.mimetype === 'application/pdf') {
       cb(null, true);
     } else {
@@ -34,7 +39,7 @@ interface Report {
 }
 
 /** GET /api/reports - List all reports */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', async (_req: Request, res: Response) => {
   try {
     const db = getDb();
     const snapshot = await db
@@ -55,7 +60,7 @@ router.get('/', async (req: Request, res: Response) => {
 });
 
 /** POST /api/reports - Upload a new report */
-router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/', upload.single('file'), async (req: MulterRequest, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Nenhum arquivo enviado' });
@@ -72,7 +77,7 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 
     // Generate unique filename
     const timestamp = Date.now();
-    const safeTitle = title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const safeTitle = (title as string).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const filename = `reports/${timestamp}_${safeTitle}.pdf`;
 
     // Upload to Firebase Storage
@@ -118,7 +123,8 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
 /** DELETE /api/reports/:id - Delete a report */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const idParam = req.params.id as string;
+    const id = parseInt(idParam, 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'ID inválido' });
     }
@@ -156,7 +162,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
 /** GET /api/reports/:id/download - Get download URL */
 router.get('/:id/download', async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const idParam = req.params.id as string;
+    const id = parseInt(idParam, 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'ID inválido' });
     }

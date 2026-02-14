@@ -12,6 +12,7 @@ const envSchema = z.object({
   // Firebase — use base64-encoded JSON (recommended for Render)
   FIREBASE_SERVICE_ACCOUNT_BASE64: z.string().optional(),
   FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().optional(),
 
   SLACK_BOT_TOKEN: z.string().default(''),
   SLACK_SIGNING_SECRET: z.string().default(''),
