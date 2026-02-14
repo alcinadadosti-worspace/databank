@@ -3,6 +3,17 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
+/** GET /api/punch-adjustments/reviewed - Get all reviewed punch adjustments (for admin) */
+router.get('/reviewed', async (req: Request, res: Response) => {
+  try {
+    const adjustments = await queries.getReviewedPunchAdjustments();
+    res.json({ adjustments });
+  } catch (error) {
+    console.error('[punch-adjustments] Error fetching reviewed:', error);
+    res.status(500).json({ error: 'Failed to fetch reviewed punch adjustments' });
+  }
+});
+
 /** GET /api/punch-adjustments/leader/:leaderId/pending - Get pending punch adjustments for a leader */
 router.get('/leader/:leaderId/pending', async (req: Request, res: Response) => {
   try {

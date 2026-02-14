@@ -536,3 +536,7 @@ export async function deletePunchAdjustment(adjustmentId: number) {
     method: 'DELETE',
   });
 }
+
+export async function getReviewedPunchAdjustments() {
+  return apiFetch<{ adjustments: PunchAdjustmentFull[] }>('/api/punch-adjustments/reviewed');
+}

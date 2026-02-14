@@ -2028,3 +2028,41 @@ export async function deletePunchAdjustment(adjustmentId: number): Promise<boole
   await snap.docs[0].ref.delete();
   return true;
 }
+
+export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull[]> {
+  const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('status', 'in', ['approved', 'rejected'])
+    .orderBy('reviewed_at', 'desc')
+    .get();
+
+  const adjustments = docsToArray<PunchAdjustmentRequest>(snap);
+
+  // Get employee and record info
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  const recordIds = [...new Set(adjustments.map(a => a.daily_record_id))];
+  const recordMap = new Map<number, DailyRecord>();
+  for (const chunk of chunkArray(recordIds, 10)) {
+    for (const recordId of chunk) {
+      const record = await getDailyRecordById(recordId);
+      if (record) recordMap.set(recordId, record);
+    }
+  }
+
+  return adjustments.map(a => {
+    const emp = empMap.get(a.employee_id);
+    const record = recordMap.get(a.daily_record_id);
+    return {
+      ...a,
+      employee_name: emp?.name ?? '',
+      date: record?.date ?? '',
+      current_punch_1: record?.punch_1 ?? null,
+      current_punch_2: record?.punch_2 ?? null,
+      current_punch_3: record?.punch_3 ?? null,
+      current_punch_4: record?.punch_4 ?? null,
+      leader_name: emp?.leader_name ?? '',
+      leader_id: emp?.leader_id ?? 0,
+    };
+  });
+}
