@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useManagerAuth } from './ManagerAuthContext';
 
 export default function ManagerLogin() {
@@ -17,6 +18,15 @@ export default function ManagerLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg-primary">
       <div className="card max-w-md w-full mx-4">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary mb-4"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Voltar
+        </Link>
         <div className="text-center mb-6">
           <h1 className="text-xl font-semibold text-text-primary">Painel Gestor</h1>
           <p className="text-sm text-text-tertiary mt-1">
