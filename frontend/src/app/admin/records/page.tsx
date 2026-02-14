@@ -4,6 +4,7 @@ import { useState } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import RecordsTable from '@/components/RecordsTable';
 import { getAllRecords, editRecord, type DailyRecord } from '@/lib/api';
+import { exportRecordsToPDF } from '@/lib/pdf-export';
 
 export default function AdminRecords() {
   const [records, setRecords] = useState<DailyRecord[]>([]);
@@ -98,7 +99,27 @@ export default function AdminRecords() {
         <p className="text-sm text-text-tertiary mt-1">Todos os registros de ponto (clique no lápis para editar)</p>
       </div>
 
-      <DateRangePicker onRangeChange={loadRecords} />
+      <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+        <DateRangePicker onRangeChange={loadRecords} />
+        {records.length > 0 && dateRange && (
+          <button
+            onClick={() => exportRecordsToPDF(records, {
+              title: 'Relatorio de Ponto',
+              dateRange,
+              showLeader: true,
+            })}
+            className="btn-secondary text-sm flex items-center gap-2 h-fit"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="12" y1="18" x2="12" y2="12" />
+              <line x1="9" y1="15" x2="15" y2="15" />
+            </svg>
+            PDF ({records.length})
+          </button>
+        )}
+      </div>
 
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>

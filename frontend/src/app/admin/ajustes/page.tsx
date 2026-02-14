@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, getReviewedPunchAdjustments, deletePunchAdjustment, type JustificationFull, type PunchAdjustmentFull } from '@/lib/api';
 import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
+import { exportJustificationsToPDF, exportPunchAdjustmentsToPDF } from '@/lib/pdf-export';
 import * as XLSX from 'xlsx';
 
 function formatMinutes(minutes: number | null | undefined): string {
@@ -274,6 +275,31 @@ export default function AdminAjustes() {
           </button>
           <button onClick={collapseAll} className="btn-secondary text-xs px-2 py-1">
             Recolher
+          </button>
+          <button
+            onClick={() => {
+              if (activeTab === 'justifications') {
+                exportJustificationsToPDF(filtered, {
+                  title: 'Relatorio de Justificativas',
+                  dateRange: { start: startDate, end: endDate },
+                  status: filterStatus as 'all' | 'approved' | 'rejected',
+                });
+              } else {
+                exportPunchAdjustmentsToPDF(filteredAdjustments, {
+                  title: 'Relatorio de Ajustes de Ponto',
+                  dateRange: { start: startDate, end: endDate },
+                });
+              }
+            }}
+            className="btn-secondary text-sm flex items-center gap-1"
+            disabled={loading || (activeTab === 'justifications' ? filtered.length === 0 : filteredAdjustments.length === 0)}
+            title="Exportar para PDF"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            PDF
           </button>
           <button
             onClick={exportToExcel}
