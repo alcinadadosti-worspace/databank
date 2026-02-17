@@ -738,6 +738,84 @@ export async function sendLateStartNotification(
   }
 }
 
+/**
+ * Send notification to employee when any non-last punch is after 17:00.
+ */
+export async function sendLatePunchNotification(
+  employee: queries.EmployeeWithLeader,
+  record: queries.DailyRecord,
+  date: string,
+  latePunch: string
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employee.slack_id || null);
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: '⚠️ Ponto Após 17:00',
+        emoji: true,
+      },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employee.name}`,
+          `*Data:* ${date}`,
+          `*Ponto registrado:* ${latePunch}`,
+          '',
+          'Foi registrado um ponto (que não é o de saída) após as 17:00.',
+          'Por favor, solicite um ajuste explicando o motivo.',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `late_punch_${date}_${employee.id}`,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📝 Solicitar Ajuste',
+            emoji: true,
+          },
+          style: 'primary' as const,
+          value: JSON.stringify({
+            daily_record_id: record.id,
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            missing_punches: [],
+            type: 'late_punch',
+          }),
+          action_id: 'request_punch_adjustment',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await app.client.chat.postMessage({
+      channel: targetUser,
+      text: `Você registrou um ponto às ${latePunch} em ${date} (após 17:00)`,
+      blocks,
+    });
+
+    await queries.logAudit('SLACK_LATE_PUNCH_NOTIFICATION', 'daily_record', record.id,
+      `Sent to ${employee.name} for ${date} - punch at ${latePunch}`);
+
+    console.log(`[slack] Late punch notification sent to ${employee.name} (${date}, ${latePunch})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send late punch notification:`, error);
+  }
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {
@@ -1053,7 +1131,9 @@ function registerInteractions(app: App): void {
 
       const missingText = missing_punches.length > 0
         ? `*Pontos faltando:* ${missing_punches.join(', ')}`
-        : '*Tipo:* Entrada após 10:00';
+        : type === 'late_punch'
+          ? '*Tipo:* Ponto após 17:00'
+          : '*Tipo:* Entrada após 10:00';
 
       await client.views.open({
         trigger_id: (body as any).trigger_id,
@@ -1148,7 +1228,9 @@ function registerInteractions(app: App): void {
       if (message_ts && channel_id) {
         const missingText = missing_punches.length > 0
           ? `*Pontos faltando:* ${missing_punches.join(', ')}`
-          : '*Tipo:* Entrada após 10:00';
+          : type === 'late_punch'
+            ? '*Tipo:* Ponto após 17:00'
+            : '*Tipo:* Entrada após 10:00';
 
         await client.chat.update({
           channel: channel_id,

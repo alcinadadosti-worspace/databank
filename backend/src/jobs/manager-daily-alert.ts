@@ -1,5 +1,5 @@
 import * as queries from '../models/queries';
-import { sendManagerWeeklySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification } from '../slack/bot';
+import { sendManagerWeeklySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
 import { WORK_SCHEDULE } from '../config/constants';
 
 /**
@@ -65,6 +65,22 @@ export async function checkPreviousDayRecords(): Promise<void> {
         await queries.updateRecordClassification(record.id, 'ajuste');
         await sendLateStartNotification(employee, record, date);
         continue;
+      }
+
+      // Case 4: Any non-last punch after 17:00 → ajuste, notify employee
+      // For weekdays: check punch_1, punch_2, punch_3 (punch_4 is the last)
+      // For Saturdays: check punch_1 (punch_2 is the last)
+      if (record) {
+        const punchesBeforeLast = isSaturday
+          ? [record.punch_1]
+          : [record.punch_1, record.punch_2, record.punch_3];
+
+        const latePunch = punchesBeforeLast.find(p => p && p > '17:00');
+        if (latePunch) {
+          await queries.updateRecordClassification(record.id, 'ajuste');
+          await sendLatePunchNotification(employee, record, date, latePunch);
+          continue;
+        }
       }
     }
 
