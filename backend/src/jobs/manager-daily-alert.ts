@@ -60,8 +60,8 @@ export async function checkPreviousDayRecords(): Promise<void> {
         continue;
       }
 
-      // Case 3: First punch after 12:00 (regular employees only) → ajuste, notify employee
-      if (!employee.is_apprentice && record?.punch_1 && record.punch_1 > '12:00') {
+      // Case 3: First punch after 10:00 (regular employees only) → ajuste, notify employee
+      if (!employee.is_apprentice && record?.punch_1 && record.punch_1 > '10:00') {
         await queries.updateRecordClassification(record.id, 'ajuste');
         await sendLateStartNotification(employee, record, date);
         continue;

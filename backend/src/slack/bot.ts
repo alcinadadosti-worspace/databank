@@ -678,7 +678,7 @@ export async function sendLateStartNotification(
       type: 'header' as const,
       text: {
         type: 'plain_text' as const,
-        text: '⚠️ Entrada Após 12:00',
+        text: '⚠️ Entrada Após 10:00',
         emoji: true,
       },
     },
@@ -691,7 +691,7 @@ export async function sendLateStartNotification(
           `*Data:* ${date}`,
           `*Primeiro ponto:* ${record.punch_1}`,
           '',
-          'Seu primeiro ponto foi registrado após 12:00.',
+          'Seu primeiro ponto foi registrado após 10:00.',
           'Por favor, solicite um ajuste explicando o motivo.',
         ].join('\n'),
       },
@@ -725,7 +725,7 @@ export async function sendLateStartNotification(
   try {
     await app.client.chat.postMessage({
       channel: targetUser,
-      text: `Seu primeiro ponto em ${date} foi após 12:00`,
+      text: `Seu primeiro ponto em ${date} foi após 10:00`,
       blocks,
     });
 
@@ -1053,7 +1053,7 @@ function registerInteractions(app: App): void {
 
       const missingText = missing_punches.length > 0
         ? `*Pontos faltando:* ${missing_punches.join(', ')}`
-        : '*Tipo:* Entrada após 12:00';
+        : '*Tipo:* Entrada após 10:00';
 
       await client.views.open({
         trigger_id: (body as any).trigger_id,
@@ -1148,7 +1148,7 @@ function registerInteractions(app: App): void {
       if (message_ts && channel_id) {
         const missingText = missing_punches.length > 0
           ? `*Pontos faltando:* ${missing_punches.join(', ')}`
-          : '*Tipo:* Entrada após 12:00';
+          : '*Tipo:* Entrada após 10:00';
 
         await client.chat.update({
           channel: channel_id,
