@@ -74,11 +74,12 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
       // Recalculate hours with new punches
       const { calculateDailyHours } = await import('../services/hours-calculator');
       const employee = await queries.getEmployeeById(record.employee_id);
-      const expectedMinutes = employee?.expected_daily_minutes || 528;
+      const isApprentice = employee?.is_apprentice ?? false;
 
+      // Pass the date so the calculation can detect Saturday and use correct expected hours
       const result = calculateDailyHours(
         { punch1: newPunch1 ?? null, punch2: newPunch2 ?? null, punch3: newPunch3 ?? null, punch4: newPunch4 ?? null },
-        { expectedMinutes }
+        { date: record.date, isApprentice }
       );
 
       const totalWorkedMinutes = result?.totalWorkedMinutes ?? null;

@@ -61,8 +61,13 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   const isSat = date ? isSaturday(date) : false;
 
   // Get expected minutes
+  // IMPORTANT: Saturday always uses EXPECTED_SATURDAY_MINUTES (240)
+  // regardless of what's passed in options.expectedMinutes
   let expectedMinutes: number;
-  if (options?.expectedMinutes !== undefined) {
+  if (isSat) {
+    // Saturday: always 240 minutes (4h), ignore any override
+    expectedMinutes = WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES;
+  } else if (options?.expectedMinutes !== undefined) {
     expectedMinutes = options.expectedMinutes;
   } else if (date) {
     expectedMinutes = getExpectedMinutes(date, isApprentice);
