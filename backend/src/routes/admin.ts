@@ -503,4 +503,101 @@ router.post('/test-reminder', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/recalculate-saturdays - Recalculate all Saturday records with wrong hours */
+router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    if (!startDate || !endDate) {
+      res.status(400).json({ error: 'startDate e endDate são obrigatórios (YYYY-MM-DD)' });
+      return;
+    }
+
+    console.log(`[admin] Recalculating Saturday records from ${startDate} to ${endDate}`);
+
+    // Get all records in the date range
+    const allRecords = await queries.getAllRecordsRange(startDate, endDate);
+    const records = Array.isArray(allRecords) ? allRecords : allRecords.data;
+
+    // Filter only Saturdays with suspicious values (overtime > 60min on Saturday is suspicious)
+    const saturdayRecords = records.filter((r: any) => {
+      const date = new Date(r.date + 'T12:00:00Z');
+      const isSaturday = date.getUTCDay() === 6;
+      // Consider records with difference > 60 or < -60 as potentially wrong
+      const suspicious = r.difference_minutes !== null && Math.abs(r.difference_minutes) > 60;
+      return isSaturday && suspicious;
+    });
+
+    console.log(`[admin] Found ${saturdayRecords.length} suspicious Saturday records`);
+
+    let fixed = 0;
+    const results: any[] = [];
+
+    for (const record of saturdayRecords) {
+      // Skip if no punches
+      if (!record.punch_1 && !record.punch_2) continue;
+
+      // Recalculate using correct Saturday logic
+      const punchSet = {
+        punch1: record.punch_1 || null,
+        punch2: record.punch_2 || null,
+        punch3: record.punch_3 || null,
+        punch4: record.punch_4 || null,
+      };
+
+      const calcResult = calculateDailyHours(punchSet, {
+        date: record.date,
+        isApprentice: false, // Will be corrected by the function for Saturday
+      });
+
+      if (calcResult) {
+        const oldDiff = record.difference_minutes;
+        const newDiff = calcResult.differenceMinutes;
+
+        // Only update if values actually changed
+        if (oldDiff !== newDiff) {
+          await queries.updateDailyRecordPunches(
+            record.id,
+            record.punch_1 || null,
+            record.punch_2 || null,
+            record.punch_3 || null,
+            record.punch_4 || null,
+            calcResult.totalWorkedMinutes,
+            calcResult.differenceMinutes,
+            calcResult.classification
+          );
+
+          results.push({
+            id: record.id,
+            date: record.date,
+            employee_name: record.employee_name,
+            oldDifference: oldDiff,
+            newDifference: newDiff,
+            oldClassification: record.classification,
+            newClassification: calcResult.classification,
+          });
+
+          fixed++;
+        }
+      }
+    }
+
+    await queries.logAudit('SATURDAY_RECALCULATION', 'system', undefined,
+      `Recalculated ${fixed} Saturday records from ${startDate} to ${endDate}`);
+
+    console.log(`[admin] Fixed ${fixed} Saturday records`);
+
+    res.json({
+      success: true,
+      message: `Recalculados ${fixed} registros de sábado`,
+      totalChecked: saturdayRecords.length,
+      totalFixed: fixed,
+      details: results,
+    });
+  } catch (error) {
+    console.error('[admin] Error recalculating Saturdays:', error);
+    res.status(500).json({ error: 'Falha ao recalcular: ' + (error as Error).message });
+  }
+});
+
 export default router;
