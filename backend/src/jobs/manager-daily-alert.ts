@@ -1,5 +1,5 @@
 import * as queries from '../models/queries';
-import { sendManagerWeeklySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
+import { sendManagerWeeklySummary, sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
 import { WORK_SCHEDULE } from '../config/constants';
 
 /**
@@ -116,8 +116,9 @@ function getMissingPunches(record: queries.DailyRecord, isSaturday: boolean): st
 
 /**
  * Run daily checks at 08:00 Mon-Sat.
- * Only sends notifications to employees (missing punches, late starts).
- * Manager "no record" decisions are still sent daily.
+ * - Sends notifications to employees (missing punches, late starts).
+ * - Sends daily summary to managers about previous day's records.
+ * - Manager "no record" decisions are still sent daily.
  */
 export async function runDailyChecks(): Promise<void> {
   const yesterday = new Date();
@@ -133,7 +134,69 @@ export async function runDailyChecks(): Promise<void> {
 
   // Run the end-of-day checks (sends notifications to employees and managers for no-record)
   await checkPreviousDayRecords();
+
+  // Send daily summary to managers
+  await sendDailyManagerSummaries(date);
+
   console.log(`[daily-check] Completed for ${date}`);
+}
+
+/**
+ * Send daily summary to each manager with their team's records from the specified date.
+ */
+async function sendDailyManagerSummaries(date: string): Promise<void> {
+  console.log(`[daily-manager-summary] Sending summaries for ${date}`);
+
+  try {
+    const records = await queries.getDailyRecordsByDate(date);
+
+    if (records.length === 0) {
+      console.log('[daily-manager-summary] No records for this date');
+      return;
+    }
+
+    // Group records by leader
+    const byLeader = new Map<number, {
+      leaderName: string;
+      leaderSlackId: string | null;
+      records: typeof records;
+    }>();
+
+    for (const record of records) {
+      const leaderId = (record as any).leader_id;
+      if (!leaderId) continue;
+
+      if (!byLeader.has(leaderId)) {
+        byLeader.set(leaderId, {
+          leaderName: (record as any).leader_name || 'Sem Nome',
+          leaderSlackId: (record as any).leader_slack_id,
+          records: [],
+        });
+      }
+      byLeader.get(leaderId)!.records.push(record);
+    }
+
+    // Send summary to each leader
+    for (const [_leaderId, data] of byLeader) {
+      await sendManagerDailySummary(
+        data.leaderSlackId,
+        data.leaderName,
+        date,
+        data.records.map(r => ({
+          employee_name: (r as any).employee_name || 'Desconhecido',
+          classification: r.classification || 'normal',
+          difference_minutes: r.difference_minutes || 0,
+          justification_reason: (r as any).justification_reason,
+        }))
+      );
+    }
+
+    await queries.logAudit('MANAGER_DAILY_SUMMARIES_SENT', 'system', undefined, `Date: ${date}`);
+    console.log(`[daily-manager-summary] Completed for ${date}`);
+  } catch (error) {
+    console.error('[daily-manager-summary] Error:', error);
+    await queries.logAudit('MANAGER_DAILY_SUMMARY_ERROR', 'system', undefined, String(error));
+  }
 }
 
 /**
