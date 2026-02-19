@@ -12,3 +12,7 @@ nul
 .~lock.*
 *.db-shm
 *.db-wal
+.claude/
+generate-*.js
+*_employees.json
+tmp_*.json
