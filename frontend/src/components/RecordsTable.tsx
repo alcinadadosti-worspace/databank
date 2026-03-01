@@ -91,9 +91,9 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
 
       {/* Desktop Table View */}
       <div className="hidden lg:block card p-0 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
           <table className="w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-bg-secondary">
             <tr className="border-b border-border">
               {onEdit && <th className="text-left px-2 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider w-10"></th>}
               <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Data</th>

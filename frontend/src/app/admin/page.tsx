@@ -292,17 +292,44 @@ export default function AdminDashboard() {
             {syncing ? 'Sincronizando...' : 'Sincronizar'}
           </button>
           {syncStatus && (
-            <div className="flex items-center gap-2">
+            <div className="flex-1 max-w-xs">
               {syncStatus.status === 'running' && (
-                <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-text-secondary">Sincronizando...</span>
+                    <span className="text-text-primary font-medium">
+                      {Math.round((syncStatus.synced / syncStatus.totalDays) * 100)}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-bg-tertiary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${(syncStatus.synced / syncStatus.totalDays) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    {syncStatus.synced}/{syncStatus.totalDays} dias processados
+                  </p>
+                </div>
               )}
               {syncStatus.status === 'completed' && (
-                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <div className="flex items-center gap-2 text-status-success">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-sm font-medium">
+                    Concluido! {syncStatus.synced} dias sincronizados
+                  </span>
+                </div>
               )}
-              <span className="text-xs text-text-secondary">
-                {syncStatus.status === 'running' && `${syncStatus.synced}/${syncStatus.totalDays} dias`}
-                {syncStatus.status === 'completed' && `Concluido! ${syncStatus.synced} dias sincronizados`}
-              </span>
+              {syncStatus.status === 'error' && (
+                <div className="flex items-center gap-2 text-status-danger">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span className="text-sm font-medium">Erro na sincronizacao</span>
+                </div>
+              )}
             </div>
           )}
           {syncError && (
