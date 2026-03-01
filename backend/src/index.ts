@@ -19,6 +19,9 @@ import reportsRouter from './routes/reports';
 
 const app = express();
 
+// Trust proxy (needed for rate limiting behind Render's proxy)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors({
   origin: env.FRONTEND_URL ? env.FRONTEND_URL.split(',') : '*',

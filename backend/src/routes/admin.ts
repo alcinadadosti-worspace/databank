@@ -600,4 +600,173 @@ router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/debug-manager-summary - Debug why manager summary isn't being sent */
+router.post('/debug-manager-summary', async (req: Request, res: Response) => {
+  try {
+    const { date } = req.body;
+    const targetDate = date || (() => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return yesterday.toISOString().split('T')[0];
+    })();
+
+    console.log(`[debug] Checking manager summary for date: ${targetDate}`);
+
+    // Get all records for the date
+    const records = await queries.getDailyRecordsByDate(targetDate);
+    console.log(`[debug] Found ${records.length} records`);
+
+    if (records.length === 0) {
+      res.json({
+        date: targetDate,
+        totalRecords: 0,
+        message: 'Nenhum registro encontrado para esta data',
+        debug: { records: [] }
+      });
+      return;
+    }
+
+    // Group by leader
+    const byLeader = new Map<number, {
+      leaderName: string;
+      leaderSlackId: string | null;
+      records: typeof records;
+    }>();
+
+    for (const record of records) {
+      const leaderId = (record as any).leader_id;
+      console.log(`[debug] Record ${record.id}: employee=${(record as any).employee_name}, leader_id=${leaderId}, classification=${record.classification}, diff=${record.difference_minutes}`);
+
+      if (!leaderId) {
+        console.log(`[debug] Skipping record ${record.id} - no leader_id`);
+        continue;
+      }
+
+      if (!byLeader.has(leaderId)) {
+        byLeader.set(leaderId, {
+          leaderName: (record as any).leader_name || 'Sem Nome',
+          leaderSlackId: (record as any).leader_slack_id,
+          records: [],
+        });
+      }
+      byLeader.get(leaderId)!.records.push(record);
+    }
+
+    // Check what would be sent to each leader
+    const leaderSummaries: any[] = [];
+
+    for (const [leaderId, data] of byLeader) {
+      const alertRecords = data.records.filter(
+        r => r.classification !== 'normal' && Math.abs(r.difference_minutes || 0) >= 11
+      );
+
+      leaderSummaries.push({
+        leaderId,
+        leaderName: data.leaderName,
+        leaderSlackId: data.leaderSlackId,
+        totalRecords: data.records.length,
+        alertRecords: alertRecords.length,
+        wouldSendSummary: alertRecords.length > 0,
+        records: data.records.map(r => ({
+          employee: (r as any).employee_name,
+          classification: r.classification,
+          difference_minutes: r.difference_minutes,
+          passesFilter: r.classification !== 'normal' && Math.abs(r.difference_minutes || 0) >= 11,
+        })),
+      });
+    }
+
+    const wouldSend = leaderSummaries.filter(l => l.wouldSendSummary);
+
+    res.json({
+      date: targetDate,
+      totalRecords: records.length,
+      leadersWithRecords: byLeader.size,
+      leadersWhoWouldReceiveSummary: wouldSend.length,
+      message: wouldSend.length > 0
+        ? `${wouldSend.length} gestor(es) receberiam resumo`
+        : 'Nenhum gestor receberia resumo (sem registros com alertas >= 11 min)',
+      leaderSummaries,
+    });
+  } catch (error) {
+    console.error('[admin] Error debugging manager summary:', error);
+    res.status(500).json({ error: 'Falha ao debugar: ' + (error as Error).message });
+  }
+});
+
+/** POST /api/admin/send-manager-summary - Force send manager summary for a specific date */
+router.post('/send-manager-summary', async (req: Request, res: Response) => {
+  try {
+    const { date } = req.body;
+    if (!date) {
+      res.status(400).json({ error: 'date é obrigatório (YYYY-MM-DD)' });
+      return;
+    }
+
+    console.log(`[admin] Force sending manager summary for: ${date}`);
+
+    const records = await queries.getDailyRecordsByDate(date);
+
+    if (records.length === 0) {
+      res.json({ success: false, message: 'Nenhum registro encontrado para esta data' });
+      return;
+    }
+
+    // Group by leader
+    const byLeader = new Map<number, {
+      leaderName: string;
+      leaderSlackId: string | null;
+      records: typeof records;
+    }>();
+
+    for (const record of records) {
+      const leaderId = (record as any).leader_id;
+      if (!leaderId) continue;
+
+      if (!byLeader.has(leaderId)) {
+        byLeader.set(leaderId, {
+          leaderName: (record as any).leader_name || 'Sem Nome',
+          leaderSlackId: (record as any).leader_slack_id,
+          records: [],
+        });
+      }
+      byLeader.get(leaderId)!.records.push(record);
+    }
+
+    let sent = 0;
+    const results: any[] = [];
+
+    for (const [leaderId, data] of byLeader) {
+      try {
+        await sendManagerDailySummary(
+          data.leaderSlackId,
+          data.leaderName,
+          date,
+          data.records.map(r => ({
+            employee_name: (r as any).employee_name || 'Desconhecido',
+            classification: r.classification || 'normal',
+            difference_minutes: r.difference_minutes || 0,
+            justification_reason: (r as any).justification_reason,
+          }))
+        );
+        sent++;
+        results.push({ leaderId, leaderName: data.leaderName, status: 'sent' });
+      } catch (err) {
+        results.push({ leaderId, leaderName: data.leaderName, status: 'error', error: String(err) });
+      }
+    }
+
+    res.json({
+      success: true,
+      date,
+      totalLeaders: byLeader.size,
+      summariesSent: sent,
+      results,
+    });
+  } catch (error) {
+    console.error('[admin] Error sending manager summary:', error);
+    res.status(500).json({ error: 'Falha ao enviar: ' + (error as Error).message });
+  }
+});
+
 export default router;
