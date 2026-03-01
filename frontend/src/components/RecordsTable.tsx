@@ -93,20 +93,20 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
       <div className="hidden lg:block card p-0 overflow-hidden">
         <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
           <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-bg-secondary">
-            <tr className="border-b border-border">
-              {onEdit && <th className="text-left px-2 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider w-10"></th>}
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Data</th>
-              {showEmployee && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Colaborador</th>}
-              {showLeader && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Gestor</th>}
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Entrada</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Almoco</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Retorno</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Saida</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Total</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Dif.</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Status</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Justificativa</th>
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-border" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
+              {onEdit && <th className="text-left px-2 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider w-10 bg-bg-secondary"></th>}
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Data</th>
+              {showEmployee && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Colaborador</th>}
+              {showLeader && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Gestor</th>}
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Entrada</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Almoco</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Retorno</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Saida</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Total</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Dif.</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Status</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary">Justificativa</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
