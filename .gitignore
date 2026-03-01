@@ -16,3 +16,10 @@ nul
 generate-*.js
 *_employees.json
 tmp_*.json
+
+# Sensitive scripts and temp files
+check-hierarchy.js
+**/check-hier.ts
+**/fix-*.ts
+**/remove-*.ts
+relatorio_*.xlsx
