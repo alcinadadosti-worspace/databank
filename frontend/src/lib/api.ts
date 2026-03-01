@@ -1,9 +1,49 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+// Token storage keys
+const ADMIN_TOKEN_KEY = 'databank_admin_token';
+const MANAGER_TOKEN_KEY = 'databank_manager_token';
+
+// Get stored token
+export function getAuthToken(type: 'admin' | 'manager'): string | null {
+  if (typeof window === 'undefined') return null;
+  const key = type === 'admin' ? ADMIN_TOKEN_KEY : MANAGER_TOKEN_KEY;
+  return localStorage.getItem(key);
+}
+
+// Store token
+export function setAuthToken(type: 'admin' | 'manager', token: string): void {
+  if (typeof window === 'undefined') return;
+  const key = type === 'admin' ? ADMIN_TOKEN_KEY : MANAGER_TOKEN_KEY;
+  localStorage.setItem(key, token);
+}
+
+// Remove token
+export function removeAuthToken(type: 'admin' | 'manager'): void {
+  if (typeof window === 'undefined') return;
+  const key = type === 'admin' ? ADMIN_TOKEN_KEY : MANAGER_TOKEN_KEY;
+  localStorage.removeItem(key);
+}
+
+async function apiFetch<T>(endpoint: string, options?: RequestInit & { authType?: 'admin' | 'manager' }): Promise<T> {
+  const { authType, ...fetchOptions } = options || {};
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(fetchOptions.headers as Record<string, string> || {}),
+  };
+
+  // Add auth token if available
+  if (authType) {
+    const token = getAuthToken(authType);
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
   const res = await fetch(`${API_BASE}${endpoint}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
+    ...fetchOptions,
+    headers,
   });
 
   if (!res.ok) {
@@ -66,17 +106,31 @@ export interface ManagerAuth {
 }
 
 export async function authenticateManager(email: string) {
-  return apiFetch<{ success: boolean; leader: ManagerAuth }>('/api/leaders/auth', {
+  const result = await apiFetch<{ success: boolean; token: string; leader: ManagerAuth }>('/api/leaders/auth', {
     method: 'POST',
     body: JSON.stringify({ email }),
   });
+
+  // Store token if successful
+  if (result.success && result.token) {
+    setAuthToken('manager', result.token);
+  }
+
+  return result;
 }
 
 export async function authenticateAdmin(password: string) {
-  return apiFetch<{ success: boolean; admin: { name: string; authenticated: boolean } }>('/api/leaders/auth-admin', {
+  const result = await apiFetch<{ success: boolean; token: string; admin: { name: string; authenticated: boolean } }>('/api/leaders/auth-admin', {
     method: 'POST',
     body: JSON.stringify({ password }),
   });
+
+  // Store token if successful
+  if (result.success && result.token) {
+    setAuthToken('admin', result.token);
+  }
+
+  return result;
 }
 
 // ─── Records ───────────────────────────────────────────────────

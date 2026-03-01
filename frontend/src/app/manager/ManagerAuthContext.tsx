@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateManager, type ManagerAuth } from '@/lib/api';
+import { authenticateManager, getAuthToken, removeAuthToken, type ManagerAuth } from '@/lib/api';
 
 interface ManagerAuthContextType {
   manager: ManagerAuth | null;
@@ -13,21 +13,24 @@ interface ManagerAuthContextType {
 
 const ManagerAuthContext = createContext<ManagerAuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'databank_manager_auth';
+const MANAGER_DATA_KEY = 'databank_manager_data';
 
 export function ManagerAuthProvider({ children }: { children: ReactNode }) {
   const [manager, setManager] = useState<ManagerAuth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount - check for JWT token
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    const token = getAuthToken('manager');
+    const storedData = localStorage.getItem(MANAGER_DATA_KEY);
+
+    if (token && storedData) {
       try {
-        setManager(JSON.parse(stored));
+        setManager(JSON.parse(storedData));
       } catch {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(MANAGER_DATA_KEY);
+        removeAuthToken('manager');
       }
     }
     setLoading(false);
@@ -40,7 +43,8 @@ export function ManagerAuthProvider({ children }: { children: ReactNode }) {
       const result = await authenticateManager(email);
       if (result.success && result.leader) {
         setManager(result.leader);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(result.leader));
+        // Store manager data separately (token is stored by authenticateManager)
+        localStorage.setItem(MANAGER_DATA_KEY, JSON.stringify(result.leader));
         return true;
       }
       setError('Email não autorizado');
@@ -55,7 +59,8 @@ export function ManagerAuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     setManager(null);
-    localStorage.removeItem(STORAGE_KEY);
+    removeAuthToken('manager');
+    localStorage.removeItem(MANAGER_DATA_KEY);
   }
 
   return (

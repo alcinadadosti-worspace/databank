@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import {
+  validateBody,
+  punchAdjustmentApprovalSchema,
+  punchAdjustmentRejectionSchema
+} from '../middleware/validation';
 
 const router = Router();
 
@@ -33,7 +38,7 @@ router.get('/leader/:leaderId/pending', async (req: Request, res: Response) => {
 });
 
 /** POST /api/punch-adjustments/:id/approve - Approve a punch adjustment with corrected times */
-router.post('/:id/approve', async (req: Request, res: Response) => {
+router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (req: Request, res: Response) => {
   try {
     const adjustmentId = parseInt(req.params.id as string, 10);
     const { reviewedBy, comment, corrected_punch_1, corrected_punch_2, corrected_punch_3, corrected_punch_4 } = req.body;
@@ -109,7 +114,7 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
 });
 
 /** POST /api/punch-adjustments/:id/reject - Reject a punch adjustment */
-router.post('/:id/reject', async (req: Request, res: Response) => {
+router.post('/:id/reject', validateBody(punchAdjustmentRejectionSchema), async (req: Request, res: Response) => {
   try {
     const adjustmentId = parseInt(req.params.id as string, 10);
     const { reviewedBy, comment } = req.body;
@@ -119,10 +124,7 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
       return;
     }
 
-    if (!comment || comment.trim().length === 0) {
-      res.status(400).json({ error: 'Comentario obrigatorio ao rejeitar' });
-      return;
-    }
+    // Validation is now handled by Zod middleware
 
     const adjustment = await queries.getPunchAdjustmentById(adjustmentId);
     if (!adjustment) {

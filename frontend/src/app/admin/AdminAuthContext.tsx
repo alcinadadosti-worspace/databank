@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateAdmin } from '@/lib/api';
+import { authenticateAdmin, getAuthToken, removeAuthToken } from '@/lib/api';
 
 interface AdminAuthContextType {
   authenticated: boolean;
@@ -13,17 +13,17 @@ interface AdminAuthContextType {
 
 const AdminAuthContext = createContext<AdminAuthContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'databank_admin_auth';
-
 export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount - check for JWT token
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'true') {
+    const token = getAuthToken('admin');
+    if (token) {
+      // Token exists - consider authenticated
+      // In a production app, you'd validate the token here
       setAuthenticated(true);
     }
     setLoading(false);
@@ -36,7 +36,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       const result = await authenticateAdmin(password);
       if (result.success && result.admin?.authenticated) {
         setAuthenticated(true);
-        localStorage.setItem(STORAGE_KEY, 'true');
+        // Token is stored automatically by authenticateAdmin
         return true;
       }
       setError('Senha incorreta');
@@ -51,7 +51,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   function logout() {
     setAuthenticated(false);
-    localStorage.removeItem(STORAGE_KEY);
+    removeAuthToken('admin');
   }
 
   return (

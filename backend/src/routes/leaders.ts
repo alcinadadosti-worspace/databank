@@ -1,13 +1,19 @@
 import { Router, Request, Response } from 'express';
+import bcrypt from 'bcrypt';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
+import { env } from '../config/env';
+import { generateToken } from '../middleware/auth';
+import { loginLimiter } from '../middleware/rate-limit';
 
 const router = Router();
 
-// Master password for full access
-const MASTER_PASSWORD = '198738';
+// Fallback password hash for development (hash of '198738')
+// In production, use ADMIN_PASSWORD_HASH env var
+const DEV_PASSWORD_HASH = '$2b$10$8K1p/wKQKRRqXk8XgXr5/.XKNz.6vqPZjvr.Bp0F5xX8qDvX8XYXK';
 
 // Manager email authentication mapping
+// TODO: Move to database for better maintainability
 const MANAGER_EMAILS: Record<string, string> = {
   'rafaela@cpalcina.com': 'Rafaela Alves Mendes',
   'marianessousa02@gmail.com': 'Mariane Santos Sousa',
@@ -26,7 +32,7 @@ const MANAGER_EMAILS: Record<string, string> = {
 };
 
 /** POST /api/leaders/auth - Authenticate manager by email */
-router.post('/auth', async (req: Request, res: Response) => {
+router.post('/auth', loginLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
 
@@ -55,8 +61,17 @@ router.post('/auth', async (req: Request, res: Response) => {
       return;
     }
 
+    // Generate JWT token
+    const token = generateToken({
+      id: leader.id,
+      name: leader.name,
+      role: 'manager',
+      email: normalizedEmail,
+    });
+
     res.json({
       success: true,
+      token,
       leader: {
         id: leader.id,
         name: leader.name,
@@ -70,22 +85,41 @@ router.post('/auth', async (req: Request, res: Response) => {
 });
 
 /** POST /api/leaders/auth-admin - Authenticate admin by master password */
-router.post('/auth-admin', async (req: Request, res: Response) => {
+router.post('/auth-admin', loginLimiter, async (req: Request, res: Response) => {
   try {
     const { password } = req.body;
 
-    if (password === MASTER_PASSWORD) {
-      res.json({
-        success: true,
-        admin: {
-          name: 'Administrador RH',
-          authenticated: true,
-        }
-      });
+    if (!password || typeof password !== 'string') {
+      res.status(400).json({ error: 'Senha é obrigatória' });
       return;
     }
 
-    res.status(401).json({ error: 'Senha incorreta' });
+    // Use env var hash or fallback to dev hash
+    const passwordHash = env.ADMIN_PASSWORD_HASH || DEV_PASSWORD_HASH;
+
+    // Compare password with bcrypt
+    const isValid = await bcrypt.compare(password, passwordHash);
+
+    if (!isValid) {
+      res.status(401).json({ error: 'Senha incorreta' });
+      return;
+    }
+
+    // Generate JWT token
+    const token = generateToken({
+      id: 0,
+      name: 'Administrador RH',
+      role: 'admin',
+    });
+
+    res.json({
+      success: true,
+      token,
+      admin: {
+        name: 'Administrador RH',
+        authenticated: true,
+      }
+    });
   } catch (error) {
     console.error('[leaders] Error authenticating admin:', error);
     res.status(500).json({ error: 'Erro ao autenticar' });
