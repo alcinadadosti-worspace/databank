@@ -2,6 +2,7 @@ import { CronJob } from 'cron';
 import { syncPunches } from './sync-punches';
 import { runDailyChecks, sendWeeklyManagerAlerts } from './manager-daily-alert';
 import { sendEntryReminders, sendExitReminders, sendSaturdayExitReminders, checkLunchReturnReminders } from './punch-reminders';
+import { syncUpcomingHolidays } from '../services/holiday-sync';
 
 const jobs: CronJob[] = [];
 
@@ -119,6 +120,27 @@ export function startScheduler(): void {
   });
   jobs.push(lunchReturnReminderJob);
   console.log('[scheduler] Lunch return reminder: every 5 min (Mon-Fri, 14:00-16:00)');
+
+  // ─── Holiday Sync ─────────────────────────────────────────────
+
+  // Sync holidays on January 1st at 03:00 (to get next year's holidays)
+  const holidaySyncJob = CronJob.from({
+    cronTime: '0 3 1 1 *',
+    onTick: async () => {
+      try {
+        console.log('[scheduler] Running yearly holiday sync...');
+        const results = await syncUpcomingHolidays();
+        const totalCreated = results.reduce((sum, r) => sum + r.created, 0);
+        console.log(`[scheduler] Holiday sync completed: ${totalCreated} holidays synced`);
+      } catch (error) {
+        console.error('[scheduler] Holiday sync error:', error);
+      }
+    },
+    start: true,
+    timeZone: 'America/Sao_Paulo',
+  });
+  jobs.push(holidaySyncJob);
+  console.log('[scheduler] Holiday sync: 03:00 on January 1st');
 }
 
 export function stopScheduler(): void {

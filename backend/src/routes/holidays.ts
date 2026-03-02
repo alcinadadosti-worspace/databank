@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { syncHolidaysForYear, syncUpcomingHolidays, getAvailableYears } from '../services/holiday-sync';
 
 const router = Router();
 
@@ -146,6 +147,62 @@ router.delete('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[holidays] Error deleting holiday:', error);
     res.status(500).json({ error: 'Failed to delete holiday' });
+  }
+});
+
+/** POST /api/holidays/sync - Sync holidays from public API (current + next year) */
+router.post('/sync', async (_req: Request, res: Response) => {
+  try {
+    console.log('[holidays] Starting holiday sync...');
+    const results = await syncUpcomingHolidays();
+
+    const totalCreated = results.reduce((sum, r) => sum + r.created, 0);
+    const totalSkipped = results.reduce((sum, r) => sum + r.skipped, 0);
+    const totalErrors = results.reduce((sum, r) => sum + r.errors.length, 0);
+
+    res.json({
+      success: true,
+      message: `Sincronizacao concluida: ${totalCreated} feriados criados, ${totalSkipped} ignorados`,
+      results,
+    });
+  } catch (error) {
+    console.error('[holidays] Error syncing holidays:', error);
+    res.status(500).json({ error: 'Falha ao sincronizar feriados: ' + (error as Error).message });
+  }
+});
+
+/** POST /api/holidays/sync/:year - Sync holidays for a specific year */
+router.post('/sync/:year', async (req: Request, res: Response) => {
+  try {
+    const year = parseInt(req.params.year as string, 10);
+
+    if (isNaN(year) || year < 2020 || year > 2030) {
+      res.status(400).json({ error: 'Ano invalido. Use um ano entre 2020 e 2030.' });
+      return;
+    }
+
+    console.log(`[holidays] Starting holiday sync for ${year}...`);
+    const result = await syncHolidaysForYear(year);
+
+    res.json({
+      success: true,
+      message: `Sincronizacao de ${year} concluida: ${result.created} feriados criados, ${result.skipped} ignorados`,
+      result,
+    });
+  } catch (error) {
+    console.error('[holidays] Error syncing holidays for year:', error);
+    res.status(500).json({ error: 'Falha ao sincronizar feriados: ' + (error as Error).message });
+  }
+});
+
+/** GET /api/holidays/sync/available-years - Get available years for sync */
+router.get('/sync/available-years', async (_req: Request, res: Response) => {
+  try {
+    const years = await getAvailableYears();
+    res.json(years);
+  } catch (error) {
+    console.error('[holidays] Error getting available years:', error);
+    res.status(500).json({ error: 'Failed to get available years' });
   }
 });
 
