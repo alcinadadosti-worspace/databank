@@ -634,3 +634,69 @@ export async function deleteReport(reportId: number) {
     method: 'DELETE',
   });
 }
+
+// ─── Vacations ─────────────────────────────────────────────────────
+
+export interface Vacation {
+  id: number;
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  days: number;
+  notes?: string | null;
+  created_at: string;
+  created_by?: string | null;
+  employee_name?: string;
+  leader_name?: string;
+}
+
+export async function getVacations() {
+  return apiFetch<{ vacations: Vacation[] }>('/api/vacations');
+}
+
+export async function getActiveVacations(date?: string) {
+  const params = date ? `?date=${date}` : '';
+  return apiFetch<{ vacations: Vacation[] }>(`/api/vacations/active${params}`);
+}
+
+export async function checkEmployeeVacation(employeeId: number, date?: string) {
+  const params = date ? `?date=${date}` : '';
+  return apiFetch<{ employeeId: number; isOnVacation: boolean; date: string }>(
+    `/api/vacations/check/${employeeId}${params}`
+  );
+}
+
+export async function getEmployeeVacations(employeeId: number) {
+  return apiFetch<{ vacations: Vacation[] }>(`/api/vacations/employee/${employeeId}`);
+}
+
+export async function createVacation(data: {
+  employee_id: number;
+  start_date: string;
+  end_date: string;
+  days: number;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; id: number; message: string }>('/api/vacations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateVacation(id: number, data: {
+  start_date: string;
+  end_date: string;
+  days: number;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/vacations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteVacation(id: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/vacations/${id}`, {
+    method: 'DELETE',
+  });
+}

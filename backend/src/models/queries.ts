@@ -2029,6 +2029,160 @@ export async function deletePunchAdjustment(adjustmentId: number): Promise<boole
   return true;
 }
 
+// ─── Vacations ────────────────────────────────────────────────
+
+export interface Vacation {
+  id: number;
+  employee_id: number;
+  start_date: string; // YYYY-MM-DD
+  end_date: string; // YYYY-MM-DD
+  days: number; // número de dias de férias
+  notes?: string | null;
+  created_at: string;
+  created_by?: string | null;
+}
+
+export interface VacationWithEmployee extends Vacation {
+  employee_name: string;
+  leader_name: string;
+}
+
+let vacationsCache: Vacation[] | null = null;
+
+export async function getAllVacations(): Promise<VacationWithEmployee[]> {
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS).orderBy('start_date', 'desc').get();
+  const vacations = docsToArray<Vacation>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return vacations.map(v => {
+    const emp = empMap.get(v.employee_id);
+    return {
+      ...v,
+      employee_name: emp?.name ?? '',
+      leader_name: emp?.leader_name ?? '',
+    };
+  });
+}
+
+export async function getActiveVacations(date?: string): Promise<VacationWithEmployee[]> {
+  const checkDate = date || new Date().toISOString().split('T')[0];
+
+  // Get all vacations where checkDate is between start_date and end_date
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('start_date', '<=', checkDate)
+    .get();
+
+  const vacations = docsToArray<Vacation>(snap).filter(v => v.end_date >= checkDate);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return vacations.map(v => {
+    const emp = empMap.get(v.employee_id);
+    return {
+      ...v,
+      employee_name: emp?.name ?? '',
+      leader_name: emp?.leader_name ?? '',
+    };
+  });
+}
+
+export async function getVacationsByEmployee(employeeId: number): Promise<Vacation[]> {
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('employee_id', '==', employeeId)
+    .orderBy('start_date', 'desc')
+    .get();
+  return docsToArray<Vacation>(snap);
+}
+
+export async function isEmployeeOnVacation(employeeId: number, date?: string): Promise<boolean> {
+  const checkDate = date || new Date().toISOString().split('T')[0];
+
+  // Check if there's any vacation for this employee that includes the date
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('employee_id', '==', employeeId)
+    .where('start_date', '<=', checkDate)
+    .get();
+
+  const vacations = docsToArray<Vacation>(snap);
+  return vacations.some(v => v.end_date >= checkDate);
+}
+
+export async function getEmployeesOnVacation(date?: string): Promise<Set<number>> {
+  const checkDate = date || new Date().toISOString().split('T')[0];
+
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('start_date', '<=', checkDate)
+    .get();
+
+  const vacations = docsToArray<Vacation>(snap).filter(v => v.end_date >= checkDate);
+  return new Set(vacations.map(v => v.employee_id));
+}
+
+export async function insertVacation(
+  employeeId: number,
+  startDate: string,
+  endDate: string,
+  days: number,
+  notes?: string,
+  createdBy?: string
+): Promise<{ id: number }> {
+  const id = await getNextId(COLLECTIONS.VACATIONS);
+  const data: Vacation = {
+    id,
+    employee_id: employeeId,
+    start_date: startDate,
+    end_date: endDate,
+    days,
+    notes: notes || null,
+    created_at: new Date().toISOString(),
+    created_by: createdBy || null,
+  };
+  await getDb().collection(COLLECTIONS.VACATIONS).doc(String(id)).set(data);
+  vacationsCache = null;
+  return { id };
+}
+
+export async function updateVacation(
+  id: number,
+  startDate: string,
+  endDate: string,
+  days: number,
+  notes?: string
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    start_date: startDate,
+    end_date: endDate,
+    days,
+    notes: notes || null,
+  });
+  vacationsCache = null;
+  return true;
+}
+
+export async function deleteVacation(id: number): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.delete();
+  vacationsCache = null;
+  return true;
+}
+
+export async function getVacationById(id: number): Promise<Vacation | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.VACATIONS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as Vacation;
+}
+
 export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull[]> {
   // Query approved and rejected separately to avoid needing composite index
   const [approvedSnap, rejectedSnap] = await Promise.all([

@@ -62,6 +62,7 @@ export const COLLECTIONS = {
   COUNTERS: 'counters',
   HOLIDAYS: 'holidays',
   REPORTS: 'reports',
+  VACATIONS: 'vacations',
 } as const;
 
 /**

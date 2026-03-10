@@ -16,6 +16,7 @@ import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import holidaysRouter from './routes/holidays';
 import reportsRouter from './routes/reports';
+import vacationsRouter from './routes/vacations';
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/punch-adjustments', punchAdjustmentsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/holidays', holidaysRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api/vacations', vacationsRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

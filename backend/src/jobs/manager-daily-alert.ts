@@ -2,6 +2,16 @@ import * as queries from '../models/queries';
 import { sendManagerWeeklySummary, sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
 import { WORK_SCHEDULE } from '../config/constants';
 
+// Cache of employees on vacation for specific dates
+const vacationCache = new Map<string, Set<number>>();
+
+async function getEmployeesOnVacationForDate(date: string): Promise<Set<number>> {
+  if (!vacationCache.has(date)) {
+    vacationCache.set(date, await queries.getEmployeesOnVacation(date));
+  }
+  return vacationCache.get(date)!;
+}
+
 /**
  * Check previous day's records for issues and send appropriate notifications.
  * This runs at 08:00 Mon-Sat.
@@ -21,10 +31,21 @@ export async function checkPreviousDayRecords(): Promise<void> {
     const allEmployees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(date);
     const recordsByEmpId = new Map(records.map(r => [r.employee_id, r]));
+    const onVacation = await getEmployeesOnVacationForDate(date);
 
     for (const employee of allEmployees) {
       // Skip employees who don't punch
       if (employee.no_punch_required) continue;
+
+      // Skip employees on vacation - they don't need to punch and shouldn't receive notifications
+      if (onVacation.has(employee.id)) {
+        // If they have a record anyway, mark it as folga
+        const record = recordsByEmpId.get(employee.id);
+        if (record && !record.classification) {
+          await queries.updateRecordClassification(record.id, 'folga');
+        }
+        continue;
+      }
 
       // Check if employee should work on this day
       const shouldWork = await queries.isWorkingDayForEmployee(date, employee);
