@@ -35,15 +35,16 @@ function getScheduleStatus(date: string): { bg: string; text: string; label: str
   const diffDays = Math.ceil(
     (new Date(date + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)
   );
+  const label = formatDate(date);
 
   if (diffDays < 0) {
-    return { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Vencido' };
+    return { bg: 'bg-red-500/20', text: 'text-red-400', label };
   } else if (diffDays <= 30) {
-    return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label: `Vence em ${diffDays}d` };
+    return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label };
   } else if (diffDays <= 90) {
-    return { bg: 'bg-orange-500/20', text: 'text-orange-400', label: `Vence em ${diffDays}d` };
+    return { bg: 'bg-orange-500/20', text: 'text-orange-400', label };
   } else {
-    return { bg: 'bg-blue-500/20', text: 'text-blue-400', label: formatDate(date) };
+    return { bg: 'bg-blue-500/20', text: 'text-blue-400', label };
   }
 }
 
