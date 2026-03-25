@@ -700,3 +700,50 @@ export async function deleteVacation(id: number) {
     method: 'DELETE',
   });
 }
+
+// ─── Vacation Schedules (Vencimentos de Férias) ────────────────────────────
+
+export interface VacationSchedule {
+  id: number;
+  employee_id: number;
+  period_1_date: string;
+  period_2_date: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  employee_name?: string;
+  leader_name?: string;
+}
+
+export async function getVacationSchedules() {
+  return apiFetch<{ schedules: VacationSchedule[] }>('/api/vacation-schedules');
+}
+
+export async function createVacationSchedule(data: {
+  employee_id: number;
+  period_1_date: string;
+  period_2_date?: string | null;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; id: number; message: string }>('/api/vacation-schedules', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateVacationSchedule(id: number, data: {
+  period_1_date: string;
+  period_2_date?: string | null;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/vacation-schedules/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteVacationSchedule(id: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/vacation-schedules/${id}`, {
+    method: 'DELETE',
+  });
+}

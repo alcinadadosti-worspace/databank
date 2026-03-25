@@ -2229,3 +2229,100 @@ export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull
     };
   });
 }
+
+// ─── Vacation Schedules (Vencimentos de Férias) ───────────────
+
+export interface VacationSchedule {
+  id: number;
+  employee_id: number;
+  period_1_date: string; // YYYY-MM-DD — data de vencimento do 1º período
+  period_2_date: string | null; // YYYY-MM-DD — data de vencimento do 2º período (opcional)
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VacationScheduleWithEmployee extends VacationSchedule {
+  employee_name: string;
+  leader_name: string;
+}
+
+export async function getAllVacationSchedules(): Promise<VacationScheduleWithEmployee[]> {
+  const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES).get();
+  const schedules = docsToArray<VacationSchedule>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return schedules
+    .map(s => {
+      const emp = empMap.get(s.employee_id);
+      return {
+        ...s,
+        employee_name: emp?.name ?? '',
+        leader_name: emp?.leader_name ?? '',
+      };
+    })
+    .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+}
+
+export async function getVacationScheduleByEmployee(employeeId: number): Promise<VacationSchedule | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES)
+    .where('employee_id', '==', employeeId).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as VacationSchedule;
+}
+
+export async function insertVacationSchedule(
+  employeeId: number,
+  period1Date: string,
+  period2Date: string | null,
+  notes?: string
+): Promise<{ id: number }> {
+  const id = await getNextId(COLLECTIONS.VACATION_SCHEDULES);
+  const now = new Date().toISOString();
+  const data: VacationSchedule = {
+    id,
+    employee_id: employeeId,
+    period_1_date: period1Date,
+    period_2_date: period2Date || null,
+    notes: notes || null,
+    created_at: now,
+    updated_at: now,
+  };
+  await getDb().collection(COLLECTIONS.VACATION_SCHEDULES).doc(String(id)).set(data);
+  return { id };
+}
+
+export async function updateVacationSchedule(
+  id: number,
+  period1Date: string,
+  period2Date: string | null,
+  notes?: string
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+  await snap.docs[0].ref.update({
+    period_1_date: period1Date,
+    period_2_date: period2Date || null,
+    notes: notes || null,
+    updated_at: new Date().toISOString(),
+  });
+  return true;
+}
+
+export async function deleteVacationSchedule(id: number): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+  await snap.docs[0].ref.delete();
+  return true;
+}
+
+export async function getVacationScheduleById(id: number): Promise<VacationSchedule | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as VacationSchedule;
+}
