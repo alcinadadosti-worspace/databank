@@ -12,6 +12,9 @@ const NO_PUNCH_NAMES = [
   'Anderson Rosalvo Rocha dos Santos',
   'Caique dos santos da silva',
   'Millena Sthefany dos Santos Cruz',
+  'Maria Taciane Pereira Barbosa',
+  'Sabrina Domingos Santos',
+  'Kemilly Rafaelly Souza Silva',
 ];
 
 async function migrateNoPunch(): Promise<void> {
