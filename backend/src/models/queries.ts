@@ -2113,14 +2113,12 @@ export async function getVacationsByEmployee(employeeId: number): Promise<Vacati
 export async function isEmployeeOnVacation(employeeId: number, date?: string): Promise<boolean> {
   const checkDate = date || new Date().toISOString().split('T')[0];
 
-  // Check if there's any vacation for this employee that includes the date
   const snap = await getDb().collection(COLLECTIONS.VACATIONS)
     .where('employee_id', '==', employeeId)
-    .where('start_date', '<=', checkDate)
     .get();
 
   const vacations = docsToArray<Vacation>(snap);
-  return vacations.some(v => v.end_date >= checkDate);
+  return vacations.some(v => v.start_date <= checkDate && v.end_date >= checkDate);
 }
 
 export async function getEmployeesOnVacation(date?: string): Promise<Set<number>> {
