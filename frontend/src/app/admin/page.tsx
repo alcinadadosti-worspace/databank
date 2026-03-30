@@ -25,7 +25,7 @@ export default function AdminDashboard() {
   const debouncedDate = useDebounce(selectedDate, 300);
 
   // Sync states
-  const [syncStart, setSyncStart] = useState(daysAgo(30));
+  const [syncStart, setSyncStart] = useState(todayISO());
   const [syncEnd, setSyncEnd] = useState(todayISO());
   const [syncing, setSyncing] = useState(false);
   const [syncJobId, setSyncJobId] = useState<string | null>(null);
