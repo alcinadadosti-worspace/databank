@@ -6,7 +6,7 @@ import { daysAgo, todayISO } from '@/lib/utils';
 
 export default function AdminSync() {
   const [start, setStart] = useState(daysAgo(30));
-  const [end, setEnd] = useState(todayISO());
+  const [end, setEnd] = useState(daysAgo(30));
   const [loading, setLoading] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus | null>(null);

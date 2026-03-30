@@ -8,7 +8,7 @@ import { useManagerAuth } from '../ManagerAuthContext';
 export default function ManagerSync() {
   const { manager } = useManagerAuth();
   const [start, setStart] = useState(daysAgo(30));
-  const [end, setEnd] = useState(todayISO());
+  const [end, setEnd] = useState(daysAgo(30));
   const [loading, setLoading] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus | null>(null);
