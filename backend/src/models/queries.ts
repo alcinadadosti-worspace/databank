@@ -2379,9 +2379,8 @@ export async function getAllFolgas(): Promise<FolgaWithEmployee[]> {
 export async function getFolgasByLeader(leaderId: number): Promise<FolgaWithEmployee[]> {
   const snap = await getDb().collection(COLLECTIONS.FOLGAS)
     .where('leader_id', '==', leaderId)
-    .orderBy('date', 'desc')
     .get();
-  const folgas = docsToArray<Folga>(snap);
+  const folgas = docsToArray<Folga>(snap).sort((a, b) => b.date.localeCompare(a.date));
 
   const employees = await getAllEmployees();
   const empMap = new Map(employees.map(e => [e.id, e]));
