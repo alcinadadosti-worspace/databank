@@ -108,8 +108,9 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, id: result.id, message: 'Folga registrada com sucesso' });
   } catch (error) {
-    console.error('[folgas] Error creating folga:', error);
-    res.status(500).json({ error: 'Failed to create folga' });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[folgas] Error creating folga:', msg, error);
+    res.status(500).json({ error: 'Failed to create folga', detail: msg });
   }
 });
 

@@ -2398,9 +2398,8 @@ export async function getFolgasByLeader(leaderId: number): Promise<FolgaWithEmpl
 export async function getFolgasByEmployee(employeeId: number): Promise<Folga[]> {
   const snap = await getDb().collection(COLLECTIONS.FOLGAS)
     .where('employee_id', '==', employeeId)
-    .orderBy('date', 'desc')
     .get();
-  return docsToArray<Folga>(snap);
+  return docsToArray<Folga>(snap).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Returns a Map of employee_id → Folga for all employees with a folga on the given date. */
