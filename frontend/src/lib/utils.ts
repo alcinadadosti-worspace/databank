@@ -36,6 +36,7 @@ export function classificationColor(c: string | null): string {
     case 'normal': return 'text-status-success';
     case 'ajuste': return 'text-orange-500';
     case 'sem_registro': return 'text-purple-500';
+    case 'ferias': return 'text-green-500';
     case 'folga': return 'text-blue-500';
     case 'falta': return 'text-red-600';
     default: return 'text-text-tertiary';
@@ -49,6 +50,7 @@ export function classificationBadge(c: string | null): string {
     case 'normal': return 'badge-normal';
     case 'ajuste': return 'badge bg-orange-500/10 text-orange-500';
     case 'sem_registro': return 'badge bg-purple-500/10 text-purple-500';
+    case 'ferias': return 'badge bg-green-500/10 text-green-500';
     case 'folga': return 'badge bg-blue-500/10 text-blue-500';
     case 'falta': return 'badge bg-red-600/10 text-red-600';
     default: return 'badge bg-bg-hover text-text-tertiary';
@@ -62,6 +64,7 @@ export function classificationLabel(c: string | null): string {
     case 'normal': return 'Normal';
     case 'ajuste': return 'Ajuste';
     case 'sem_registro': return 'Sem Registro';
+    case 'ferias': return 'Férias';
     case 'folga': return 'Folga';
     case 'falta': return 'Falta';
     default: return 'Pendente';

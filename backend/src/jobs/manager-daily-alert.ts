@@ -39,10 +39,9 @@ export async function checkPreviousDayRecords(): Promise<void> {
 
       // Skip employees on vacation - they don't need to punch and shouldn't receive notifications
       if (onVacation.has(employee.id)) {
-        // If they have a record anyway, mark it as folga
         const record = recordsByEmpId.get(employee.id);
         if (record && !record.classification) {
-          await queries.updateRecordClassification(record.id, 'folga');
+          await queries.updateRecordClassification(record.id, 'ferias');
         }
         continue;
       }
