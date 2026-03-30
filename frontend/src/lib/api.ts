@@ -466,6 +466,7 @@ export interface UnitEmployee {
   present: boolean;
   is_apprentice: boolean;
   no_punch_required: boolean;
+  is_on_vacation: boolean;
 }
 
 export interface UnitData {

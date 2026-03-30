@@ -127,6 +127,8 @@ export default function ManagerDashboard() {
                       <div className="flex items-center gap-2 text-xs font-mono text-text-muted flex-shrink-0">
                         {emp.no_punch_required ? (
                           <span className="text-2xs font-sans font-medium text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded" title="Colaborador nao bate ponto">Sem ponto</span>
+                        ) : emp.is_on_vacation ? (
+                          <span className="text-2xs font-sans font-medium text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">Férias</span>
                         ) : emp.is_apprentice ? (
                           <>
                             <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>

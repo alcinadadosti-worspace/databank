@@ -1174,6 +1174,7 @@ export interface UnitEmployee {
   present: boolean;
   is_apprentice: boolean;
   no_punch_required: boolean;
+  is_on_vacation: boolean;
 }
 
 export interface UnitData {
@@ -1194,6 +1195,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     .where('date', '==', date).get();
   const records = docsToArray<DailyRecord>(snap);
   const recordMap = new Map(records.map(r => [r.employee_id, r]));
+
+  const onVacation = await getEmployeesOnVacation(date);
 
   // Separate employees who don't punch from regular employees
   const noPunchEmployees: EmployeeWithLeader[] = [];
@@ -1295,7 +1298,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const record = recordMap.get(emp.id);
     const noPunchRequired = emp.no_punch_required === true;
     const isApprentice = emp.is_apprentice === true;
-    const present = noPunchRequired || !!(record?.punch_1);
+    const isOnVacation = onVacation.has(emp.id);
+    const present = noPunchRequired || isOnVacation || !!(record?.punch_1);
     return {
       id: emp.id,
       name: emp.name,
@@ -1306,6 +1310,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       present,
       is_apprentice: isApprentice,
       no_punch_required: noPunchRequired,
+      is_on_vacation: isOnVacation,
     };
   }
 
