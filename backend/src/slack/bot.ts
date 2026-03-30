@@ -6,6 +6,26 @@ import { formatMinutes, classificationLabel } from '../services/hours-calculator
 
 let slackApp: App | null = null;
 
+// ─── Rate Limit Throttle ──────────────────────────────────────
+// Slack's chat.postMessage is Tier 3 (~50 req/min globally, ~1/sec per channel).
+// In test mode all messages go to the same DM, so we enforce a minimum gap
+// between calls to avoid 429 errors.
+let lastPostMessageTime = 0;
+const POST_MESSAGE_MIN_GAP_MS = 1100; // slightly over 1 second
+
+async function rateLimitedPostMessage(
+  app: App,
+  params: Parameters<App['client']['chat']['postMessage']>[0]
+): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastPostMessageTime;
+  if (elapsed < POST_MESSAGE_MIN_GAP_MS) {
+    await new Promise(r => setTimeout(r, POST_MESSAGE_MIN_GAP_MS - elapsed));
+  }
+  lastPostMessageTime = Date.now();
+  await app.client.chat.postMessage(params);
+}
+
 function isSlackConfigured(): boolean {
   return Boolean(env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-'));
 }
@@ -129,7 +149,7 @@ export async function sendEmployeeAlert(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Alerta de ${typeLabel} para ${employeeName} - ${date}`,
       blocks,
@@ -217,7 +237,7 @@ export async function sendManagerDailySummary(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Resumo de banco de horas — ${date}`,
       blocks,
@@ -335,7 +355,7 @@ export async function sendManagerWeeklySummary(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Resumo semanal de banco de horas — ${dateRange}`,
       blocks,
@@ -405,7 +425,7 @@ export async function sendPunchReminder(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Lembrete: faltam ${minutesLeft} min para bater o ponto de ${punchName}`,
       blocks,
@@ -466,7 +486,7 @@ export async function sendJustificationReviewNotification(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Sua justificativa de ${typeLabel.toLowerCase()} foi ${statusLabel.toLowerCase()}`,
       blocks,
@@ -566,7 +586,7 @@ export async function sendNoRecordNotification(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Decisão necessária: ${employee.name} não bateu ponto em ${date}`,
       blocks,
@@ -647,7 +667,7 @@ export async function sendMissingPunchNotification(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Você esqueceu de bater ${missingCount} ponto(s) no dia ${date}`,
       blocks,
@@ -723,7 +743,7 @@ export async function sendLateStartNotification(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Seu primeiro ponto em ${date} foi após 10:00`,
       blocks,
@@ -801,7 +821,7 @@ export async function sendLatePunchNotification(
   ];
 
   try {
-    await app.client.chat.postMessage({
+    await rateLimitedPostMessage(app, {
       channel: targetUser,
       text: `Você registrou um ponto às ${latePunch} em ${date} (após 17:00)`,
       blocks,
