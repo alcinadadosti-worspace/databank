@@ -15,6 +15,23 @@ async function getEmployeesOnVacation(): Promise<Set<number>> {
   return vacationEmployeesCache;
 }
 
+// Cache of employees on integral folga for the current day
+let folgaCache: Map<number, queries.Folga> | null = null;
+let folgaCacheDate = '';
+
+async function getEmployeesOnIntegralFolga(): Promise<Set<number>> {
+  const today = new Date().toISOString().split('T')[0];
+  if (folgaCacheDate !== today || !folgaCache) {
+    folgaCache = await queries.getEmployeesOnFolga(today);
+    folgaCacheDate = today;
+  }
+  const integralIds = new Set<number>();
+  for (const [empId, folga] of folgaCache) {
+    if (folga.type === 'integral') integralIds.add(empId);
+  }
+  return integralIds;
+}
+
 // Track which reminders have been sent today (resets daily)
 // Format: "YYYY-MM-DD:employeeId:type"
 const sentReminders = new Set<string>();
@@ -62,14 +79,16 @@ export async function sendEntryReminders(): Promise<void> {
     const records = await queries.getDailyRecordsByDate(today);
     const punchedIds = new Set(records.map(r => r.employee_id));
     const onVacation = await getEmployeesOnVacation();
+    const onIntegralFolga = await getEmployeesOnIntegralFolga();
 
     // Send to employees who haven't punched yet
     let sent = 0;
     for (const emp of employees) {
-      // Skip if already punched, no punch required, already reminded, or on vacation
+      // Skip if already punched, no punch required, already reminded, or on vacation/folga
       if (punchedIds.has(emp.id) || emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'entry')) continue;
-      if (onVacation.has(emp.id)) continue; // Skip employees on vacation
+      if (onVacation.has(emp.id)) continue;
+      if (onIntegralFolga.has(emp.id)) continue;
 
       await sendPunchReminder(emp.slack_id, emp.name, 'entry', 10);
       markReminderSent(emp.id, 'entry');
@@ -110,6 +129,7 @@ export async function sendExitReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
+    const onIntegralFolga = await getEmployeesOnIntegralFolga();
 
     // Create map of employee records
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
@@ -119,7 +139,8 @@ export async function sendExitReminders(): Promise<void> {
     for (const emp of employees) {
       if (emp.no_punch_required || emp.is_apprentice) continue;
       if (hasReminderBeenSent(emp.id, 'exit')) continue;
-      if (onVacation.has(emp.id)) continue; // Skip employees on vacation
+      if (onVacation.has(emp.id)) continue;
+      if (onIntegralFolga.has(emp.id)) continue;
 
       const record = recordMap.get(emp.id);
       // Has returned from lunch but hasn't left yet
@@ -156,6 +177,7 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
+    const onIntegralFolga = await getEmployeesOnIntegralFolga();
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
@@ -164,7 +186,8 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     for (const emp of employees) {
       if (emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
-      if (onVacation.has(emp.id)) continue; // Skip employees on vacation
+      if (onVacation.has(emp.id)) continue;
+      if (onIntegralFolga.has(emp.id)) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
@@ -203,6 +226,7 @@ export async function checkLunchReturnReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
+    const onIntegralFolga = await getEmployeesOnIntegralFolga();
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
@@ -210,7 +234,8 @@ export async function checkLunchReturnReminders(): Promise<void> {
     for (const emp of employees) {
       if (emp.no_punch_required || emp.is_apprentice) continue;
       if (hasReminderBeenSent(emp.id, 'lunch_return')) continue;
-      if (onVacation.has(emp.id)) continue; // Skip employees on vacation
+      if (onVacation.has(emp.id)) continue;
+      if (onIntegralFolga.has(emp.id)) continue;
 
       const record = recordMap.get(emp.id);
       // Has gone to lunch but hasn't returned yet

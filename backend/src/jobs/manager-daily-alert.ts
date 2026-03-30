@@ -12,6 +12,16 @@ async function getEmployeesOnVacationForDate(date: string): Promise<Set<number>>
   return vacationCache.get(date)!;
 }
 
+// Cache of employees on folga for specific dates
+const folgaCache = new Map<string, Map<number, queries.Folga>>();
+
+async function getEmployeesOnFolgaForDate(date: string): Promise<Map<number, queries.Folga>> {
+  if (!folgaCache.has(date)) {
+    folgaCache.set(date, await queries.getEmployeesOnFolga(date));
+  }
+  return folgaCache.get(date)!;
+}
+
 /**
  * Check previous day's records for issues and send appropriate notifications.
  * This runs at 08:00 Mon-Sat.
@@ -32,6 +42,7 @@ export async function checkPreviousDayRecords(): Promise<void> {
     const records = await queries.getDailyRecordsByDate(date);
     const recordsByEmpId = new Map(records.map(r => [r.employee_id, r]));
     const onVacation = await getEmployeesOnVacationForDate(date);
+    const onFolga = await getEmployeesOnFolgaForDate(date);
 
     for (const employee of allEmployees) {
       // Skip employees who don't punch
@@ -42,6 +53,16 @@ export async function checkPreviousDayRecords(): Promise<void> {
         const record = recordsByEmpId.get(employee.id);
         if (record && !record.classification) {
           await queries.updateRecordClassification(record.id, 'ferias');
+        }
+        continue;
+      }
+
+      // Skip employees on integral folga - no punches expected
+      const folgaRecord = onFolga.get(employee.id);
+      if (folgaRecord?.type === 'integral') {
+        const record = recordsByEmpId.get(employee.id);
+        if (record && !record.classification) {
+          await queries.updateRecordClassification(record.id, 'folga');
         }
         continue;
       }

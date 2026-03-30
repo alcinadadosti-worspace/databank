@@ -1175,6 +1175,8 @@ export interface UnitEmployee {
   is_apprentice: boolean;
   no_punch_required: boolean;
   is_on_vacation: boolean;
+  is_on_folga: boolean;
+  folga_type: 'integral' | 'partial' | null;
 }
 
 export interface UnitData {
@@ -1197,6 +1199,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
   const onVacation = await getEmployeesOnVacation(date);
+  const onFolga = await getEmployeesOnFolga(date);
 
   // Separate employees who don't punch from regular employees
   const noPunchEmployees: EmployeeWithLeader[] = [];
@@ -1299,7 +1302,10 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const noPunchRequired = emp.no_punch_required === true;
     const isApprentice = emp.is_apprentice === true;
     const isOnVacation = onVacation.has(emp.id);
-    const present = noPunchRequired || isOnVacation || !!(record?.punch_1);
+    const folgaRecord = onFolga.get(emp.id);
+    const isOnFolga = !!folgaRecord;
+    const folgaType = folgaRecord?.type ?? null;
+    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || !!(record?.punch_1);
     return {
       id: emp.id,
       name: emp.name,
@@ -1311,6 +1317,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       is_apprentice: isApprentice,
       no_punch_required: noPunchRequired,
       is_on_vacation: isOnVacation,
+      is_on_folga: isOnFolga,
+      folga_type: folgaType,
     };
   }
 
@@ -2330,4 +2338,133 @@ export async function getVacationScheduleById(id: number): Promise<VacationSched
     .where('id', '==', id).limit(1).get();
   if (snap.empty) return undefined;
   return snap.docs[0].data() as VacationSchedule;
+}
+
+// ─── Folgas Agendadas ──────────────────────────────────────────
+
+export interface Folga {
+  id: number;
+  employee_id: number;
+  leader_id: number;
+  date: string; // YYYY-MM-DD
+  type: 'integral' | 'partial';
+  hours_off: number; // 8 for integral; 1–7 for weekday partial; 1–3 for Saturday partial
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface FolgaWithEmployee extends Folga {
+  employee_name: string;
+  leader_name: string;
+}
+
+export async function getAllFolgas(): Promise<FolgaWithEmployee[]> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS).orderBy('date', 'desc').get();
+  const folgas = docsToArray<Folga>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return folgas.map(f => {
+    const emp = empMap.get(f.employee_id);
+    return {
+      ...f,
+      employee_name: emp?.name ?? '',
+      leader_name: emp?.leader_name ?? '',
+    };
+  });
+}
+
+export async function getFolgasByLeader(leaderId: number): Promise<FolgaWithEmployee[]> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('leader_id', '==', leaderId)
+    .orderBy('date', 'desc')
+    .get();
+  const folgas = docsToArray<Folga>(snap);
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return folgas.map(f => {
+    const emp = empMap.get(f.employee_id);
+    return {
+      ...f,
+      employee_name: emp?.name ?? '',
+      leader_name: emp?.leader_name ?? '',
+    };
+  });
+}
+
+export async function getFolgasByEmployee(employeeId: number): Promise<Folga[]> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('employee_id', '==', employeeId)
+    .orderBy('date', 'desc')
+    .get();
+  return docsToArray<Folga>(snap);
+}
+
+/** Returns a Map of employee_id → Folga for all employees with a folga on the given date. */
+export async function getEmployeesOnFolga(date: string): Promise<Map<number, Folga>> {
+  const checkDate = date || new Date().toISOString().split('T')[0];
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('date', '==', checkDate)
+    .get();
+  const folgas = docsToArray<Folga>(snap);
+  return new Map(folgas.map(f => [f.employee_id, f]));
+}
+
+export async function insertFolga(
+  employeeId: number,
+  leaderId: number,
+  date: string,
+  type: 'integral' | 'partial',
+  hoursOff: number,
+  notes?: string,
+  createdBy?: string
+): Promise<{ id: number }> {
+  const id = await getNextId(COLLECTIONS.FOLGAS);
+  const data: Folga = {
+    id,
+    employee_id: employeeId,
+    leader_id: leaderId,
+    date,
+    type,
+    hours_off: hoursOff,
+    notes: notes || null,
+    created_at: new Date().toISOString(),
+    created_by: createdBy || null,
+  };
+  await getDb().collection(COLLECTIONS.FOLGAS).doc(String(id)).set(data);
+  return { id };
+}
+
+export async function updateFolga(
+  id: number,
+  date: string,
+  type: 'integral' | 'partial',
+  hoursOff: number,
+  notes?: string
+): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({ date, type, hours_off: hoursOff, notes: notes || null });
+  return true;
+}
+
+export async function deleteFolga(id: number): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return false;
+  await snap.docs[0].ref.delete();
+  return true;
+}
+
+export async function getFolgaById(id: number): Promise<Folga | undefined> {
+  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+    .where('id', '==', id).limit(1).get();
+  if (snap.empty) return undefined;
+  return snap.docs[0].data() as Folga;
 }

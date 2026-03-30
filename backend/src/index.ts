@@ -18,6 +18,7 @@ import holidaysRouter from './routes/holidays';
 import reportsRouter from './routes/reports';
 import vacationsRouter from './routes/vacations';
 import vacationSchedulesRouter from './routes/vacation-schedules';
+import folgasRouter from './routes/folgas';
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use('/api/holidays', holidaysRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/vacations', vacationsRouter);
 app.use('/api/vacation-schedules', vacationSchedulesRouter);
+app.use('/api/folgas', folgasRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

@@ -53,6 +53,9 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       grouped.get(key)!.push(punch);
     }
 
+    // Get folgas for today (fetched once, used per employee)
+    const onFolga = await queries.getEmployeesOnFolga(today);
+
     // Get all employees for matching
     const employees = await queries.getAllEmployees();
     const employeeBySolidesId = new Map<string, typeof employees[0]>();
@@ -118,6 +121,17 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         continue;
       }
 
+      // Skip integral folga — save punches but classify as folga, no alerts
+      const folgaRecord = onFolga.get(employee.id);
+      if (folgaRecord?.type === 'integral') {
+        await queries.upsertDailyRecord(
+          employee.id, date, punch1, punch2, punch3, punch4,
+          null, null, 'folga'
+        );
+        processed++;
+        continue;
+      }
+
       // Calculate using epoch millis from API records (handles cross-midnight)
       // Saturday: only need 1 pair (08:00-12:00), expected 4h
       // Weekdays: need 2 pairs (morning + afternoon), expected 8h
@@ -125,8 +139,11 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const isApprentice = employee.is_apprentice === true;
       const isSat = isSaturday(date);
 
-      // Get expected minutes based on day type
-      const expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240);
+      // Get expected minutes based on day type; reduce for partial folga
+      let expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240);
+      if (folgaRecord?.type === 'partial') {
+        expectedMinutes = Math.max(0, expectedMinutes - (folgaRecord.hours_off * 60));
+      }
 
       // Saturday and apprentices only need 1 complete pair; regular weekdays need 2
       const minPairs = (isSat || isApprentice) ? 1 : 2;

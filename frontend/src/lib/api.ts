@@ -467,6 +467,8 @@ export interface UnitEmployee {
   is_apprentice: boolean;
   no_punch_required: boolean;
   is_on_vacation: boolean;
+  is_on_folga: boolean;
+  folga_type: 'integral' | 'partial' | null;
 }
 
 export interface UnitData {
@@ -745,6 +747,62 @@ export async function updateVacationSchedule(id: number, data: {
 
 export async function deleteVacationSchedule(id: number) {
   return apiFetch<{ success: boolean; message: string }>(`/api/vacation-schedules/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+// ─── Folgas Agendadas ──────────────────────────────────────────
+
+export interface Folga {
+  id: number;
+  employee_id: number;
+  leader_id: number;
+  date: string;
+  type: 'integral' | 'partial';
+  hours_off: number;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+  employee_name?: string;
+  leader_name?: string;
+}
+
+export async function getFolgas() {
+  return apiFetch<{ folgas: Folga[] }>('/api/folgas');
+}
+
+export async function getFolgasByLeader(leaderId: number) {
+  return apiFetch<{ folgas: Folga[] }>(`/api/folgas/leader/${leaderId}`);
+}
+
+export async function createFolga(data: {
+  employee_id: number;
+  leader_id: number;
+  date: string;
+  type: 'integral' | 'partial';
+  hours_off?: number;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; id: number; message: string }>('/api/folgas', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateFolga(id: number, data: {
+  date: string;
+  type: 'integral' | 'partial';
+  hours_off?: number;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/folgas/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteFolga(id: number) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/folgas/${id}`, {
     method: 'DELETE',
   });
 }
