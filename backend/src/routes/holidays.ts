@@ -53,7 +53,7 @@ router.get('/check/:date', async (req: Request, res: Response) => {
 /** POST /api/holidays - Create a new holiday */
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { date, name, type, recurring } = req.body;
+    const { date, name, type, recurring, employee_ids } = req.body;
 
     if (!date || !name || !type) {
       res.status(400).json({ error: 'date, name, and type are required' });
@@ -71,7 +71,11 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await queries.insertHoliday(date, name, type, recurring === true);
+    const ids: number[] | undefined = (type === 'municipal' && Array.isArray(employee_ids))
+      ? employee_ids.filter((id: unknown) => typeof id === 'number')
+      : undefined;
+
+    const result = await queries.insertHoliday(date, name, type, recurring === true, ids);
     await queries.logAudit('HOLIDAY_CREATED', 'holiday', result.id, `${name} - ${date}`);
 
     res.status(201).json({ success: true, id: result.id, message: 'Feriado criado com sucesso' });
@@ -90,7 +94,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const { date, name, type, recurring } = req.body;
+    const { date, name, type, recurring, employee_ids } = req.body;
 
     if (!date || !name || !type) {
       res.status(400).json({ error: 'date, name, and type are required' });
@@ -108,7 +112,11 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const updated = await queries.updateHoliday(id, date, name, type, recurring === true);
+    const ids: number[] | undefined = (type === 'municipal' && Array.isArray(employee_ids))
+      ? employee_ids.filter((eid: unknown) => typeof eid === 'number')
+      : undefined;
+
+    const updated = await queries.updateHoliday(id, date, name, type, recurring === true, ids);
     if (!updated) {
       res.status(404).json({ error: 'Holiday not found' });
       return;

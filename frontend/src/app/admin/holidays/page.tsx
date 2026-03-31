@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getHolidays, createHoliday, updateHoliday, deleteHoliday, type Holiday } from '@/lib/api';
+import { getHolidays, createHoliday, updateHoliday, deleteHoliday, getEmployees, type Holiday, type Employee } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 const HOLIDAY_TYPES = [
@@ -27,6 +27,7 @@ function getTypeColor(type: Holiday['type']): string {
 
 export default function AdminHolidays() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -39,6 +40,7 @@ export default function AdminHolidays() {
     name: '',
     type: 'company' as Holiday['type'],
     recurring: false,
+    employee_ids: [] as number[],
   });
 
   // Filter state
@@ -47,8 +49,12 @@ export default function AdminHolidays() {
   async function loadHolidays() {
     setLoading(true);
     try {
-      const data = await getHolidays();
-      setHolidays(data.holidays);
+      const [holidaysData, employeesData] = await Promise.all([
+        getHolidays(),
+        getEmployees(),
+      ]);
+      setHolidays(holidaysData.holidays);
+      setEmployees(employeesData.employees.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       console.error('Failed to load holidays:', err);
       setError('Erro ao carregar feriados');
@@ -67,6 +73,7 @@ export default function AdminHolidays() {
       name: '',
       type: 'company',
       recurring: false,
+      employee_ids: [],
     });
     setEditingId(null);
     setShowForm(false);
@@ -79,10 +86,20 @@ export default function AdminHolidays() {
       name: holiday.name,
       type: holiday.type,
       recurring: holiday.recurring,
+      employee_ids: holiday.employee_ids ?? [],
     });
     setEditingId(holiday.id);
     setShowForm(true);
     setError('');
+  }
+
+  function toggleEmployeeId(id: number) {
+    setFormData(prev => ({
+      ...prev,
+      employee_ids: prev.employee_ids.includes(id)
+        ? prev.employee_ids.filter(eid => eid !== id)
+        : [...prev.employee_ids, id],
+    }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -168,8 +185,8 @@ export default function AdminHolidays() {
 
       {/* Form Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-xl max-w-lg w-full mx-4 p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold text-text-primary mb-4">
               {editingId ? 'Editar Feriado' : 'Novo Feriado'}
             </h3>
@@ -208,7 +225,7 @@ export default function AdminHolidays() {
                 </label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as Holiday['type'] }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as Holiday['type'], employee_ids: [] }))}
                   className="input w-full"
                 >
                   {HOLIDAY_TYPES.map(type => (
@@ -216,6 +233,38 @@ export default function AdminHolidays() {
                   ))}
                 </select>
               </div>
+
+              {formData.type === 'municipal' && (
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-1">
+                    Colaboradores em folga
+                  </label>
+                  <p className="text-xs text-text-muted mb-2">
+                    Selecione quem tera folga neste feriado municipal. Quem nao for selecionado trabalha normalmente.
+                  </p>
+                  <div className="border border-border rounded-md max-h-48 overflow-y-auto divide-y divide-border-subtle">
+                    {employees.map(emp => (
+                      <label
+                        key={emp.id}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-bg-hover cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formData.employee_ids.includes(emp.id)}
+                          onChange={() => toggleEmployeeId(emp.id)}
+                          className="w-4 h-4 rounded border-border text-accent-primary focus:ring-accent-primary"
+                        />
+                        <span className="text-sm text-text-primary">{emp.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {formData.employee_ids.length > 0 && (
+                    <p className="text-xs text-text-muted mt-1">
+                      {formData.employee_ids.length} colaborador{formData.employee_ids.length !== 1 ? 'es' : ''} selecionado{formData.employee_ids.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-2">
                 <input
@@ -290,6 +339,11 @@ export default function AdminHolidays() {
                     <span className={`text-xs px-2 py-1 rounded ${getTypeColor(holiday.type)}`}>
                       {getTypeLabel(holiday.type)}
                     </span>
+                    {holiday.type === 'municipal' && holiday.employee_ids && holiday.employee_ids.length > 0 && (
+                      <span className="ml-2 text-xs text-text-muted">
+                        ({holiday.employee_ids.length} colaborador{holiday.employee_ids.length !== 1 ? 'es' : ''})
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm text-text-secondary">
                     {holiday.recurring ? (

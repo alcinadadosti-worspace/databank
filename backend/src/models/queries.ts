@@ -1645,6 +1645,7 @@ export interface Holiday {
   name: string;
   type: 'national' | 'state' | 'municipal' | 'company'; // tipo do feriado
   recurring: boolean; // se repete todo ano (ignora o ano na comparação)
+  employee_ids?: number[]; // apenas para tipo 'municipal': IDs dos colaboradores que tiram folga
   created_at: string;
 }
 
@@ -1666,7 +1667,8 @@ export async function insertHoliday(
   date: string,
   name: string,
   type: Holiday['type'],
-  recurring: boolean
+  recurring: boolean,
+  employee_ids?: number[]
 ): Promise<{ id: number }> {
   const id = await getNextId(COLLECTIONS.HOLIDAYS);
   const data: Holiday = {
@@ -1677,6 +1679,9 @@ export async function insertHoliday(
     recurring,
     created_at: new Date().toISOString(),
   };
+  if (type === 'municipal' && employee_ids && employee_ids.length > 0) {
+    data.employee_ids = employee_ids;
+  }
   await getDb().collection(COLLECTIONS.HOLIDAYS).doc(String(id)).set(data);
   holidaysCache = null; // Invalidate cache
   return { id };
@@ -1687,18 +1692,22 @@ export async function updateHoliday(
   date: string,
   name: string,
   type: Holiday['type'],
-  recurring: boolean
+  recurring: boolean,
+  employee_ids?: number[]
 ): Promise<boolean> {
   const snap = await getDb().collection(COLLECTIONS.HOLIDAYS)
     .where('id', '==', id).limit(1).get();
   if (snap.empty) return false;
 
-  await snap.docs[0].ref.update({
-    date,
-    name,
-    type,
-    recurring,
-  });
+  const updateData: Partial<Holiday> = { date, name, type, recurring };
+  if (type === 'municipal' && employee_ids && employee_ids.length > 0) {
+    updateData.employee_ids = employee_ids;
+  } else {
+    // Remove employee_ids if type changed away from municipal
+    updateData.employee_ids = [];
+  }
+
+  await snap.docs[0].ref.update(updateData);
   holidaysCache = null; // Invalidate cache
   return true;
 }
@@ -1714,7 +1723,10 @@ export async function deleteHoliday(id: number): Promise<boolean> {
 }
 
 /**
- * Check if a given date is a holiday.
+ * Check if a given date is a holiday for everyone.
+ * Municipal holidays with a specific employee_ids list are partial (per-employee)
+ * and are NOT considered a full-day holiday — they are checked individually in
+ * isWorkingDayForEmployee instead.
  * For recurring holidays, only compares month and day.
  */
 export async function isHoliday(date: string): Promise<boolean> {
@@ -1722,6 +1734,9 @@ export async function isHoliday(date: string): Promise<boolean> {
   const [year, month, day] = date.split('-');
 
   return holidays.some(h => {
+    // Partial municipal holiday — only affects specific employees, not everyone
+    if (h.type === 'municipal' && h.employee_ids && h.employee_ids.length > 0) return false;
+
     if (h.recurring) {
       // For recurring holidays, only compare month and day
       const [, hMonth, hDay] = h.date.split('-');
@@ -1825,7 +1840,24 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
   }
 
   // Check if it's a holiday (static + database)
-  if (await isHolidayAsync(dateStr)) {
+  const dbHoliday = await getHolidayForDate(dateStr);
+  if (dbHoliday) {
+    // Municipal holiday: only applies to employees explicitly listed
+    if (dbHoliday.type === 'municipal') {
+      if (dbHoliday.employee_ids && dbHoliday.employee_ids.length > 0) {
+        if (dbHoliday.employee_ids.includes(employee.id)) {
+          return false;
+        }
+        // Not in the list — employee works normally
+      }
+      // If no employee_ids set, treat as holiday for everyone (backward compat)
+      else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  } else if (isStaticHoliday(dateStr)) {
     return false;
   }
 

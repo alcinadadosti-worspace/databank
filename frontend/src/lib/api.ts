@@ -488,6 +488,7 @@ export interface Holiday {
   name: string;
   type: 'national' | 'state' | 'municipal' | 'company';
   recurring: boolean;
+  employee_ids?: number[];
   created_at: string;
 }
 
@@ -508,6 +509,7 @@ export async function createHoliday(data: {
   name: string;
   type: Holiday['type'];
   recurring: boolean;
+  employee_ids?: number[];
 }) {
   return apiFetch<{ success: boolean; id: number; message: string }>('/api/holidays', {
     method: 'POST',
@@ -520,6 +522,7 @@ export async function updateHoliday(id: number, data: {
   name: string;
   type: Holiday['type'];
   recurring: boolean;
+  employee_ids?: number[];
 }) {
   return apiFetch<{ success: boolean; message: string }>(`/api/holidays/${id}`, {
     method: 'PUT',
