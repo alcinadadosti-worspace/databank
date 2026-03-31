@@ -220,7 +220,9 @@ export async function checkLunchReturnReminders(): Promise<void> {
   }
 
   const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  // Convert UTC to São Paulo time (UTC-3) to match stored punch times
+  const spHours = (now.getUTCHours() - 3 + 24) % 24;
+  const currentMinutes = spHours * 60 + now.getUTCMinutes();
 
   try {
     const employees = await queries.getAllEmployees();
