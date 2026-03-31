@@ -163,6 +163,22 @@
     box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
   }
 
+  /* Date/time picker icons — force visible color in dark mode */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) opacity(0.6);
+    cursor: pointer;
+  }
+
+  /* In light mode, revert to default (dark icon) */
+  [data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+  [data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator,
+  [data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 0.6;
+  }
+
   .sidebar-link {
     color: var(--text-secondary);
     @apply flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors;
