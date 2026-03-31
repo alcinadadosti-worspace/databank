@@ -1126,6 +1126,13 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
   'maryanna francielly trajano da silva',
 ];
 
+// Kemilly's employees for Loja Sustentável Palmeira (new unit)
+const LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES = [
+  'maria cicília brito veiga',
+  'eduarda pereira costa silva',
+  'larissa alexia da silva souza',
+];
+
 // Store leaders from Canal Loja (leader_id=6) that should appear in their own units
 // Maps employee name (lowercase) → target leader_id (their unit)
 const STORE_LEADER_MAPPING: Record<string, number> = {
@@ -1156,11 +1163,12 @@ const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Palmeira dos Indios': 3,
   'Loja Penedo': 4,
   'Loja Sao Sebastiao': 5,
-  'Loja Teotonio Vilela': 6,
-  'Salão de vendas Penedo': 7,
-  'Supervisoras de base': 8,
-  'Supervisoras Penedo': 9,
-  'VD Palmeira dos Indios': 10,
+  'Loja Sustentável Palmeira': 6,
+  'Loja Teotonio Vilela': 7,
+  'Salão de vendas Penedo': 8,
+  'Supervisoras de base': 9,
+  'Supervisoras Penedo': 10,
+  'VD Palmeira dos Indios': 11,
   // All other units will get a high number and sort alphabetically
 };
 
@@ -1404,6 +1412,27 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     units.push({
       leader_id: 10,
       unit_name: 'Loja Sao Sebastiao',
+      leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
+      employees: unitEmployees,
+      present_count: unitEmployees.filter(e => e.present).length,
+      total_count: unitEmployees.length,
+    });
+  }
+
+  // Loja Sustentável Palmeira (Kemilly's new unit)
+  const lojaSustentavelEmps = kemillyEmps.filter(emp =>
+    LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
+  );
+  if (lojaSustentavelEmps.length > 0) {
+    const unitEmployees = lojaSustentavelEmps.map(toUnitEmployee);
+    unitEmployees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    units.push({
+      leader_id: 10,
+      unit_name: 'Loja Sustentável Palmeira',
       leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
       employees: unitEmployees,
       present_count: unitEmployees.filter(e => e.present).length,
