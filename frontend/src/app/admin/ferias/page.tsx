@@ -53,6 +53,14 @@ function getScheduleStatus(date: string): { bg: string; text: string; label: str
   }
 }
 
+function getPeriodStatus(periodDate: string, employeeVacations: Vacation[]): { bg: string; text: string; label: string; covered: boolean } {
+  const isCovered = employeeVacations.some(v => v.start_date <= periodDate);
+  if (isCovered) {
+    return { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Concluido', covered: true };
+  }
+  return { ...getScheduleStatus(periodDate), covered: false };
+}
+
 function calculateDays(startDate: string, endDate: string): number {
   const start = new Date(startDate + 'T12:00:00');
   const end = new Date(endDate + 'T12:00:00');
@@ -422,14 +430,26 @@ export default function AdminFerias() {
     return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [employeesWithoutSchedule]);
 
-  // Schedule summary counters
+  // Map employee_id -> their vacations (for period coverage check)
+  const vacationsByEmployee = useMemo(() => {
+    const map = new Map<number, Vacation[]>();
+    for (const v of vacations) {
+      if (!map.has(v.employee_id)) map.set(v.employee_id, []);
+      map.get(v.employee_id)!.push(v);
+    }
+    return map;
+  }, [vacations]);
+
+  // Schedule summary counters — exclude covered periods
   const scheduleSummary = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     let vencido = 0, proximo = 0, ok = 0;
 
     for (const s of schedules) {
+      const empVacations = vacationsByEmployee.get(s.employee_id) || [];
       const dates = [s.period_1_date, s.period_2_date].filter(Boolean) as string[];
-      const nearest = dates.sort()[0];
+      const uncovered = dates.filter(d => !empVacations.some(v => v.start_date <= d));
+      const nearest = uncovered.sort()[0];
       if (!nearest) continue;
       const diff = Math.ceil(
         (new Date(nearest + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)
@@ -439,7 +459,7 @@ export default function AdminFerias() {
       else ok++;
     }
     return { vencido, proximo, ok };
-  }, [schedules]);
+  }, [schedules, vacationsByEmployee]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -866,8 +886,9 @@ export default function AdminFerias() {
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {filteredSchedules.map((schedule) => {
-                    const p1 = getScheduleStatus(schedule.period_1_date);
-                    const p2 = schedule.period_2_date ? getScheduleStatus(schedule.period_2_date) : null;
+                    const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
+                    const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
+                    const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
                     return (
                       <tr key={schedule.id} className="hover:bg-bg-hover transition-colors">
                         <td className="px-4 py-3">
@@ -880,15 +901,25 @@ export default function AdminFerias() {
                         </td>
                         <td className="px-4 py-3 text-sm text-text-secondary">{schedule.leader_name || '-'}</td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
-                            {p1.label}
-                          </span>
+                          <div className="flex flex-col gap-1">
+                            <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
+                              {p1.covered ? '✓ Concluido' : p1.label}
+                            </span>
+                            {!p1.covered && (
+                              <span className="text-xs text-text-muted">{formatDate(schedule.period_1_date)}</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {p2 ? (
-                            <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
-                              {p2.label}
-                            </span>
+                            <div className="flex flex-col gap-1">
+                              <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
+                                {p2.covered ? '✓ Concluido' : p2.label}
+                              </span>
+                              {!p2.covered && schedule.period_2_date && (
+                                <span className="text-xs text-text-muted">{formatDate(schedule.period_2_date)}</span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-text-muted">—</span>
                           )}
