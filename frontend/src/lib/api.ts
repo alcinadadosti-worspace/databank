@@ -133,6 +133,24 @@ export async function authenticateAdmin(password: string) {
   return result;
 }
 
+export async function verifyAdminToken(): Promise<boolean> {
+  try {
+    await apiFetch<{ valid: boolean }>('/api/leaders/verify', { authType: 'admin' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function verifyManagerToken(): Promise<boolean> {
+  try {
+    await apiFetch<{ valid: boolean }>('/api/leaders/verify', { authType: 'manager' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Records ───────────────────────────────────────────────────
 
 export async function getRecordsByDate(date: string) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateAdmin, getAuthToken, removeAuthToken } from '@/lib/api';
+import { authenticateAdmin, verifyAdminToken, getAuthToken, removeAuthToken } from '@/lib/api';
 
 interface AdminAuthContextType {
   authenticated: boolean;
@@ -18,15 +18,22 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount - check for JWT token
+  // On mount, validate token against the backend — never trust localStorage alone
   useEffect(() => {
     const token = getAuthToken('admin');
-    if (token) {
-      // Token exists - consider authenticated
-      // In a production app, you'd validate the token here
-      setAuthenticated(true);
+    if (!token) {
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+    verifyAdminToken().then(valid => {
+      if (valid) {
+        setAuthenticated(true);
+      } else {
+        // Token expired or invalid — clear it so the login form is shown
+        removeAuthToken('admin');
+      }
+      setLoading(false);
+    });
   }, []);
 
   async function login(password: string): Promise<boolean> {

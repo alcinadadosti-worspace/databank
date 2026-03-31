@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
 import { env } from '../config/env';
-import { generateToken } from '../middleware/auth';
+import { generateToken, requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 import { loginLimiter } from '../middleware/rate-limit';
 
 const router = Router();
@@ -124,6 +124,12 @@ router.post('/auth-admin', loginLimiter, async (req: Request, res: Response) => 
     console.error('[leaders] Error authenticating admin:', error);
     res.status(500).json({ error: 'Erro ao autenticar' });
   }
+});
+
+/** GET /api/leaders/verify - Verify current token and return role/identity */
+router.get('/verify', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  // If we reach here, requireAuth already validated the token
+  res.json({ valid: true, user: req.user });
 });
 
 /** GET /api/leaders?sector=... - List leaders, optionally filtered by sector */

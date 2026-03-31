@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authenticateManager, getAuthToken, removeAuthToken, type ManagerAuth } from '@/lib/api';
+import { authenticateManager, verifyManagerToken, getAuthToken, removeAuthToken, type ManagerAuth } from '@/lib/api';
 
 interface ManagerAuthContextType {
   manager: ManagerAuth | null;
@@ -20,20 +20,31 @@ export function ManagerAuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from localStorage on mount - check for JWT token
+  // On mount, validate token against the backend — never trust localStorage alone
   useEffect(() => {
     const token = getAuthToken('manager');
     const storedData = localStorage.getItem(MANAGER_DATA_KEY);
 
-    if (token && storedData) {
-      try {
-        setManager(JSON.parse(storedData));
-      } catch {
+    if (!token || !storedData) {
+      setLoading(false);
+      return;
+    }
+
+    verifyManagerToken().then(valid => {
+      if (valid) {
+        try {
+          setManager(JSON.parse(storedData));
+        } catch {
+          localStorage.removeItem(MANAGER_DATA_KEY);
+          removeAuthToken('manager');
+        }
+      } else {
+        // Token expired or invalid — clear everything so the login form is shown
         localStorage.removeItem(MANAGER_DATA_KEY);
         removeAuthToken('manager');
       }
-    }
-    setLoading(false);
+      setLoading(false);
+    });
   }, []);
 
   async function login(email: string): Promise<boolean> {
