@@ -107,7 +107,7 @@ export default function AdminDashboard() {
         clearInterval(syncPollingRef.current);
       }
     };
-  }, [syncJobId, selectedDate, loadRecords]);
+  }, [syncJobId, startDate, endDate, loadRecords]);
 
   async function handleSync() {
     setSyncing(true);
