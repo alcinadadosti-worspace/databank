@@ -59,11 +59,11 @@ export async function startSlackBot(): Promise<void> {
 
 /**
  * Get the Slack user ID to send messages to.
- * In test mode, ALL messages go to SLACK_TEST_USER_ID.
+ * Production mode: messages go to the real user.
+ * Falls back to SLACK_TEST_USER_ID if the real ID is missing.
  */
 function getTargetUserId(realUserId: string | null): string {
-  // ALWAYS use test user in current phase
-  return env.SLACK_TEST_USER_ID;
+  return realUserId || env.SLACK_TEST_USER_ID;
 }
 
 // ─── Send Alert to Employee ────────────────────────────────────
