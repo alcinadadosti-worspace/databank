@@ -102,7 +102,7 @@ export async function checkPreviousDayRecords(): Promise<void> {
       }
 
       // Case 3: First punch after 10:00 (regular employees only) → ajuste, notify employee
-      if (!employee.is_apprentice && record?.punch_1 && record.punch_1 > '10:00') {
+      if (!employee.is_apprentice && !employee.is_intern && record?.punch_1 && record.punch_1 > '10:00') {
         await queries.updateRecordClassification(record.id, 'ajuste');
         await sendLateStartNotification(employee, record, date);
         continue;
@@ -112,7 +112,7 @@ export async function checkPreviousDayRecords(): Promise<void> {
       // For weekdays: check punch_1, punch_2, punch_3 (punch_4 is the last)
       // For Saturdays or apprentices: check punch_1 only (punch_2 is the last)
       if (record) {
-        const punchesBeforeLast = (isSaturday || employee.is_apprentice)
+        const punchesBeforeLast = (isSaturday || employee.is_apprentice || employee.is_intern)
           ? [record.punch_1]
           : [record.punch_1, record.punch_2, record.punch_3];
 
@@ -138,7 +138,7 @@ function countPunches(record: queries.DailyRecord | undefined): number {
 }
 
 function getExpectedPunches(isSaturday: boolean, employee: queries.EmployeeWithLeader): number {
-  if (employee.is_apprentice) return 2; // Apprentices only punch in/out
+  if (employee.is_apprentice || employee.is_intern) return 2; // Apprentices and interns only punch in/out
   return isSaturday ? 2 : 4;
 }
 

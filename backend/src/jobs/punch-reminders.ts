@@ -137,7 +137,7 @@ export async function sendExitReminders(): Promise<void> {
     // Send to employees who have punch_3 but not punch_4 (didn't punch out yet)
     let sent = 0;
     for (const emp of employees) {
-      if (emp.no_punch_required || emp.is_apprentice) continue;
+      if (emp.no_punch_required || emp.is_apprentice || emp.is_intern) continue;
       if (hasReminderBeenSent(emp.id, 'exit')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
@@ -234,7 +234,7 @@ export async function checkLunchReturnReminders(): Promise<void> {
 
     let sent = 0;
     for (const emp of employees) {
-      if (emp.no_punch_required || emp.is_apprentice) continue;
+      if (emp.no_punch_required || emp.is_apprentice || emp.is_intern) continue;
       if (hasReminderBeenSent(emp.id, 'lunch_return')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;

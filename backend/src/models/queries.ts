@@ -1181,6 +1181,7 @@ export interface UnitEmployee {
   punch_4: string | null;
   present: boolean;
   is_apprentice: boolean;
+  is_intern?: boolean;
   no_punch_required: boolean;
   is_on_vacation: boolean;
   is_on_folga: boolean;
@@ -1314,6 +1315,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const record = recordMap.get(emp.id);
     const noPunchRequired = emp.no_punch_required === true;
     const isApprentice = emp.is_apprentice === true;
+    const isIntern = emp.is_intern === true;
     const isOnVacation = onVacation.has(emp.id);
     const folgaRecord = onFolga.get(emp.id);
     const isOnFolga = !!folgaRecord;
@@ -1328,6 +1330,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       punch_4: record?.punch_4 ?? null,
       present,
       is_apprentice: isApprentice,
+      is_intern: isIntern,
       no_punch_required: noPunchRequired,
       is_on_vacation: isOnVacation,
       is_on_folga: isOnFolga,
@@ -1597,6 +1600,7 @@ export interface Employee {
   secondary_approver_id: number | null;
   solides_employee_id: string | null;
   is_apprentice: boolean;
+  is_intern?: boolean;
   expected_daily_minutes: number;
   no_punch_required: boolean;
   works_saturday: boolean;
