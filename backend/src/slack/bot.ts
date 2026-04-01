@@ -59,11 +59,10 @@ export async function startSlackBot(): Promise<void> {
 
 /**
  * Get the Slack user ID to send messages to.
- * Production mode: messages go to the real user.
- * Falls back to SLACK_TEST_USER_ID if the real ID is missing.
+ * Returns null if no real user ID is set — caller should skip sending.
  */
-function getTargetUserId(realUserId: string | null): string {
-  return realUserId || env.SLACK_TEST_USER_ID;
+function getTargetUserId(realUserId: string | null): string | null {
+  return realUserId || null;
 }
 
 // ─── Send Alert to Employee ────────────────────────────────────
@@ -80,6 +79,10 @@ export async function sendEmployeeAlert(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employeeSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping employee alert for ${employeeName} — no slack_id`);
+    return;
+  }
 
   const isLate = classification === 'late';
   const emoji = isLate ? ':warning:' : ':clock3:';
@@ -181,6 +184,10 @@ export async function sendManagerDailySummary(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(leaderSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping daily summary for ${leaderName} — no slack_id`);
+    return;
+  }
 
   const alertRecords = records.filter(
     r => r.classification !== 'normal' && Math.abs(r.difference_minutes) >= 11
@@ -267,6 +274,10 @@ export async function sendManagerWeeklySummary(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(leaderSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping weekly summary for ${leaderName} — no slack_id`);
+    return;
+  }
 
   // Filter only records with alerts (late/overtime with >= 11 min difference)
   const alertRecords = records.filter(
@@ -385,6 +396,10 @@ export async function sendPunchReminder(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employeeSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping punch reminder for ${employeeName} — no slack_id`);
+    return;
+  }
 
   let emoji: string;
   let message: string;
@@ -451,6 +466,10 @@ export async function sendJustificationReviewNotification(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employeeSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping justification review notification for ${employeeName} — no slack_id`);
+    return;
+  }
 
   const isApproved = status === 'approved';
   const emoji = isApproved ? ':white_check_mark:' : ':x:';
@@ -507,6 +526,10 @@ export async function sendNoRecordNotification(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employee.leader_slack_id || null);
+  if (!targetUser) {
+    console.log(`[slack] Skipping no-record notification for ${employee.name} — leader has no slack_id`);
+    return;
+  }
 
   const blocks = [
     {
@@ -612,6 +635,10 @@ export async function sendMissingPunchNotification(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employee.slack_id || null);
+  if (!targetUser) {
+    console.log(`[slack] Skipping missing punch notification for ${employee.name} — no slack_id`);
+    return;
+  }
 
   const missingCount = missingPunches.length;
   const punchesText = missingPunches.map(p => `• ${p}`).join('\n');
@@ -692,6 +719,10 @@ export async function sendLateStartNotification(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employee.slack_id || null);
+  if (!targetUser) {
+    console.log(`[slack] Skipping late start notification for ${employee.name} — no slack_id`);
+    return;
+  }
 
   const blocks = [
     {
@@ -770,6 +801,10 @@ export async function sendLatePunchNotification(
   const app = getSlackApp();
   if (!app) return;
   const targetUser = getTargetUserId(employee.slack_id || null);
+  if (!targetUser) {
+    console.log(`[slack] Skipping late punch notification for ${employee.name} — no slack_id`);
+    return;
+  }
 
   const blocks = [
     {
