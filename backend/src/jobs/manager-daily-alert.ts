@@ -110,9 +110,9 @@ export async function checkPreviousDayRecords(): Promise<void> {
 
       // Case 4: Any non-last punch after 17:00 → ajuste, notify employee
       // For weekdays: check punch_1, punch_2, punch_3 (punch_4 is the last)
-      // For Saturdays: check punch_1 (punch_2 is the last)
+      // For Saturdays or apprentices: check punch_1 only (punch_2 is the last)
       if (record) {
-        const punchesBeforeLast = isSaturday
+        const punchesBeforeLast = (isSaturday || employee.is_apprentice)
           ? [record.punch_1]
           : [record.punch_1, record.punch_2, record.punch_3];
 
