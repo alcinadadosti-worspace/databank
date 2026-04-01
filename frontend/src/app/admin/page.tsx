@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import StatsCard from '@/components/StatsCard';
 import RecordsTable from '@/components/RecordsTable';
-import { getDashboardStats, getRecordsByDate, getLeaders, syncPunchesRange, getSyncStatus, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
+import { getDashboardStats, getAllRecords, getLeaders, syncPunchesRange, getSyncStatus, type DashboardStats, type DailyRecord, type Leader, type SyncStatus } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 import { useDebounce } from '@/lib/hooks';
 
@@ -17,12 +17,14 @@ export default function AdminDashboard() {
   const [activeFilter, setActiveFilter] = useState<Filter | null>(null);
 
   // Filter states
-  const [selectedDate, setSelectedDate] = useState(daysAgo(1));
+  const [startDate, setStartDate] = useState(daysAgo(1));
+  const [endDate, setEndDate] = useState(daysAgo(1));
   const [selectedLeader, setSelectedLeader] = useState<string>('');
   const [searchName, setSearchName] = useState('');
 
-  // Debounce the date to avoid multiple API calls when rapidly changing dates
-  const debouncedDate = useDebounce(selectedDate, 300);
+  // Debounce dates to avoid multiple API calls when rapidly changing
+  const debouncedStart = useDebounce(startDate, 300);
+  const debouncedEnd = useDebounce(endDate, 300);
 
   // Sync states
   const [syncStart, setSyncStart] = useState(todayISO());
@@ -33,10 +35,10 @@ export default function AdminDashboard() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const syncPollingRef = useRef<NodeJS.Timeout | null>(null);
 
-  const loadRecords = useCallback(async (date: string) => {
+  const loadRecords = useCallback(async (start: string, end: string) => {
     setLoading(true);
     try {
-      const recordsData = await getRecordsByDate(date);
+      const recordsData = await getAllRecords(start, end);
       setAllRecords(recordsData.records);
     } catch (error) {
       console.error('Failed to load records:', error);
@@ -50,7 +52,7 @@ export default function AdminDashboard() {
       try {
         const [statsData, recordsData, leadersData] = await Promise.all([
           getDashboardStats(),
-          getRecordsByDate(selectedDate),
+          getAllRecords(startDate, endDate),
           getLeaders(),
         ]);
         setStats(statsData);
@@ -65,12 +67,12 @@ export default function AdminDashboard() {
     loadInitial();
   }, []);
 
-  // Reload records when debounced date changes (avoids multiple API calls)
+  // Reload records when debounced dates change (avoids multiple API calls)
   useEffect(() => {
     if (!loading) {
-      loadRecords(debouncedDate);
+      loadRecords(debouncedStart, debouncedEnd);
     }
-  }, [debouncedDate]);
+  }, [debouncedStart, debouncedEnd]);
 
   // Poll for sync status
   useEffect(() => {
@@ -89,7 +91,7 @@ export default function AdminDashboard() {
           setSyncing(false);
           // Reload records after sync completes
           if (data.status === 'completed') {
-            loadRecords(selectedDate);
+            loadRecords(startDate, endDate);
           }
         }
       } catch (err) {
@@ -305,13 +307,26 @@ export default function AdminDashboard() {
       {/* Filters */}
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
-          {/* Date picker */}
+          {/* Date range picker */}
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-tertiary">Data</label>
+            <label className="text-xs text-text-tertiary">Data início</label>
             <input
               type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                if (e.target.value > endDate) setEndDate(e.target.value);
+              }}
+              className="input max-w-[160px]"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-tertiary">Data fim</label>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
               className="input max-w-[160px]"
             />
           </div>
@@ -387,7 +402,10 @@ export default function AdminDashboard() {
       {/* Records */}
       <div>
         <h3 className="text-sm font-medium text-text-secondary mb-3">
-          {loading ? 'Carregando...' : `Registros de ${selectedDate.split('-').reverse().join('/')}`}
+          {loading ? 'Carregando...' : startDate === endDate
+            ? `Registros de ${startDate.split('-').reverse().join('/')}`
+            : `Registros de ${startDate.split('-').reverse().join('/')} até ${endDate.split('-').reverse().join('/')}`
+          }
         </h3>
         <RecordsTable records={filteredRecords} showEmployee showLeader />
       </div>
