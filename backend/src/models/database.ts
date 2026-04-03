@@ -8,22 +8,29 @@ import fs from 'fs';
 let db: Firestore;
 let storage: Storage;
 
+function resolveStorageBucket(serviceAccount: any): string {
+  const projectId = env.FIREBASE_PROJECT_ID || serviceAccount.project_id;
+  if (!projectId) throw new Error('Cannot determine Firebase project ID for Storage bucket');
+  // Newer Firebase projects (post-2022) use .firebasestorage.app; older use .appspot.com.
+  // FIREBASE_STORAGE_BUCKET env var overrides both if set explicitly.
+  return (process.env.FIREBASE_STORAGE_BUCKET) || `${projectId}.firebasestorage.app`;
+}
+
 function initFirebase() {
   if (getApps().length === 0) {
     // Priority: 1) JSON file (local dev), 2) Base64 env var (Render), 3) raw JSON env var
     const keyPath = path.resolve(__dirname, '../../firebase-key.json');
-    const storageBucket = env.FIREBASE_PROJECT_ID ? `${env.FIREBASE_PROJECT_ID}.appspot.com` : undefined;
 
     if (fs.existsSync(keyPath)) {
       const serviceAccount = JSON.parse(fs.readFileSync(keyPath, 'utf8'));
-      initializeApp({ credential: cert(serviceAccount), storageBucket });
+      initializeApp({ credential: cert(serviceAccount), storageBucket: resolveStorageBucket(serviceAccount) });
     } else if (env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
       const json = Buffer.from(env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
       const serviceAccount = JSON.parse(json);
-      initializeApp({ credential: cert(serviceAccount), storageBucket });
+      initializeApp({ credential: cert(serviceAccount), storageBucket: resolveStorageBucket(serviceAccount) });
     } else if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      initializeApp({ credential: cert(serviceAccount), storageBucket });
+      initializeApp({ credential: cert(serviceAccount), storageBucket: resolveStorageBucket(serviceAccount) });
     } else {
       throw new Error('No Firebase credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 or provide firebase-key.json');
     }

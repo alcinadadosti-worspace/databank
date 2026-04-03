@@ -327,9 +327,19 @@ router.post('/:id/atestado', uploadAtestado.single('file'), async (req: MulterRe
 
     const file = bucket.file(filename);
     await file.save(req.file.buffer, { metadata: { contentType: req.file.mimetype } });
-    await file.makePublic();
 
-    const fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    let fileUrl: string;
+    try {
+      await file.makePublic();
+      fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    } catch {
+      // Bucket uses uniform access control — generate a long-lived signed URL instead
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
+      });
+      fileUrl = signedUrl;
+    }
     await queries.updateJustificationAttachment(justificationId, fileUrl, req.file.originalname);
     await queries.logAudit('ATESTADO_UPLOADED', 'justification', justificationId,
       `Atestado uploaded: ${req.file.originalname}`);

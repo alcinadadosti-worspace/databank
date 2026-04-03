@@ -88,11 +88,18 @@ router.post('/', upload.single('file'), async (req: MulterRequest, res: Response
       },
     });
 
-    // Make the file publicly accessible
-    await file.makePublic();
-
-    // Get public URL
-    const fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    // Make the file publicly accessible (falls back to signed URL if uniform access is enabled)
+    let fileUrl: string;
+    try {
+      await file.makePublic();
+      fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
+    } catch {
+      const [signedUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000,
+      });
+      fileUrl = signedUrl;
+    }
 
     // Save metadata to Firestore
     const id = await getNextId(COLLECTIONS.REPORTS);
