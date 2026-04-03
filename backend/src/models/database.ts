@@ -11,9 +11,9 @@ let storage: Storage;
 function resolveStorageBucket(serviceAccount: any): string {
   const projectId = env.FIREBASE_PROJECT_ID || serviceAccount.project_id;
   if (!projectId) throw new Error('Cannot determine Firebase project ID for Storage bucket');
-  // Newer Firebase projects (post-2022) use .firebasestorage.app; older use .appspot.com.
-  // FIREBASE_STORAGE_BUCKET env var overrides both if set explicitly.
-  return (process.env.FIREBASE_STORAGE_BUCKET) || `${projectId}.firebasestorage.app`;
+  // FIREBASE_STORAGE_BUCKET env var takes priority if set explicitly.
+  // Default: .appspot.com (works for both old and most new Firebase projects).
+  return (process.env.FIREBASE_STORAGE_BUCKET) || `${projectId}.appspot.com`;
 }
 
 function initFirebase() {
