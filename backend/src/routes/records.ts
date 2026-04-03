@@ -23,8 +23,11 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/units', async (req: Request, res: Response) => {
   try {
     const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
-    const units = await queries.getUnitRecords(date);
-    res.json({ units, date });
+    const [units, isHoliday] = await Promise.all([
+      queries.getUnitRecords(date),
+      queries.isHolidayAsync(date),
+    ]);
+    res.json({ units, date, is_holiday: isHoliday });
   } catch (error) {
     console.error('[records] Error fetching unit records:', error);
     res.status(500).json({ error: 'Failed to fetch unit records' });

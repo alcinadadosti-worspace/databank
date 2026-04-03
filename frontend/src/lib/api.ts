@@ -360,7 +360,7 @@ export async function getManagerSyncStatus(jobId: string) {
 // ─── Units ────────────────────────────────────────────────────
 
 export async function getUnitRecords(date: string) {
-  return apiFetch<{ units: UnitData[]; date: string }>(`/api/records/units?date=${date}`);
+  return apiFetch<{ units: UnitData[]; date: string; is_holiday: boolean }>(`/api/records/units?date=${date}`);
 }
 
 // ─── Record Editing ───────────────────────────────────────────

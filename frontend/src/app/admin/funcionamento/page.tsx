@@ -6,6 +6,7 @@ import { todayISO } from '@/lib/utils';
 
 export default function FuncionamentoUnidade() {
   const [units, setUnits] = useState<UnitData[]>([]);
+  const [isHoliday, setIsHoliday] = useState(false);
   const [date, setDate] = useState(todayISO());
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -15,6 +16,7 @@ export default function FuncionamentoUnidade() {
     try {
       const data = await getUnitRecords(date);
       setUnits(data.units);
+      setIsHoliday(data.is_holiday ?? false);
     } catch (error) {
       console.error('Failed to load unit records:', error);
     } finally {
@@ -77,6 +79,17 @@ export default function FuncionamentoUnidade() {
         </div>
       </div>
 
+      {!loading && isHoliday && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 text-sm font-medium">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          Feriado — colaboradores não precisam bater ponto neste dia
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>
       ) : (
@@ -126,12 +139,15 @@ export default function FuncionamentoUnidade() {
                           <span className="text-2xs font-sans font-medium text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">Férias</span>
                         ) : emp.is_on_folga && emp.folga_type === 'integral' ? (
                           <span className="text-2xs font-sans font-medium text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">Folga</span>
-                        ) : emp.is_apprentice ? (
+                        ) : emp.is_apprentice || emp.is_intern ? (
                           <>
-                            <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>
+                            <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title={emp.is_intern ? 'Estagiário' : 'Jovem Aprendiz - 4h/dia'}>{emp.is_intern ? 'EST' : 'JA'}</span>
                             {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
                             {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
-                            {!emp.punch_1 && <span className="text-status-danger">Sem registro</span>}
+                            {!emp.punch_1 && (isHoliday
+                              ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
+                              : <span className="text-status-danger">Sem registro</span>
+                            )}
                           </>
                         ) : (
                           <>
@@ -139,8 +155,9 @@ export default function FuncionamentoUnidade() {
                             {emp.punch_2 && <span title="Saida almoco">{emp.punch_2}</span>}
                             {emp.punch_3 && <span title="Retorno almoco">{emp.punch_3}</span>}
                             {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
-                            {!emp.punch_1 && (
-                              <span className="text-status-danger">Sem registro</span>
+                            {!emp.punch_1 && (isHoliday
+                              ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
+                              : <span className="text-status-danger">Sem registro</span>
                             )}
                           </>
                         )}
