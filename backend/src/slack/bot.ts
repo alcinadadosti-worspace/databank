@@ -1368,8 +1368,6 @@ function registerInteractions(app: App): void {
           `${employee_name}: ${type} - Atestado Médico`);
       }
 
-      const panelUrl = `${env.FRONTEND_URL}/manager/justifications`;
-
       if (messageTs && channelId) {
         await client.chat.update({
           channel: channelId,
@@ -1386,8 +1384,7 @@ function registerInteractions(app: App): void {
                 `*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}`,
                 `*Motivo:* Atestado Médico`,
                 '',
-                `_Para anexar o arquivo do atestado, acesse o painel do gestor:_`,
-                `<${panelUrl}|📋 Acessar painel de justificativas>`,
+                `_Seu gestor poderá anexar o arquivo do atestado pelo painel._`,
               ].join('\n'),
             },
           }],

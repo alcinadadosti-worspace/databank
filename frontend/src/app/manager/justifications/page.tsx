@@ -143,8 +143,8 @@ export default function ManagerJustifications() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <span className="text-text-primary font-medium">{j.employee_name}</span>
-                      <span className={`badge ${j.type === 'late' ? 'badge-danger' : 'badge-info'}`}>
-                        {j.type === 'late' ? 'Atraso' : 'Hora Extra'}
+                      <span className={`badge ${j.type === 'late' ? 'badge-danger' : j.type === 'sem_registro' ? 'badge-warning' : 'badge-info'}`}>
+                        {j.type === 'late' ? 'Atraso' : j.type === 'sem_registro' ? 'Sem Registro' : 'Hora Extra'}
                       </span>
                     </div>
                     <p className="text-xs text-text-muted mt-1">
