@@ -649,10 +649,12 @@ export async function getUnalertedRecords(date: string): Promise<DailyRecordFull
 export async function insertJustification(
   dailyRecordId: number,
   employeeId: number,
-  type: 'late' | 'overtime',
+  type: 'late' | 'overtime' | 'sem_registro',
   reason: string,
-  customNote?: string
-) {
+  customNote?: string,
+  attachmentUrl?: string,
+  attachmentName?: string
+): Promise<number> {
   const id = await getNextId(COLLECTIONS.JUSTIFICATIONS);
   await getDb().collection(COLLECTIONS.JUSTIFICATIONS).doc(String(id)).set({
     id,
@@ -661,11 +663,27 @@ export async function insertJustification(
     type,
     reason,
     custom_note: customNote || null,
+    attachment_url: attachmentUrl || null,
+    attachment_name: attachmentName || null,
     submitted_at: new Date().toISOString(),
   });
   // Invalidate justifications and records cache
   invalidateCache('justifications');
   invalidateCache('records');
+  return id;
+}
+
+export async function updateJustificationAttachment(
+  justificationId: number,
+  attachmentUrl: string,
+  attachmentName: string
+): Promise<void> {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('id', '==', justificationId).limit(1).get();
+  if (!snap.empty) {
+    await snap.docs[0].ref.update({ attachment_url: attachmentUrl, attachment_name: attachmentName });
+    invalidateCache('justifications');
+  }
 }
 
 export async function updateJustificationStatus(
@@ -838,6 +856,8 @@ export interface JustificationFull {
   type: string;
   reason: string;
   custom_note: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   submitted_at: string;
   date: string;
   employee_name: string;

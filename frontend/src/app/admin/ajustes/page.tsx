@@ -527,6 +527,20 @@ export default function AdminAjustes() {
                                         {j.reason}
                                         {j.custom_note && <span className="text-text-muted italic"> - {j.custom_note}</span>}
                                       </div>
+                                      {j.attachment_url && (
+                                        <a
+                                          href={j.attachment_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-xs text-accent-primary hover:underline mt-0.5"
+                                        >
+                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                            <polyline points="14 2 14 8 20 8" />
+                                          </svg>
+                                          Atestado
+                                        </a>
+                                      )}
                                       {j.manager_comment && (
                                         <div className="text-accent-primary truncate mt-0.5" title={`Gestor: ${j.manager_comment}`}>
                                           Gestor: {j.manager_comment}

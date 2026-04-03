@@ -231,6 +231,23 @@ export async function deleteJustification(justificationId: number) {
   });
 }
 
+export async function uploadJustificationAtestado(justificationId: number, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+  const token = typeof window !== 'undefined' ? localStorage.getItem('databank_token_manager') || localStorage.getItem('databank_token_admin') : null;
+  const res = await fetch(`${API_BASE}/api/justifications/${justificationId}/atestado`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || 'Falha ao enviar atestado');
+  }
+  return res.json() as Promise<{ success: boolean; attachment_url: string; attachment_name: string }>;
+}
+
 export async function deleteMultipleJustifications(ids: number[]) {
   return apiFetch<{ success: boolean; deleted: number; message: string }>('/api/justifications/bulk-delete', {
     method: 'POST',
@@ -245,6 +262,8 @@ export interface JustificationFull {
   type: string;
   reason: string;
   custom_note: string | null;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   submitted_at: string;
   date: string;
   employee_name: string;

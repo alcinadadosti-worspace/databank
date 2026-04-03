@@ -137,6 +137,20 @@ export async function sendEmployeeAlert(
           type: 'button' as const,
           text: {
             type: 'plain_text' as const,
+            text: '🩺 Atestado Médico',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            daily_record_id: dailyRecordId,
+            employee_name: employeeName,
+            type: classification,
+          }),
+          action_id: 'justify_atestado',
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
             text: 'Outros...',
             emoji: true,
           },
@@ -604,6 +618,20 @@ export async function sendNoRecordNotification(
           }),
           action_id: 'set_aparelho_danificado',
         },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🩺 Atestado',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+          }),
+          action_id: 'set_atestado',
+        },
       ],
     },
   ];
@@ -868,6 +896,47 @@ export async function sendLatePunchNotification(
     console.log(`[slack] Late punch notification sent to ${employee.name} (${date}, ${latePunch})`);
   } catch (error) {
     console.error(`[slack] Failed to send late punch notification:`, error);
+  }
+}
+
+// ─── Atestado File Helper ─────────────────────────────────────
+
+async function downloadAndUploadSlackFile(
+  fileId: string,
+  originalName: string,
+  client: App['client']
+): Promise<{ url: string; name: string } | null> {
+  try {
+    const { getStorageBucket } = await import('../models/database');
+    const fileInfo = await client.files.info({ file: fileId });
+    const slackFile = (fileInfo as any).file;
+    if (!slackFile) return null;
+
+    const downloadUrl = slackFile.url_private_download || slackFile.url_private;
+    if (!downloadUrl) return null;
+
+    const response = await fetch(downloadUrl, {
+      headers: { 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}` },
+    });
+    if (!response.ok) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const mimeType = slackFile.mimetype || 'application/octet-stream';
+
+    const bucket = getStorageBucket();
+    const timestamp = Date.now();
+    const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `atestados/${timestamp}_${safeName}`;
+
+    const file = bucket.file(path);
+    await file.save(buffer, { metadata: { contentType: mimeType } });
+    await file.makePublic();
+
+    const url = `https://storage.googleapis.com/${bucket.name}/${path}`;
+    return { url, name: originalName };
+  } catch (err) {
+    console.error('[slack] Failed to download/upload atestado file:', err);
+    return null;
   }
 }
 
@@ -1315,6 +1384,209 @@ function registerInteractions(app: App): void {
       console.log(`[slack] Punch adjustment requested by ${employee_name} for ${date}`);
     } catch (error) {
       console.error('[slack] Error handling punch adjustment modal:', error);
+    }
+  });
+
+  // ─── Atestado Médico — Employee flow (late/overtime alert) ──────
+
+  app.action('justify_atestado', async ({ ack, body, action, client }) => {
+    await ack();
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { daily_record_id, employee_name, type } = payload;
+      const messageTs = (body as any).message?.ts;
+      const channelId = (body as any).channel?.id || (body as any).user?.id;
+
+      await client.views.open({
+        trigger_id: (body as any).trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'atestado_employee_modal',
+          private_metadata: JSON.stringify({ daily_record_id, employee_name, type, message_ts: messageTs, channel_id: channelId }),
+          title: { type: 'plain_text', text: 'Atestado Médico' },
+          submit: { type: 'plain_text', text: 'Enviar' },
+          close: { type: 'plain_text', text: 'Cancelar' },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Colaborador:* ${employee_name}\n*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}\n\nAnexe o arquivo do atestado médico (PDF, JPG ou PNG):`,
+              },
+            },
+            {
+              type: 'input',
+              block_id: 'atestado_file_block',
+              element: {
+                type: 'file_input',
+                action_id: 'atestado_file_input',
+                filetypes: ['pdf', 'jpg', 'jpeg', 'png'],
+                max_files: 1,
+              } as any,
+              label: { type: 'plain_text', text: 'Arquivo do atestado' },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error('[slack] Error opening atestado employee modal:', error);
+    }
+  });
+
+  app.view('atestado_employee_modal', async ({ ack, body, view, client }) => {
+    await ack();
+    try {
+      const metadata = JSON.parse(view.private_metadata);
+      const { daily_record_id, employee_name, type, message_ts, channel_id } = metadata;
+
+      const fileInputState = (view.state.values.atestado_file_block as any)?.atestado_file_input;
+      const uploadedFiles: any[] = fileInputState?.files || [];
+
+      const record = await queries.getDailyRecordById(daily_record_id);
+      const employeeId = record?.employee_id || null;
+
+      let attachmentUrl: string | undefined;
+      let attachmentName: string | undefined;
+
+      if (uploadedFiles.length > 0 && employeeId) {
+        const fileData = await downloadAndUploadSlackFile(uploadedFiles[0].id, uploadedFiles[0].name, client);
+        if (fileData) {
+          attachmentUrl = fileData.url;
+          attachmentName = fileData.name;
+        }
+      }
+
+      if (employeeId) {
+        await queries.insertJustification(daily_record_id, employeeId, type, 'Atestado Médico', undefined, attachmentUrl, attachmentName);
+        await queries.logAudit('JUSTIFICATION_ATESTADO_SLACK', 'justification', undefined,
+          `${employee_name}: ${type} - Atestado Médico${attachmentUrl ? ' (com arquivo)' : ''}`);
+      }
+
+      if (message_ts && channel_id) {
+        await client.chat.update({
+          channel: channel_id,
+          ts: message_ts,
+          text: `Atestado registrado: ${employee_name}`,
+          blocks: [{
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Atestado médico registrado!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}`,
+                `*Motivo:* Atestado Médico`,
+                attachmentUrl ? `*Arquivo:* <${attachmentUrl}|Ver atestado>` : '_Sem arquivo anexado_',
+              ].join('\n'),
+            },
+          }],
+        });
+      }
+    } catch (error) {
+      console.error('[slack] Error handling atestado employee modal:', error);
+    }
+  });
+
+  // ─── Atestado Médico — Manager flow (sem registro) ──────────────
+
+  app.action('set_atestado', async ({ ack, body, action, client }) => {
+    await ack();
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+      const messageTs = (body as any).message?.ts;
+      const channelId = (body as any).channel?.id || (body as any).user?.id;
+
+      await client.views.open({
+        trigger_id: (body as any).trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'atestado_manager_modal',
+          private_metadata: JSON.stringify({ employee_id, employee_name, date, message_ts: messageTs, channel_id: channelId }),
+          title: { type: 'plain_text', text: 'Atestado Médico' },
+          submit: { type: 'plain_text', text: 'Confirmar' },
+          close: { type: 'plain_text', text: 'Cancelar' },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Colaborador:* ${employee_name}\n*Data:* ${date}\n\nAnexe o arquivo do atestado médico (PDF, JPG ou PNG):`,
+              },
+            },
+            {
+              type: 'input',
+              block_id: 'atestado_file_block',
+              element: {
+                type: 'file_input',
+                action_id: 'atestado_file_input',
+                filetypes: ['pdf', 'jpg', 'jpeg', 'png'],
+                max_files: 1,
+              } as any,
+              label: { type: 'plain_text', text: 'Arquivo do atestado' },
+              optional: true,
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error('[slack] Error opening atestado manager modal:', error);
+    }
+  });
+
+  app.view('atestado_manager_modal', async ({ ack, body, view, client }) => {
+    await ack();
+    try {
+      const metadata = JSON.parse(view.private_metadata);
+      const { employee_id, employee_name, date, message_ts, channel_id } = metadata;
+
+      const fileInputState = (view.state.values.atestado_file_block as any)?.atestado_file_input;
+      const uploadedFiles: any[] = fileInputState?.files || [];
+
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassification(record.id, 'atestado');
+        await queries.logAudit('MANAGER_SET_ATESTADO', 'daily_record', record.id,
+          `${employee_name} on ${date} marked as atestado`);
+
+        let attachmentUrl: string | undefined;
+        let attachmentName: string | undefined;
+
+        if (uploadedFiles.length > 0) {
+          const fileData = await downloadAndUploadSlackFile(uploadedFiles[0].id, uploadedFiles[0].name, client);
+          if (fileData) {
+            attachmentUrl = fileData.url;
+            attachmentName = fileData.name;
+          }
+        }
+
+        await queries.insertJustification(record.id, employee_id, 'sem_registro', 'Atestado Médico', undefined, attachmentUrl, attachmentName);
+      }
+
+      if (message_ts && channel_id) {
+        await client.chat.update({
+          channel: channel_id,
+          ts: message_ts,
+          text: `Atestado registrado: ${employee_name} - ${date}`,
+          blocks: [{
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Decisão registrada!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Data:* ${date}`,
+                `*Status:* 🩺 Atestado Médico`,
+                uploadedFiles.length > 0 ? '_Arquivo anexado com sucesso_' : '_Sem arquivo anexado_',
+              ].join('\n'),
+            },
+          }],
+        });
+      }
+    } catch (error) {
+      console.error('[slack] Error handling atestado manager modal:', error);
     }
   });
 }

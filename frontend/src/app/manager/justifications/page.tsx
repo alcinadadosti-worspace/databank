@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getPendingJustifications, approveJustification, rejectJustification, type JustificationFull } from '@/lib/api';
+import { getPendingJustifications, approveJustification, rejectJustification, uploadJustificationAtestado, type JustificationFull } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
 
@@ -12,6 +12,8 @@ export default function ManagerJustifications() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [comments, setComments] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
+  const [uploadingAtestado, setUploadingAtestado] = useState<number | null>(null);
+  const [atestadoErrors, setAtestadoErrors] = useState<Record<number, string>>({});
 
   async function loadJustifications() {
     if (!manager) return;
@@ -61,6 +63,21 @@ export default function ManagerJustifications() {
       setErrors(prev => ({ ...prev, [id]: 'Erro ao aprovar' }));
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleAtestadoUpload(id: number, file: File) {
+    setUploadingAtestado(id);
+    setAtestadoErrors(prev => ({ ...prev, [id]: '' }));
+    try {
+      const result = await uploadJustificationAtestado(id, file);
+      setJustifications(prev => prev.map(j =>
+        j.id === id ? { ...j, attachment_url: result.attachment_url, attachment_name: result.attachment_name } : j
+      ));
+    } catch (err: any) {
+      setAtestadoErrors(prev => ({ ...prev, [id]: err.message || 'Erro ao enviar atestado' }));
+    } finally {
+      setUploadingAtestado(null);
     }
   }
 
@@ -147,6 +164,51 @@ export default function ManagerJustifications() {
                     </p>
                   )}
                 </div>
+
+                {/* Atestado attachment */}
+                {j.reason === 'Atestado Médico' && (
+                  <div className="bg-bg-secondary rounded-md p-3 space-y-2">
+                    <p className="text-xs font-medium text-text-muted">Atestado Médico</p>
+                    {j.attachment_url ? (
+                      <a
+                        href={j.attachment_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-accent-primary hover:underline"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        {j.attachment_name || 'Ver atestado'}
+                      </a>
+                    ) : (
+                      <div>
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs text-accent-primary hover:underline">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                          </svg>
+                          {uploadingAtestado === j.id ? 'Enviando...' : 'Anexar atestado (PDF, JPG, PNG)'}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            className="hidden"
+                            disabled={uploadingAtestado === j.id}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleAtestadoUpload(j.id, file);
+                            }}
+                          />
+                        </label>
+                        {atestadoErrors[j.id] && (
+                          <p className="text-xs text-red-500 mt-1">{atestadoErrors[j.id]}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Comment input */}
                 <div>
