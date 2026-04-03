@@ -483,6 +483,7 @@ export interface UnitEmployee {
   punch_4: string | null;
   present: boolean;
   is_apprentice: boolean;
+  is_intern?: boolean;
   no_punch_required: boolean;
   is_on_vacation: boolean;
   is_on_folga: boolean;
