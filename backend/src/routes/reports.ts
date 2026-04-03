@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer, { FileFilterCallback } from 'multer';
+import crypto from 'crypto';
 import { getDb, getStorageBucket, COLLECTIONS, getNextId } from '../models/database';
 import { logAudit } from '../models/queries';
 
@@ -80,26 +81,17 @@ router.post('/', upload.single('file'), async (req: MulterRequest, res: Response
     const safeTitle = (title as string).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
     const filename = `reports/${timestamp}_${safeTitle}.pdf`;
 
-    // Upload to Firebase Storage
+    // Upload to Firebase Storage with a download token (works without ACLs)
+    const downloadToken = crypto.randomUUID();
     const file = bucket.file(filename);
     await file.save(req.file.buffer, {
       metadata: {
         contentType: 'application/pdf',
+        metadata: { firebaseStorageDownloadTokens: downloadToken },
       },
     });
-
-    // Make the file publicly accessible (falls back to signed URL if uniform access is enabled)
-    let fileUrl: string;
-    try {
-      await file.makePublic();
-      fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-    } catch {
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000,
-      });
-      fileUrl = signedUrl;
-    }
+    const encodedPath = encodeURIComponent(filename);
+    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 
     // Save metadata to Firestore
     const id = await getNextId(COLLECTIONS.REPORTS);

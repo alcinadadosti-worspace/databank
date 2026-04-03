@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer, { FileFilterCallback } from 'multer';
+import crypto from 'crypto';
 import * as queries from '../models/queries';
 import { getStorageBucket } from '../models/database';
 import { sendJustificationReviewNotification } from '../slack/bot';
@@ -326,20 +327,16 @@ router.post('/:id/atestado', uploadAtestado.single('file'), async (req: MulterRe
     const filename = `atestados/${timestamp}_just${justificationId}.${ext}`;
 
     const file = bucket.file(filename);
-    await file.save(req.file.buffer, { metadata: { contentType: req.file.mimetype } });
-
-    let fileUrl: string;
-    try {
-      await file.makePublic();
-      fileUrl = `https://storage.googleapis.com/${bucket.name}/${filename}`;
-    } catch {
-      // Bucket uses uniform access control — generate a long-lived signed URL instead
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 10 * 365 * 24 * 60 * 60 * 1000, // 10 years
-      });
-      fileUrl = signedUrl;
-    }
+    // Use a Firebase Storage download token — works without ACLs or signed URL permissions
+    const downloadToken = crypto.randomUUID();
+    await file.save(req.file.buffer, {
+      metadata: {
+        contentType: req.file.mimetype,
+        metadata: { firebaseStorageDownloadTokens: downloadToken },
+      },
+    });
+    const encodedPath = encodeURIComponent(filename);
+    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
     await queries.updateJustificationAttachment(justificationId, fileUrl, req.file.originalname);
     await queries.logAudit('ATESTADO_UPLOADED', 'justification', justificationId,
       `Atestado uploaded: ${req.file.originalname}`);
