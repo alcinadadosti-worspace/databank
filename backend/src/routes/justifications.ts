@@ -1,26 +1,9 @@
 import { Router, Request, Response } from 'express';
-import multer, { FileFilterCallback } from 'multer';
-import crypto from 'crypto';
 import * as queries from '../models/queries';
-import { getStorageBucket } from '../models/database';
+import { getDb, COLLECTIONS } from '../models/database';
 import { sendJustificationReviewNotification } from '../slack/bot';
 
 const router = Router();
-
-// Multer for atestado uploads (PDF, JPG, PNG — max 10MB)
-interface MulterRequest extends Request { file?: Express.Multer.File; }
-const uploadAtestado = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
-    const allowed = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-    if (allowed.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Apenas PDF, JPG ou PNG são permitidos'));
-    }
-  },
-});
 
 /** GET /api/justifications/employee/:employeeId */
 router.get('/employee/:employeeId', async (req: Request, res: Response) => {
@@ -120,11 +103,18 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
     }
 
     // Get justification details before updating
-    const justification = await queries.getJustificationById(justificationId);
-    if (!justification) {
+    const jSnap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('id', '==', justificationId).limit(1).get();
+    if (jSnap.empty) {
       res.status(404).json({ error: 'Justification not found' });
       return;
     }
+    const justification = jSnap.docs[0].data() as any;
+
+    // Get date from daily record
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', '==', justification.daily_record_id).limit(1).get();
+    const justDate = rSnap.empty ? '' : rSnap.docs[0].data().date;
 
     await queries.updateJustificationStatus(justificationId, 'approved', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_APPROVED', 'justification', justificationId,
@@ -136,7 +126,7 @@ router.post('/:id/approve', async (req: Request, res: Response) => {
       await sendJustificationReviewNotification(
         employee.slack_id,
         employee.name,
-        justification.date,
+        justDate,
         justification.type as 'late' | 'overtime',
         'approved',
         reviewedBy || 'Gestor',
@@ -168,11 +158,18 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
     }
 
     // Get justification details before updating
-    const justification = await queries.getJustificationById(justificationId);
-    if (!justification) {
+    const jSnap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('id', '==', justificationId).limit(1).get();
+    if (jSnap.empty) {
       res.status(404).json({ error: 'Justification not found' });
       return;
     }
+    const justification = jSnap.docs[0].data() as any;
+
+    // Get date from daily record
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', '==', justification.daily_record_id).limit(1).get();
+    const justDate = rSnap.empty ? '' : rSnap.docs[0].data().date;
 
     await queries.updateJustificationStatus(justificationId, 'rejected', reviewedBy || 'manager', comment);
     await queries.logAudit('JUSTIFICATION_REJECTED', 'justification', justificationId,
@@ -184,7 +181,7 @@ router.post('/:id/reject', async (req: Request, res: Response) => {
       await sendJustificationReviewNotification(
         employee.slack_id,
         employee.name,
-        justification.date,
+        justDate,
         justification.type as 'late' | 'overtime',
         'rejected',
         reviewedBy || 'Gestor',
@@ -298,53 +295,6 @@ router.post('/bulk-delete', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[justifications] Error bulk deleting:', error);
     res.status(500).json({ error: 'Failed to delete justifications' });
-  }
-});
-
-/** POST /api/justifications/:id/atestado - Upload medical certificate file (web UI) */
-router.post('/:id/atestado', uploadAtestado.single('file'), async (req: MulterRequest, res: Response) => {
-  try {
-    const justificationId = parseInt(req.params.id as string, 10);
-    if (isNaN(justificationId)) {
-      res.status(400).json({ error: 'ID inválido' });
-      return;
-    }
-
-    if (!req.file) {
-      res.status(400).json({ error: 'Arquivo obrigatório' });
-      return;
-    }
-
-    const justification = await queries.getJustificationById(justificationId);
-    if (!justification) {
-      res.status(404).json({ error: 'Justificativa não encontrada' });
-      return;
-    }
-
-    const bucket = getStorageBucket();
-    const timestamp = Date.now();
-    const ext = req.file.originalname.split('.').pop() || 'pdf';
-    const filename = `atestados/${timestamp}_just${justificationId}.${ext}`;
-
-    const file = bucket.file(filename);
-    // Use a Firebase Storage download token — works without ACLs or signed URL permissions
-    const downloadToken = crypto.randomUUID();
-    await file.save(req.file.buffer, {
-      metadata: {
-        contentType: req.file.mimetype,
-        metadata: { firebaseStorageDownloadTokens: downloadToken },
-      },
-    });
-    const encodedPath = encodeURIComponent(filename);
-    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
-    await queries.updateJustificationAttachment(justificationId, fileUrl, req.file.originalname);
-    await queries.logAudit('ATESTADO_UPLOADED', 'justification', justificationId,
-      `Atestado uploaded: ${req.file.originalname}`);
-
-    res.json({ success: true, attachment_url: fileUrl, attachment_name: req.file.originalname });
-  } catch (error) {
-    console.error('[justifications] Error uploading atestado:', error);
-    res.status(500).json({ error: 'Falha ao fazer upload do atestado' });
   }
 });
 

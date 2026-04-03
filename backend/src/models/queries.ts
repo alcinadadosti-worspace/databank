@@ -651,9 +651,7 @@ export async function insertJustification(
   employeeId: number,
   type: 'late' | 'overtime' | 'sem_registro',
   reason: string,
-  customNote?: string,
-  attachmentUrl?: string,
-  attachmentName?: string
+  customNote?: string
 ): Promise<number> {
   const id = await getNextId(COLLECTIONS.JUSTIFICATIONS);
   await getDb().collection(COLLECTIONS.JUSTIFICATIONS).doc(String(id)).set({
@@ -663,27 +661,12 @@ export async function insertJustification(
     type,
     reason,
     custom_note: customNote || null,
-    attachment_url: attachmentUrl || null,
-    attachment_name: attachmentName || null,
     submitted_at: new Date().toISOString(),
   });
   // Invalidate justifications and records cache
   invalidateCache('justifications');
   invalidateCache('records');
   return id;
-}
-
-export async function updateJustificationAttachment(
-  justificationId: number,
-  attachmentUrl: string,
-  attachmentName: string
-): Promise<void> {
-  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
-    .where('id', '==', justificationId).limit(1).get();
-  if (!snap.empty) {
-    await snap.docs[0].ref.update({ attachment_url: attachmentUrl, attachment_name: attachmentName });
-    invalidateCache('justifications');
-  }
 }
 
 export async function updateJustificationStatus(
@@ -719,23 +702,6 @@ interface JustificationData {
   reviewed_by?: string;
   reviewed_at?: string;
   manager_comment?: string;
-}
-
-export async function getJustificationById(justificationId: number): Promise<(JustificationData & { date: string }) | undefined> {
-  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
-    .where('id', '==', justificationId).limit(1).get();
-  if (snap.empty) return undefined;
-  const justification = snap.docs[0].data() as JustificationData;
-
-  // Get date from daily record
-  const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
-    .where('id', '==', justification.daily_record_id).limit(1).get();
-  const date = recordSnap.empty ? '' : recordSnap.docs[0].data().date;
-
-  return {
-    ...justification,
-    date,
-  };
 }
 
 export async function deleteJustificationByRecordId(dailyRecordId: number) {
@@ -856,8 +822,6 @@ export interface JustificationFull {
   type: string;
   reason: string;
   custom_note: string | null;
-  attachment_url?: string | null;
-  attachment_name?: string | null;
   submitted_at: string;
   date: string;
   employee_name: string;

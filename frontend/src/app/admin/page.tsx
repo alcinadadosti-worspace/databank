@@ -174,29 +174,6 @@ export default function AdminDashboard() {
     return Array.from(names).sort();
   }, [allRecords]);
 
-  // TEMPORÁRIO: teste de notificação de atestado
-  const [testNotifLoading, setTestNotifLoading] = useState(false);
-  const [testNotifMsg, setTestNotifMsg] = useState('');
-
-  async function handleTestAtestadoNotification() {
-    setTestNotifLoading(true);
-    setTestNotifMsg('');
-    try {
-      const token = localStorage.getItem('databank_token_admin');
-      const res = await fetch('/api/admin/test/no-record-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ employee_id: 83, date: '2026-04-03' }),
-      });
-      const data = await res.json();
-      setTestNotifMsg(data.message || data.error || 'OK');
-    } catch {
-      setTestNotifMsg('Erro ao enviar');
-    } finally {
-      setTestNotifLoading(false);
-    }
-  }
-
   const isInitialLoading = loading && allRecords.length === 0;
 
   if (isInitialLoading) {
@@ -213,21 +190,6 @@ export default function AdminDashboard() {
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Dashboard</h2>
         <p className="text-sm text-text-tertiary mt-1">Visao geral do sistema de banco de horas</p>
-      </div>
-
-      {/* TEMPORÁRIO: Teste de atestado */}
-      <div className="card p-4 border border-amber-500/30 bg-amber-500/5">
-        <p className="text-xs font-medium text-amber-500 mb-2">🧪 Teste — Notificação de Atestado (remover após teste)</p>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTestAtestadoNotification}
-            disabled={testNotifLoading}
-            className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
-          >
-            {testNotifLoading ? 'Enviando...' : 'Disparar notificação de sem registro'}
-          </button>
-          {testNotifMsg && <span className="text-sm text-text-secondary">{testNotifMsg}</span>}
-        </div>
       </div>
 
       {/* Stats Grid - Clickable */}

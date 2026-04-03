@@ -137,20 +137,6 @@ export async function sendEmployeeAlert(
           type: 'button' as const,
           text: {
             type: 'plain_text' as const,
-            text: '🩺 Atestado Médico',
-            emoji: true,
-          },
-          value: JSON.stringify({
-            daily_record_id: dailyRecordId,
-            employee_name: employeeName,
-            type: classification,
-          }),
-          action_id: 'justify_atestado',
-        },
-        {
-          type: 'button' as const,
-          text: {
-            type: 'plain_text' as const,
             text: 'Outros...',
             emoji: true,
           },
@@ -617,20 +603,6 @@ export async function sendNoRecordNotification(
             decision: 'aparelho_danificado',
           }),
           action_id: 'set_aparelho_danificado',
-        },
-        {
-          type: 'button' as const,
-          text: {
-            type: 'plain_text' as const,
-            text: '🩺 Atestado',
-            emoji: true,
-          },
-          value: JSON.stringify({
-            employee_id: employee.id,
-            employee_name: employee.name,
-            date: date,
-          }),
-          action_id: 'set_atestado',
         },
       ],
     },
@@ -1347,104 +1319,4 @@ function registerInteractions(app: App): void {
     }
   });
 
-  // ─── Atestado Médico — Employee flow (late/overtime alert) ──────
-  // Note: Slack file_input requires files:read scope (not configured).
-  // We register the justification immediately and send a follow-up with web link.
-
-  app.action('justify_atestado', async ({ ack, body, action, client }) => {
-    await ack();
-    try {
-      const payload = JSON.parse((action as any).value);
-      const { daily_record_id, employee_name, type } = payload;
-      const messageTs = (body as any).message?.ts;
-      const channelId = (body as any).channel?.id || (body as any).user?.id;
-
-      const record = await queries.getDailyRecordById(daily_record_id);
-      const employeeId = record?.employee_id || null;
-
-      if (employeeId) {
-        await queries.insertJustification(daily_record_id, employeeId, type, 'Atestado Médico');
-        await queries.logAudit('JUSTIFICATION_ATESTADO_SLACK', 'justification', undefined,
-          `${employee_name}: ${type} - Atestado Médico`);
-      }
-
-      if (messageTs && channelId) {
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: `Atestado registrado: ${employee_name}`,
-          blocks: [{
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: [
-                `:white_check_mark: *Atestado médico registrado!*`,
-                '',
-                `*Colaborador:* ${employee_name}`,
-                `*Tipo:* ${type === 'late' ? 'Atraso' : 'Hora Extra'}`,
-                `*Motivo:* Atestado Médico`,
-                '',
-                `_Seu gestor poderá anexar o arquivo do atestado pelo painel._`,
-              ].join('\n'),
-            },
-          }],
-        });
-      }
-
-      console.log(`[slack] Atestado registered for ${employee_name} (employee flow)`);
-    } catch (error) {
-      console.error('[slack] Error handling justify_atestado:', error);
-    }
-  });
-
-  // ─── Atestado Médico — Manager flow (sem registro) ──────────────
-  // Registers immediately + sends follow-up with link to upload file via web UI.
-
-  app.action('set_atestado', async ({ ack, body, action, client }) => {
-    await ack();
-    try {
-      const payload = JSON.parse((action as any).value);
-      const { employee_id, employee_name, date } = payload;
-      const messageTs = (body as any).message?.ts;
-      const channelId = (body as any).channel?.id || (body as any).user?.id;
-
-      const record = await queries.getDailyRecord(employee_id, date);
-      if (record) {
-        await queries.updateRecordClassification(record.id, 'atestado');
-        await queries.insertJustification(record.id, employee_id, 'sem_registro', 'Atestado Médico');
-        await queries.logAudit('MANAGER_SET_ATESTADO', 'daily_record', record.id,
-          `${employee_name} on ${date} marked as atestado`);
-      }
-
-      const panelUrl = `${env.FRONTEND_URL}/manager/justifications`;
-
-      if (messageTs && channelId) {
-        await client.chat.update({
-          channel: channelId,
-          ts: messageTs,
-          text: `Atestado registrado: ${employee_name} - ${date}`,
-          blocks: [{
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: [
-                `:white_check_mark: *Decisão registrada!*`,
-                '',
-                `*Colaborador:* ${employee_name}`,
-                `*Data:* ${date}`,
-                `*Status:* 🩺 Atestado Médico`,
-                '',
-                `_Para anexar o arquivo do atestado, acesse o painel:_`,
-                `<${panelUrl}|📋 Acessar painel de justificativas>`,
-              ].join('\n'),
-            },
-          }],
-        });
-      }
-
-      console.log(`[slack] Atestado registered for ${employee_name} (${date}) by manager`);
-    } catch (error) {
-      console.error('[slack] Error handling set_atestado:', error);
-    }
-  });
 }
