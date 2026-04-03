@@ -1214,14 +1214,9 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const noPunchEmployees: EmployeeWithLeader[] = [];
   const regularEmployees: EmployeeWithLeader[] = [];
 
-  // IDs excluded from the "Sem Ponto" display card (still no_punch_required, just hidden)
-  const HIDDEN_FROM_SEM_PONTO = new Set([83]);
-
   for (const emp of employees) {
     if (emp.no_punch_required === true) {
-      if (!HIDDEN_FROM_SEM_PONTO.has(emp.id)) {
-        noPunchEmployees.push(emp);
-      }
+      noPunchEmployees.push(emp);
     } else {
       regularEmployees.push(emp);
     }
