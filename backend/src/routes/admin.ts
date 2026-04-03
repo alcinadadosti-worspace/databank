@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
-import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
+import { sendEmployeeAlert, sendManagerDailySummary, sendNoRecordNotification, getSlackApp } from '../slack/bot';
 import { calculateDailyHours } from '../services/hours-calculator';
 
 const router = Router();
@@ -766,6 +766,40 @@ router.post('/send-manager-summary', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[admin] Error sending manager summary:', error);
     res.status(500).json({ error: 'Falha ao enviar: ' + (error as Error).message });
+  }
+});
+
+/** POST /api/admin/test/no-record-notification — TEMPORÁRIO: disparar notificação de sem registro para teste */
+router.post('/test/no-record-notification', async (req: Request, res: Response) => {
+  try {
+    const { employee_id, date } = req.body;
+    if (!employee_id || !date) {
+      res.status(400).json({ error: 'employee_id e date são obrigatórios' });
+      return;
+    }
+
+    const employees = await queries.getAllEmployees();
+    const employee = employees.find(e => e.id === Number(employee_id));
+    if (!employee) {
+      res.status(404).json({ error: 'Colaborador não encontrado' });
+      return;
+    }
+
+    await sendNoRecordNotification(
+      {
+        id: employee.id,
+        name: employee.name,
+        leader_id: employee.leader_id,
+        leader_name: employee.leader_name,
+        leader_slack_id: employee.leader_slack_id,
+      },
+      date
+    );
+
+    res.json({ success: true, message: `Notificação enviada para o gestor de ${employee.name}` });
+  } catch (error) {
+    console.error('[admin] Error sending test notification:', error);
+    res.status(500).json({ error: 'Falha ao enviar notificação' });
   }
 });
 
