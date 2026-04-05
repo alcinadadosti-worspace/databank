@@ -456,8 +456,58 @@ export default function AdminAjustes() {
                           </button>
                         </div>
 
-                        {/* Justifications table */}
-                        <div className="overflow-x-auto">
+                        {/* Justifications — Mobile Cards */}
+                        <div className="lg:hidden space-y-2">
+                          {items.map((j) => {
+                            const saturday = isSaturday(j.date);
+                            return (
+                              <div key={j.id} className="card p-2 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className={j.status === 'approved' ? 'text-green-500' : 'text-red-500'}>
+                                      {j.status === 'approved' ? '✓' : '✗'}
+                                    </span>
+                                    <span className="text-xs font-mono text-text-secondary">
+                                      {formatDate(j.date)}{saturday && ' (Sab)'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-medium ${
+                                      j.classification === 'late' ? 'text-red-500' :
+                                      j.classification === 'overtime' ? 'text-blue-500' :
+                                      'text-green-500'
+                                    }`}>
+                                      {j.classification === 'late' ? 'Atraso' :
+                                       j.classification === 'overtime' ? 'H.Extra' : 'Normal'}
+                                      {j.difference_minutes !== null && j.difference_minutes !== undefined && (
+                                        <span className="ml-1 text-text-muted">({formatMinutes(j.difference_minutes)})</span>
+                                      )}
+                                    </span>
+                                    <button
+                                      onClick={() => handleDeleteOne(j.id)}
+                                      disabled={deleting === j.id}
+                                      className="text-red-500 hover:text-red-600 disabled:opacity-50 p-1"
+                                      title="Excluir justificativa"
+                                    >
+                                      {deleting === j.id ? '...' : (
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-text-secondary truncate">{j.reason}{j.custom_note && ` — ${j.custom_note}`}</p>
+                                {j.manager_comment && (
+                                  <p className="text-xs text-accent-primary truncate">Gestor: {j.manager_comment}</p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Justifications table — Desktop */}
+                        <div className="hidden lg:block overflow-x-auto">
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="text-left text-text-muted">
@@ -619,8 +669,43 @@ export default function AdminAjustes() {
                             </div>
                           </div>
 
-                          {/* Adjustments table */}
-                          <div className="overflow-x-auto">
+                          {/* Adjustments — Mobile Cards */}
+                          <div className="lg:hidden space-y-2">
+                            {items.map((a) => (
+                              <div key={a.id} className="card p-2 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className={a.status === 'approved' ? 'text-green-500' : 'text-red-500'}>
+                                      {a.status === 'approved' ? '✓' : '✗'}
+                                    </span>
+                                    <span className="text-xs font-mono text-text-secondary">{formatDate(a.date)}</span>
+                                    <span className="text-xs text-orange-500">
+                                      {a.type === 'missing_punch' ? 'Incompleto' : 'Entrada Tardia'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeletePunchAdjustment(a.id)}
+                                    disabled={deleting === a.id}
+                                    className="text-red-500 hover:text-red-600 disabled:opacity-50 p-1"
+                                    title="Excluir ajuste"
+                                  >
+                                    {deleting === a.id ? '...' : (
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                                <p className="text-xs text-text-secondary truncate">{a.reason}</p>
+                                {a.manager_comment && (
+                                  <p className="text-xs text-accent-primary truncate">Gestor: {a.manager_comment}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Adjustments table — Desktop */}
+                          <div className="hidden lg:block overflow-x-auto">
                             <table className="w-full text-xs">
                               <thead>
                                 <tr className="text-left text-text-muted">

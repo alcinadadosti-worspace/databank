@@ -71,7 +71,32 @@ export default function AdminLeaders() {
                     {sectorLeaders.length}
                   </span>
                 </div>
-                <div className="card p-0 overflow-hidden">
+                {/* Mobile Cards View */}
+                <div className="lg:hidden space-y-3">
+                  {sorted.map((leader) => {
+                    const parentName = leader.parent_leader_id
+                      ? leaders.find(l => l.id === leader.parent_leader_id)?.name
+                      : null;
+                    return (
+                      <div key={leader.id} className="card p-3 space-y-1.5">
+                        <p className="text-sm font-medium text-text-primary">
+                          {leader.parent_leader_id && (
+                            <span className="text-text-muted mr-1">&#x2514;</span>
+                          )}
+                          {leader.name}
+                        </p>
+                        <p className="text-xs text-text-secondary">{sector}</p>
+                        <p className="text-xs text-text-muted font-mono">Slack: {leader.slack_id || 'Sem Slack'}</p>
+                        <p className="text-xs text-text-muted">
+                          {parentName ? `Sub-líder de ${parentName}` : 'Líder principal'}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden lg:block card p-0 overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">

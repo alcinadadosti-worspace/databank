@@ -68,28 +68,45 @@ export default function AdminEmployees() {
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>
       ) : (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Nome</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Gestor</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Setor</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Slack ID</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {filtered.map((emp) => (
-                <tr key={emp.id} className="hover:bg-bg-hover transition-colors">
-                  <td className="px-4 py-3 text-text-primary">{emp.name}</td>
-                  <td className="px-4 py-3 text-text-secondary">{emp.leader_name || '—'}</td>
-                  <td className="px-4 py-3 text-text-muted text-xs">{emp.sector || '—'}</td>
-                  <td className="px-4 py-3 text-text-muted font-mono text-xs">{emp.slack_id || '—'}</td>
+        <>
+          {/* Mobile Cards View */}
+          <div className="lg:hidden space-y-3">
+            {filtered.map((emp) => (
+              <div key={emp.id} className="card p-3 space-y-1.5">
+                <p className="text-sm font-medium text-text-primary">{emp.name}</p>
+                <p className="text-xs text-text-secondary">Gestor: {emp.leader_name || '—'}</p>
+                <p className="text-xs text-text-muted">Setor: {emp.sector || '—'}</p>
+                {emp.slack_id && (
+                  <p className="text-xs text-text-muted font-mono">Slack: {emp.slack_id}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden lg:block card p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Nome</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Gestor</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Setor</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Slack ID</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {filtered.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-bg-hover transition-colors">
+                    <td className="px-4 py-3 text-text-primary">{emp.name}</td>
+                    <td className="px-4 py-3 text-text-secondary">{emp.leader_name || '—'}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs">{emp.sector || '—'}</td>
+                    <td className="px-4 py-3 text-text-muted font-mono text-xs">{emp.slack_id || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

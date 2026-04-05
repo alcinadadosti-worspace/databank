@@ -116,7 +116,7 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                   <td className="px-2 py-3">
                     <button
                       onClick={() => onEdit(record)}
-                      className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
                       title="Editar registro"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

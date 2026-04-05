@@ -650,63 +650,102 @@ export default function AdminFerias() {
               )}
             </div>
           ) : (
-            <div className="card p-0 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-bg-tertiary text-left text-xs text-text-muted">
-                    <th className="px-4 py-3 font-medium">Colaborador</th>
-                    <th className="px-4 py-3 font-medium">Gestor</th>
-                    <th className="px-4 py-3 font-medium">Periodo</th>
-                    <th className="px-4 py-3 font-medium">Dias</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium w-24">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {filteredVacations.map((vacation) => {
-                    const status = getStatusColor(vacation.start_date, vacation.end_date);
-                    return (
-                      <tr key={vacation.id} className="hover:bg-bg-hover transition-colors">
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="text-sm text-text-primary font-medium">{vacation.employee_name}</p>
-                            {vacation.notes && (
-                              <p className="text-xs text-text-muted truncate max-w-48" title={vacation.notes}>{vacation.notes}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-secondary">{vacation.leader_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm font-mono text-text-secondary">
-                          {formatDate(vacation.start_date)} - {formatDate(vacation.end_date)}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-primary font-medium">
-                          {vacation.days} {vacation.days === 1 ? 'dia' : 'dias'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-1 rounded ${status.bg} ${status.text}`}>{status.label}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => handleEditVacation(vacation)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            </button>
-                            <button onClick={() => handleDeleteVacation(vacation.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Mobile Cards View */}
+              <div className="lg:hidden space-y-3">
+                {filteredVacations.map((vacation) => {
+                  const status = getStatusColor(vacation.start_date, vacation.end_date);
+                  return (
+                    <div key={vacation.id} className="card p-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-text-primary">{vacation.employee_name}</p>
+                        <span className={`text-xs px-2 py-1 rounded ${status.bg} ${status.text}`}>{status.label}</span>
+                      </div>
+                      <p className="text-xs text-text-secondary">Gestor: {vacation.leader_name || '—'}</p>
+                      <p className="text-xs font-mono text-text-secondary">
+                        {formatDate(vacation.start_date)} — {formatDate(vacation.end_date)} ({vacation.days} {vacation.days === 1 ? 'dia' : 'dias'})
+                      </p>
+                      {vacation.notes && (
+                        <p className="text-xs text-text-muted truncate">{vacation.notes}</p>
+                      )}
+                      <div className="flex items-center gap-3 pt-1">
+                        <button onClick={() => handleEditVacation(vacation)} className="text-text-muted hover:text-accent-primary transition-colors p-1" title="Editar">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => handleDeleteVacation(vacation.id)} className="text-text-muted hover:text-red-400 transition-colors p-1" title="Excluir">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden lg:block card p-0 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-bg-tertiary text-left text-xs text-text-muted">
+                      <th className="px-4 py-3 font-medium">Colaborador</th>
+                      <th className="px-4 py-3 font-medium">Gestor</th>
+                      <th className="px-4 py-3 font-medium">Periodo</th>
+                      <th className="px-4 py-3 font-medium">Dias</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium w-24">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {filteredVacations.map((vacation) => {
+                      const status = getStatusColor(vacation.start_date, vacation.end_date);
+                      return (
+                        <tr key={vacation.id} className="hover:bg-bg-hover transition-colors">
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="text-sm text-text-primary font-medium">{vacation.employee_name}</p>
+                              {vacation.notes && (
+                                <p className="text-xs text-text-muted truncate max-w-48" title={vacation.notes}>{vacation.notes}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-secondary">{vacation.leader_name || '-'}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-text-secondary">
+                            {formatDate(vacation.start_date)} - {formatDate(vacation.end_date)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-primary font-medium">
+                            {vacation.days} {vacation.days === 1 ? 'dia' : 'dias'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs px-2 py-1 rounded ${status.bg} ${status.text}`}>{status.label}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleEditVacation(vacation)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              <button onClick={() => handleDeleteVacation(vacation.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
 
           {!loading && vacations.length > 0 && (
@@ -873,79 +912,128 @@ export default function AdminFerias() {
               )}
             </div>
           ) : (
-            <div className="card p-0 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-bg-tertiary text-left text-xs text-text-muted">
-                    <th className="px-4 py-3 font-medium">Colaborador</th>
-                    <th className="px-4 py-3 font-medium">Gestor</th>
-                    <th className="px-4 py-3 font-medium">1º Periodo</th>
-                    <th className="px-4 py-3 font-medium">2º Periodo</th>
-                    <th className="px-4 py-3 font-medium w-24">Acoes</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {filteredSchedules.map((schedule) => {
-                    const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
-                    const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
-                    const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
-                    return (
-                      <tr key={schedule.id} className="hover:bg-bg-hover transition-colors">
-                        <td className="px-4 py-3">
+            <>
+              {/* Mobile Cards View */}
+              <div className="lg:hidden space-y-3">
+                {filteredSchedules.map((schedule) => {
+                  const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
+                  const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
+                  const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
+                  return (
+                    <div key={schedule.id} className="card p-3 space-y-1.5">
+                      <p className="text-sm font-medium text-text-primary">{schedule.employee_name}</p>
+                      <p className="text-xs text-text-secondary">Gestor: {schedule.leader_name || '—'}</p>
+                      {schedule.notes && <p className="text-xs text-text-muted">{schedule.notes}</p>}
+                      <div className="flex flex-wrap gap-2">
+                        <div>
+                          <span className="text-xs text-text-muted mr-1">1º:</span>
+                          <span className={`text-xs px-2 py-0.5 rounded ${p1.bg} ${p1.text}`}>
+                            {p1.covered ? '✓ Concluido' : p1.label}
+                          </span>
+                        </div>
+                        {p2 && (
                           <div>
-                            <p className="text-sm text-text-primary font-medium">{schedule.employee_name}</p>
-                            {schedule.notes && (
-                              <p className="text-xs text-text-muted">{schedule.notes}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-text-secondary">{schedule.leader_name || '-'}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
-                              {p1.covered ? '✓ Concluido' : p1.label}
+                            <span className="text-xs text-text-muted mr-1">2º:</span>
+                            <span className={`text-xs px-2 py-0.5 rounded ${p2.bg} ${p2.text}`}>
+                              {p2.covered ? '✓ Concluido' : p2.label}
                             </span>
-                            {!p1.covered && (
-                              <span className="text-xs text-text-muted">{formatDate(schedule.period_1_date)}</span>
-                            )}
                           </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {p2 ? (
-                            <div className="flex flex-col gap-1">
-                              <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
-                                {p2.covered ? '✓ Concluido' : p2.label}
-                              </span>
-                              {!p2.covered && schedule.period_2_date && (
-                                <span className="text-xs text-text-muted">{formatDate(schedule.period_2_date)}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 pt-1">
+                        <button onClick={() => handleEditSchedule(schedule)} className="text-text-muted hover:text-accent-primary transition-colors p-1" title="Editar">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button onClick={() => handleDeleteSchedule(schedule.id)} className="text-text-muted hover:text-red-400 transition-colors p-1" title="Excluir">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden lg:block card p-0 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-bg-tertiary text-left text-xs text-text-muted">
+                      <th className="px-4 py-3 font-medium">Colaborador</th>
+                      <th className="px-4 py-3 font-medium">Gestor</th>
+                      <th className="px-4 py-3 font-medium">1º Periodo</th>
+                      <th className="px-4 py-3 font-medium">2º Periodo</th>
+                      <th className="px-4 py-3 font-medium w-24">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {filteredSchedules.map((schedule) => {
+                      const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
+                      const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
+                      const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
+                      return (
+                        <tr key={schedule.id} className="hover:bg-bg-hover transition-colors">
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="text-sm text-text-primary font-medium">{schedule.employee_name}</p>
+                              {schedule.notes && (
+                                <p className="text-xs text-text-muted">{schedule.notes}</p>
                               )}
                             </div>
-                          ) : (
-                            <span className="text-xs text-text-muted">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => handleEditSchedule(schedule)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                              </svg>
-                            </button>
-                            <button onClick={() => handleDeleteSchedule(schedule.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="3 6 5 6 21 6" />
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-secondary">{schedule.leader_name || '-'}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-1">
+                              <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
+                                {p1.covered ? '✓ Concluido' : p1.label}
+                              </span>
+                              {!p1.covered && (
+                                <span className="text-xs text-text-muted">{formatDate(schedule.period_1_date)}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {p2 ? (
+                              <div className="flex flex-col gap-1">
+                                <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
+                                  {p2.covered ? '✓ Concluido' : p2.label}
+                                </span>
+                                {!p2.covered && schedule.period_2_date && (
+                                  <span className="text-xs text-text-muted">{formatDate(schedule.period_2_date)}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-text-muted">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => handleEditSchedule(schedule)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              <button onClick={() => handleDeleteSchedule(schedule.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </>
       )}
@@ -1059,44 +1147,79 @@ export default function AdminFerias() {
               <p className="text-text-tertiary">Nenhuma folga registrada</p>
             </div>
           ) : (
-            <div className="card overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Colaborador</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Gestor</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Data</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Tipo</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Observações</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {filteredFolgas.map((folga) => (
-                    <tr key={folga.id} className="hover:bg-bg-hover transition-colors">
-                      <td className="px-4 py-3 text-sm text-text-primary font-medium">{folga.employee_name}</td>
-                      <td className="px-4 py-3 text-sm text-text-secondary">{folga.leader_name || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-text-secondary">{formatDate(folga.date)}</td>
-                      <td className="px-4 py-3">
-                        {folga.type === 'integral' ? (
-                          <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Integral</span>
-                        ) : (
-                          <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">{folga.hours_off}h parcial</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-text-muted">{folga.notes || '—'}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => handleEditFolga(folga)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                          <button onClick={() => handleDeleteFolga(folga.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <>
+              {/* Mobile Cards View */}
+              <div className="lg:hidden space-y-3">
+                {filteredFolgas.map((folga) => (
+                  <div key={folga.id} className="card p-3 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-text-primary">{folga.employee_name}</p>
+                      {folga.type === 'integral' ? (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Integral</span>
+                      ) : (
+                        <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">{folga.hours_off}h parcial</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-secondary">Gestor: {folga.leader_name || '—'}</p>
+                    <p className="text-xs font-mono text-text-secondary">{formatDate(folga.date)}</p>
+                    {folga.notes && <p className="text-xs text-text-muted">{folga.notes}</p>}
+                    <div className="flex items-center gap-3 pt-1">
+                      <button onClick={() => handleEditFolga(folga)} className="text-text-muted hover:text-accent-primary transition-colors p-1" title="Editar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDeleteFolga(folga.id)} className="text-text-muted hover:text-red-400 transition-colors p-1" title="Excluir">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden lg:block card overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Colaborador</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Gestor</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Data</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Tipo</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Observações</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {filteredFolgas.map((folga) => (
+                      <tr key={folga.id} className="hover:bg-bg-hover transition-colors">
+                        <td className="px-4 py-3 text-sm text-text-primary font-medium">{folga.employee_name}</td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{folga.leader_name || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{formatDate(folga.date)}</td>
+                        <td className="px-4 py-3">
+                          {folga.type === 'integral' ? (
+                            <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Integral</span>
+                          ) : (
+                            <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">{folga.hours_off}h parcial</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-muted">{folga.notes || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleEditFolga(folga)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => handleDeleteFolga(folga.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                             </svg>
                           </button>
                         </div>
@@ -1106,6 +1229,7 @@ export default function AdminFerias() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </>
       )}

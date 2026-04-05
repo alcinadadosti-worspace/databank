@@ -165,7 +165,7 @@ export default function ManagerJustifications() {
                 </div>
 
                 {/* Action buttons */}
-                <div className="flex gap-2 justify-end">
+                <div className="flex flex-col sm:flex-row gap-2 justify-end">
                   <button
                     onClick={() => handleApprove(j.id)}
                     disabled={actionLoading === j.id}

@@ -35,30 +35,51 @@ export default function AdminLogs() {
           <p className="text-text-tertiary text-sm">Nenhum log encontrado</p>
         </div>
       ) : (
-        <div className="card p-0 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Data/Hora</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Acao</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Entidade</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Detalhes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-bg-hover transition-colors">
-                  <td className="px-4 py-3 text-text-muted font-mono text-xs whitespace-nowrap">{log.created_at}</td>
-                  <td className="px-4 py-3">
-                    <span className="badge bg-accent/10 text-accent text-xs">{log.action}</span>
-                  </td>
-                  <td className="px-4 py-3 text-text-secondary text-xs">{log.entity_type}</td>
-                  <td className="px-4 py-3 text-text-muted text-xs max-w-[400px] truncate">{log.details || '—'}</td>
+        <>
+          {/* Mobile Cards View */}
+          <div className="lg:hidden space-y-3">
+            {logs.map((log) => (
+              <div key={log.id} className="card p-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="badge bg-accent/10 text-accent text-xs">{log.action}</span>
+                  <span className="text-xs text-text-muted font-mono">{log.created_at}</span>
+                </div>
+                <p className="text-xs text-text-secondary">
+                  {log.entity_type}{log.entity_id ? ` #${log.entity_id}` : ''}
+                </p>
+                {log.details && (
+                  <p className="text-xs text-text-muted truncate">{log.details}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden lg:block card p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Data/Hora</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Acao</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Entidade</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Detalhes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-bg-hover transition-colors">
+                    <td className="px-4 py-3 text-text-muted font-mono text-xs whitespace-nowrap">{log.created_at}</td>
+                    <td className="px-4 py-3">
+                      <span className="badge bg-accent/10 text-accent text-xs">{log.action}</span>
+                    </td>
+                    <td className="px-4 py-3 text-text-secondary text-xs">{log.entity_type}</td>
+                    <td className="px-4 py-3 text-text-muted text-xs max-w-[400px] truncate">{log.details || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
