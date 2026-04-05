@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import RecordsTable from '@/components/RecordsTable';
 import { getAllRecords, editRecord, type DailyRecord } from '@/lib/api';
@@ -24,6 +24,25 @@ export default function AdminRecords() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Filters
+  const [selectedLeader, setSelectedLeader] = useState('');
+  const [searchName, setSearchName] = useState('');
+
+  const leaderNames = useMemo(() => {
+    const names = new Set(records.map(r => r.leader_name).filter(Boolean));
+    return Array.from(names).sort() as string[];
+  }, [records]);
+
+  const filteredRecords = useMemo(() => {
+    let result = records;
+    if (selectedLeader) result = result.filter(r => r.leader_name === selectedLeader);
+    if (searchName.trim()) {
+      const q = searchName.toLowerCase().trim();
+      result = result.filter(r => r.employee_name?.toLowerCase().includes(q));
+    }
+    return result;
+  }, [records, selectedLeader, searchName]);
 
   function isSaturday(dateStr: string): boolean {
     const date = new Date(dateStr + 'T12:00:00');
@@ -56,12 +75,12 @@ export default function AdminRecords() {
   }
 
   function exportToExcel() {
-    if (records.length === 0 || !dateRange) {
+    if (filteredRecords.length === 0 || !dateRange) {
       alert('Nenhum registro para exportar');
       return;
     }
 
-    const excelData = records.map(r => {
+    const excelData = filteredRecords.map(r => {
       const saturday = isSaturday(r.date);
       return {
         'Gestor': r.leader_name || 'Sem Gestor',
@@ -190,12 +209,12 @@ export default function AdminRecords() {
         <DateRangePicker onRangeChange={loadRecords} />
         <div className="flex gap-2">
           <button
-            onClick={() => dateRange && exportRecordsToPDF(records, {
+            onClick={() => dateRange && exportRecordsToPDF(filteredRecords, {
               title: 'Relatorio de Ponto',
               dateRange,
               showLeader: true,
             })}
-            disabled={records.length === 0 || !dateRange}
+            disabled={filteredRecords.length === 0 || !dateRange}
             className="btn-secondary text-sm flex items-center gap-2 h-fit disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -206,7 +225,7 @@ export default function AdminRecords() {
           </button>
           <button
             onClick={exportToExcel}
-            disabled={records.length === 0 || !dateRange}
+            disabled={filteredRecords.length === 0 || !dateRange}
             className="btn-secondary text-sm flex items-center gap-2 h-fit disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -214,16 +233,62 @@ export default function AdminRecords() {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Excel {records.length > 0 ? `(${records.length})` : ''}
+            Excel {filteredRecords.length > 0 ? `(${filteredRecords.length})` : ''}
           </button>
         </div>
       </div>
+
+      {/* Filters */}
+      {records.length > 0 && (
+        <div className="card p-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-tertiary">Gestor</label>
+              <select
+                value={selectedLeader}
+                onChange={(e) => setSelectedLeader(e.target.value)}
+                className="input max-w-[220px]"
+              >
+                <option value="">Todos os gestores</option>
+                {leaderNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 flex-1">
+              <label className="text-xs text-text-tertiary">Buscar colaborador</label>
+              <input
+                type="text"
+                value={searchName}
+                onChange={(e) => setSearchName(e.target.value)}
+                placeholder="Digite o nome..."
+                className="input"
+              />
+            </div>
+            {(selectedLeader || searchName) && (
+              <div className="flex items-end">
+                <button
+                  onClick={() => { setSelectedLeader(''); setSearchName(''); }}
+                  className="btn-secondary text-sm px-3 py-2"
+                >
+                  Limpar
+                </button>
+              </div>
+            )}
+          </div>
+          {(selectedLeader || searchName) && (
+            <p className="text-xs text-text-tertiary mt-2">
+              {filteredRecords.length} de {records.length} registros
+            </p>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>
       ) : (
         <RecordsTable
-          records={records}
+          records={filteredRecords}
           showEmployee
           showLeader
           onEdit={openEditModal}
