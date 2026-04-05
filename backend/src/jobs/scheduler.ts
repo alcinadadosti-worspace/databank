@@ -23,14 +23,17 @@ export function startScheduler(): void {
   jobs.push(syncJob);
   console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-23:00)');
 
-  // Catch-up sync at 07:45 Mon-Sat — picks up any punches made after 23:00 or
-  // processed by Sólides with delay, ensuring daily check at 08:00 has fresh data
+  // Catch-up sync at 07:50 Mon-Sat — syncs YESTERDAY to pick up punches made after
+  // 23:00 or processed by Sólides with delay, before the 08:00 daily check runs
   const catchUpSyncJob = CronJob.from({
-    cronTime: '45 7 * * 1-6',
+    cronTime: '50 7 * * 1-6',
     onTick: async () => {
       try {
-        console.log('[scheduler] Running catch-up sync before daily check...');
-        await syncPunches();
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        console.log(`[scheduler] Running catch-up sync for ${yesterdayStr}...`);
+        await syncPunches(yesterdayStr, { skipNotifications: true });
       } catch (error) {
         console.error('[scheduler] Catch-up sync error:', error);
       }
@@ -39,7 +42,7 @@ export function startScheduler(): void {
     timeZone: 'America/Sao_Paulo',
   });
   jobs.push(catchUpSyncJob);
-  console.log('[scheduler] Catch-up sync: 07:45 (Mon-Sat)');
+  console.log('[scheduler] Catch-up sync (yesterday): 07:50 (Mon-Sat)');
 
   // Daily checks at 08:00, Mon-Sat (employee notifications only)
   const dailyCheckJob = CronJob.from({
