@@ -7,9 +7,9 @@ import { syncUpcomingHolidays } from '../services/holiday-sync';
 const jobs: CronJob[] = [];
 
 export function startScheduler(): void {
-  // Sync punches every 5 minutes, Mon-Sat, 7:00–20:00
+  // Sync punches every 5 minutes, Mon-Sat, 7:00–23:00
   const syncJob = CronJob.from({
-    cronTime: '*/5 7-20 * * 1-6',
+    cronTime: '*/5 7-23 * * 1-6',
     onTick: async () => {
       try {
         await syncPunches();
@@ -21,7 +21,25 @@ export function startScheduler(): void {
     timeZone: 'America/Sao_Paulo',
   });
   jobs.push(syncJob);
-  console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-20:00)');
+  console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-23:00)');
+
+  // Catch-up sync at 07:45 Mon-Sat — picks up any punches made after 23:00 or
+  // processed by Sólides with delay, ensuring daily check at 08:00 has fresh data
+  const catchUpSyncJob = CronJob.from({
+    cronTime: '45 7 * * 1-6',
+    onTick: async () => {
+      try {
+        console.log('[scheduler] Running catch-up sync before daily check...');
+        await syncPunches();
+      } catch (error) {
+        console.error('[scheduler] Catch-up sync error:', error);
+      }
+    },
+    start: true,
+    timeZone: 'America/Sao_Paulo',
+  });
+  jobs.push(catchUpSyncJob);
+  console.log('[scheduler] Catch-up sync: 07:45 (Mon-Sat)');
 
   // Daily checks at 08:00, Mon-Sat (employee notifications only)
   const dailyCheckJob = CronJob.from({
