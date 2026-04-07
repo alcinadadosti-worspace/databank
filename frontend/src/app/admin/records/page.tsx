@@ -26,23 +26,28 @@ export default function AdminRecords() {
   const [error, setError] = useState('');
 
   // Filters
-  const [selectedLeader, setSelectedLeader] = useState('');
+  const [selectedLeaderId, setSelectedLeaderId] = useState<number | ''>('');
   const [searchName, setSearchName] = useState('');
 
-  const leaderNames = useMemo(() => {
-    const names = new Set(records.map(r => r.leader_name).filter(Boolean));
-    return Array.from(names).sort() as string[];
+  const leaderOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const r of records) {
+      if (r.leader_id && r.leader_name) map.set(r.leader_id, r.leader_name);
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [records]);
 
   const filteredRecords = useMemo(() => {
     let result = records;
-    if (selectedLeader) result = result.filter(r => r.leader_name === selectedLeader);
+    if (selectedLeaderId !== '') result = result.filter(r => r.leader_id === selectedLeaderId);
     if (searchName.trim()) {
       const q = searchName.toLowerCase().trim();
       result = result.filter(r => r.employee_name?.toLowerCase().includes(q));
     }
     return result;
-  }, [records, selectedLeader, searchName]);
+  }, [records, selectedLeaderId, searchName]);
 
   function isSaturday(dateStr: string): boolean {
     const date = new Date(dateStr + 'T12:00:00');
@@ -245,13 +250,13 @@ export default function AdminRecords() {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-text-tertiary">Gestor</label>
               <select
-                value={selectedLeader}
-                onChange={(e) => setSelectedLeader(e.target.value)}
+                value={selectedLeaderId}
+                onChange={(e) => setSelectedLeaderId(e.target.value ? Number(e.target.value) : '')}
                 className="input max-w-[220px]"
               >
                 <option value="">Todos os gestores</option>
-                {leaderNames.map(name => (
-                  <option key={name} value={name}>{name}</option>
+                {leaderOptions.map(({ id, name }) => (
+                  <option key={id} value={id}>{name}</option>
                 ))}
               </select>
             </div>
@@ -265,10 +270,10 @@ export default function AdminRecords() {
                 className="input"
               />
             </div>
-            {(selectedLeader || searchName) && (
+            {(selectedLeaderId !== '' || searchName) && (
               <div className="flex items-end">
                 <button
-                  onClick={() => { setSelectedLeader(''); setSearchName(''); }}
+                  onClick={() => { setSelectedLeaderId(''); setSearchName(''); }}
                   className="btn-secondary text-sm px-3 py-2"
                 >
                   Limpar
@@ -276,7 +281,7 @@ export default function AdminRecords() {
               </div>
             )}
           </div>
-          {(selectedLeader || searchName) && (
+          {(selectedLeaderId !== '' || searchName) && (
             <p className="text-xs text-text-tertiary mt-2">
               {filteredRecords.length} de {records.length} registros
             </p>

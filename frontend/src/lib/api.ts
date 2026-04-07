@@ -441,6 +441,7 @@ export interface DailyRecord {
   employee_name?: string;
   employee_slack_id?: string | null;
   leader_name?: string;
+  leader_id?: number;
   justification_reason?: string | null;
   justification_type?: string | null;
   justification_status?: 'pending' | 'approved' | 'rejected' | null;
