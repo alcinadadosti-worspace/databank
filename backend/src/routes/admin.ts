@@ -251,6 +251,39 @@ router.post('/employee-schedule', async (req: Request, res: Response) => {
   }
 });
 
+/** POST /api/admin/employee-exemption-days - Set recurring day-of-week exemptions for an employee */
+router.post('/employee-exemption-days', async (req: Request, res: Response) => {
+  try {
+    const { employeeId, exemptionDays, reason } = req.body;
+
+    if (!employeeId || !Array.isArray(exemptionDays) || typeof reason !== 'string') {
+      res.status(400).json({ error: 'employeeId, exemptionDays (array of 0-6), and reason (string) are required' });
+      return;
+    }
+
+    const validDays = exemptionDays.every((d: unknown) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6);
+    if (!validDays) {
+      res.status(400).json({ error: 'exemptionDays must be integers between 0 (Sun) and 6 (Sat)' });
+      return;
+    }
+
+    await queries.setExemptionDays(Number(employeeId), exemptionDays, reason);
+
+    await queries.logAudit('EMPLOYEE_EXEMPTION_DAYS_UPDATE', 'employee', employeeId,
+      `Set exemption_days=${JSON.stringify(exemptionDays)}, reason="${reason}"`);
+
+    res.json({
+      success: true,
+      message: `Employee ${employeeId} exemption days updated`,
+      exemptionDays,
+      reason,
+    });
+  } catch (error) {
+    console.error('[admin] Error updating employee exemption days:', error);
+    res.status(500).json({ error: 'Failed to update employee exemption days' });
+  }
+});
+
 /** GET /api/admin/employees - List all employees with their settings */
 router.get('/employees', async (_req: Request, res: Response) => {
   try {

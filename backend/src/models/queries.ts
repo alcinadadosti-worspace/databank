@@ -214,6 +214,14 @@ export async function setWorksSaturday(employeeId: number, worksSaturday: boolea
   invalidateCaches();
 }
 
+export async function setExemptionDays(employeeId: number, exemptionDays: number[], reason: string) {
+  await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
+    exemption_days: exemptionDays,
+    exemption_reason: reason,
+  });
+  invalidateCaches();
+}
+
 export async function deleteEmployee(employeeId: number) {
   await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).delete();
   invalidateCaches();
@@ -1583,6 +1591,8 @@ export interface Employee {
   expected_daily_minutes: number;
   no_punch_required: boolean;
   works_saturday: boolean;
+  exemption_days?: number[]; // Days of week exempt from punching: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+  exemption_reason?: string; // Human-readable reason (e.g., "Curso às terças-feiras")
   created_at: string;
 }
 
@@ -1844,6 +1854,11 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
 
   // Sunday - not a working day for anyone
   if (dayOfWeek === 0) {
+    return false;
+  }
+
+  // Check if the employee has a recurring exemption for this day of week (e.g., intern with Tuesday course)
+  if (employee.exemption_days && employee.exemption_days.includes(dayOfWeek)) {
     return false;
   }
 

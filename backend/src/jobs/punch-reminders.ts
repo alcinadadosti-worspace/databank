@@ -81,6 +81,8 @@ export async function sendEntryReminders(): Promise<void> {
     const onVacation = await getEmployeesOnVacation();
     const onIntegralFolga = await getEmployeesOnIntegralFolga();
 
+    const todayDow = new Date().getUTCDay(); // 0=Sun, 2=Tue, etc.
+
     // Send to employees who haven't punched yet
     let sent = 0;
     for (const emp of employees) {
@@ -89,6 +91,7 @@ export async function sendEntryReminders(): Promise<void> {
       if (hasReminderBeenSent(emp.id, 'entry')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
+      if (emp.exemption_days && emp.exemption_days.includes(todayDow)) continue;
 
       await sendPunchReminder(emp.slack_id, emp.name, 'entry', 10);
       markReminderSent(emp.id, 'entry');
