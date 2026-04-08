@@ -129,6 +129,10 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   // Loja Palmeira dos Indios (under Kemilly, leader_id=10)
   'yasmin abilia ferro da silva',
   'valesca meirelle bezerra vitória',
+  // Loja Sustentável Palmeira (temporarily working at Loja Palmeira dos Indios until inauguration)
+  'maria cicília brito veiga',
+  'eduarda pereira costa silva',
+  'larissa alexia da silva souza',
   // Loja Penedo (under Maria Taciane, leader_id=11)
   'cristielle pereira lima da silva',
   'deise gislaine silva vitor',
