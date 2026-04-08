@@ -81,10 +81,9 @@ router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (
       const employee = await queries.getEmployeeById(record.employee_id);
       const isApprentice = employee?.is_apprentice ?? false;
 
-      // Pass the date so the calculation can detect Saturday and use correct expected hours
       const result = calculateDailyHours(
         { punch1: newPunch1 ?? null, punch2: newPunch2 ?? null, punch3: newPunch3 ?? null, punch4: newPunch4 ?? null },
-        { date: record.date, isApprentice }
+        { date: record.date, isApprentice, employeeName: employee?.name }
       );
 
       const totalWorkedMinutes = result?.totalWorkedMinutes ?? null;

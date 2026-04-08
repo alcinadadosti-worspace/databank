@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
-import { isSaturday, UNIT_SATURDAY_MINUTES } from '../config/constants';
+import { isSaturday, EXTENDED_SATURDAY_EMPLOYEES } from '../config/constants';
 
 // Cache of employees on vacation for the current day
 let vacationEmployeesCache: Set<number> | null = null;
@@ -191,8 +191,8 @@ export async function sendSaturdayExitReminders(): Promise<void> {
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
-      // Skip units with extended Saturday hours (they get their reminder at 13:50)
-      if (emp.sector && UNIT_SATURDAY_MINUTES[emp.sector] !== undefined) continue;
+      // Skip employees with extended Saturday hours (they get their reminder at 13:50)
+      if (EXTENDED_SATURDAY_EMPLOYEES.has(emp.name.toLowerCase())) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
@@ -236,8 +236,8 @@ export async function sendSaturdayLateExitReminders(): Promise<void> {
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
-      // Only units with extended Saturday hours
-      if (!emp.sector || UNIT_SATURDAY_MINUTES[emp.sector] === undefined) continue;
+      // Only employees with extended Saturday hours
+      if (!EXTENDED_SATURDAY_EMPLOYEES.has(emp.name.toLowerCase())) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {

@@ -357,6 +357,7 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       date: existingRecord.date,
       isApprentice: employee?.is_apprentice ?? false,
       expectedMinutes: employee?.expected_daily_minutes,
+      employeeName: employee?.name,
     });
 
     // Build old values for audit
@@ -552,6 +553,10 @@ router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
     const allRecords = await queries.getAllRecordsRange(startDate, endDate);
     const records = Array.isArray(allRecords) ? allRecords : allRecords.data;
 
+    // Build employee name map for per-employee Saturday schedule lookup
+    const allEmployees = await queries.getAllEmployees();
+    const employeeNameMap = new Map(allEmployees.map(e => [e.id, e.name]));
+
     // Filter only Saturdays with suspicious values (overtime > 60min on Saturday is suspicious)
     const saturdayRecords = records.filter((r: any) => {
       const date = new Date(r.date + 'T12:00:00Z');
@@ -580,7 +585,8 @@ router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
 
       const calcResult = calculateDailyHours(punchSet, {
         date: record.date,
-        isApprentice: false, // Will be corrected by the function for Saturday
+        isApprentice: false,
+        employeeName: employeeNameMap.get(record.employee_id),
       });
 
       if (calcResult) {

@@ -1,4 +1,4 @@
-import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, getExpectedMinutes, getSaturdayMinutesForUnit } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, getExpectedMinutes, getSaturdayMinutes } from '../config/constants';
 
 export interface PunchSet {
   punch1: string | null; // Entry
@@ -15,10 +15,10 @@ export interface CalculationResult {
 }
 
 export interface CalculationOptions {
-  date?: string;           // Date in YYYY-MM-DD format (to check Saturday/holiday)
-  isApprentice?: boolean;  // Apprentice has different hours
-  expectedMinutes?: number; // Override expected minutes
-  unitName?: string | null; // Unit name for per-unit Saturday schedule
+  date?: string;             // Date in YYYY-MM-DD format (to check Saturday/holiday)
+  isApprentice?: boolean;    // Apprentice has different hours
+  expectedMinutes?: number;  // Override expected minutes
+  employeeName?: string | null; // Employee name for per-employee Saturday schedule
 }
 
 /**
@@ -64,8 +64,8 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   // Get expected minutes
   let expectedMinutes: number;
   if (isSat) {
-    // Saturday: use per-unit schedule (defaults to 240 min / 12:00 for unlisted units)
-    expectedMinutes = getSaturdayMinutesForUnit(options?.unitName);
+    // Saturday: use per-employee schedule (defaults to 240 min / 12:00)
+    expectedMinutes = getSaturdayMinutes(options?.employeeName);
   } else if (options?.expectedMinutes !== undefined) {
     expectedMinutes = options.expectedMinutes;
   } else if (date) {

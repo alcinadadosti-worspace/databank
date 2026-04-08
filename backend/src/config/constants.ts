@@ -121,37 +121,44 @@ export function isSaturday(dateStr: string): boolean {
 }
 
 /**
- * Units whose Saturday shift ends at 14:00 (360 min) instead of the default 12:00 (240 min).
- * Key = leader sector name as stored in Firestore.
+ * Employees whose Saturday shift ends at 14:00 (360 min) instead of the default 12:00 (240 min).
+ * These are the virtual units "Loja Palmeira dos Indios" and "Loja Penedo".
+ * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
  */
-export const UNIT_SATURDAY_MINUTES: Record<string, number> = {
-  'Loja Palmeira dos Indios': 360, // 08:00–14:00
-  'Loja Penedo': 360,              // 08:00–14:00
-};
+export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
+  // Loja Palmeira dos Indios (under Kemilly, leader_id=10)
+  'yasmin abilia ferro da silva',
+  'valesca meirelle bezerra vitória',
+  // Loja Penedo (under Maria Taciane, leader_id=11)
+  'cristielle pereira lima da silva',
+  'deise gislaine silva vitor',
+  'samyra anchieta bispo',
+]);
 
 /**
- * Return the expected Saturday work minutes for a given unit.
- * Falls back to the global default (240 min) for unlisted units.
+ * Return the expected Saturday work minutes for a given employee.
+ * Employees in Loja Palmeira dos Indios and Loja Penedo work until 14:00 (360 min).
+ * All others work until 12:00 (240 min).
  */
-export function getSaturdayMinutesForUnit(unitName: string | null | undefined): number {
-  if (unitName && UNIT_SATURDAY_MINUTES[unitName] !== undefined) {
-    return UNIT_SATURDAY_MINUTES[unitName];
+export function getSaturdayMinutes(employeeName: string | null | undefined): number {
+  if (employeeName && EXTENDED_SATURDAY_EMPLOYEES.has(employeeName.toLowerCase())) {
+    return 360; // 08:00–14:00
   }
-  return WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES;
+  return WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES; // 08:00–12:00
 }
 
 /**
  * Get expected work minutes for a given date
- * Returns 0 for non-working days, unit-specific minutes for Saturday, 480 for weekdays
+ * Returns 0 for non-working days, employee-specific minutes for Saturday, 480 for weekdays
  */
-export function getExpectedMinutes(dateStr: string, isApprentice: boolean = false, apprenticeMinutes: number = 240, unitName?: string | null): number {
+export function getExpectedMinutes(dateStr: string, isApprentice: boolean = false, apprenticeMinutes: number = 240, employeeName?: string | null): number {
   if (!isWorkingDay(dateStr)) {
     return 0;
   }
 
   if (isSaturday(dateStr)) {
     if (isApprentice) return Math.min(apprenticeMinutes, WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES);
-    return getSaturdayMinutesForUnit(unitName);
+    return getSaturdayMinutes(employeeName);
   }
 
   return isApprentice ? apprenticeMinutes : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
