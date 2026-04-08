@@ -135,6 +135,31 @@ export default function ManagerJustifications() {
                   </div>
                 </div>
 
+                {/* Punch times + difference */}
+                <div className="bg-bg-secondary rounded-md p-3 space-y-2">
+                  {(j.punch_1 || j.punch_2 || j.punch_3 || j.punch_4) && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                      {j.punch_1 && <span><span className="text-text-muted font-medium">Entrada:</span> {j.punch_1}</span>}
+                      {j.punch_2 && <span><span className="text-text-muted font-medium">Intervalo:</span> {j.punch_2}</span>}
+                      {j.punch_3 && <span><span className="text-text-muted font-medium">Retorno:</span> {j.punch_3}</span>}
+                      {j.punch_4 && <span><span className="text-text-muted font-medium">Saída:</span> {j.punch_4}</span>}
+                    </div>
+                  )}
+                  {j.difference_minutes != null && (
+                    <p className="text-sm">
+                      <span className="text-text-muted font-medium">{j.type === 'late' ? 'Atraso:' : 'Hora extra:'}</span>{' '}
+                      <span className={j.type === 'late' ? 'text-red-500' : 'text-blue-500'}>
+                        {(() => {
+                          const abs = Math.abs(j.difference_minutes);
+                          const h = Math.floor(abs / 60);
+                          const m = abs % 60;
+                          return h > 0 ? `${h}h${m > 0 ? m + 'min' : ''}` : `${m}min`;
+                        })()}
+                      </span>
+                    </p>
+                  )}
+                </div>
+
                 {/* Justification details */}
                 <div className="bg-bg-secondary rounded-md p-3">
                   <p className="text-sm text-text-secondary">

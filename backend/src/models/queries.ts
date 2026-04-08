@@ -787,26 +787,41 @@ export async function getPendingJustificationsByLeader(
   // Filter for pending (no status or status = 'pending')
   const pending = allJustifications.filter(j => !j.status || j.status === 'pending');
 
-  // Get daily_record dates
+  // Get daily_record data (date + punch times + difference)
   const recordIds = [...new Set(pending.map(j => j.daily_record_id))];
-  const dateMap = new Map<number, string>();
+  const recordMap = new Map<number, { date: string; punch_1: string | null; punch_2: string | null; punch_3: string | null; punch_4: string | null; difference_minutes: number | null; classification: string | null }>();
 
   for (const chunk of chunkArray(recordIds, 30)) {
     const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
       .where('id', 'in', chunk).get();
     for (const doc of rSnap.docs) {
       const data = doc.data();
-      dateMap.set(data.id, data.date);
+      recordMap.set(data.id, {
+        date: data.date,
+        punch_1: data.punch_1 ?? null,
+        punch_2: data.punch_2 ?? null,
+        punch_3: data.punch_3 ?? null,
+        punch_4: data.punch_4 ?? null,
+        difference_minutes: data.difference_minutes ?? null,
+        classification: data.classification ?? null,
+      });
     }
   }
 
   const result = pending.map(j => {
     const emp = empMap.get(j.employee_id);
+    const record = recordMap.get(j.daily_record_id);
     return {
       ...j,
-      date: dateMap.get(j.daily_record_id) ?? '',
+      date: record?.date ?? '',
       employee_name: emp?.name ?? '',
       status: j.status || 'pending',
+      punch_1: record?.punch_1 ?? null,
+      punch_2: record?.punch_2 ?? null,
+      punch_3: record?.punch_3 ?? null,
+      punch_4: record?.punch_4 ?? null,
+      difference_minutes: record?.difference_minutes ?? null,
+      classification: record?.classification ?? null,
     };
   }).sort((a: any, b: any) => b.date.localeCompare(a.date));
 
