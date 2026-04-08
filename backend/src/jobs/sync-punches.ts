@@ -140,7 +140,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const isSat = isSaturday(date);
 
       // Get expected minutes based on day type; reduce for partial folga
-      let expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240);
+      let expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee.sector);
       if (folgaRecord?.type === 'partial') {
         expectedMinutes = Math.max(0, expectedMinutes - (folgaRecord.hours_off * 60));
       }

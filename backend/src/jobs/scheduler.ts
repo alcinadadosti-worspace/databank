@@ -1,7 +1,7 @@
 import { CronJob } from 'cron';
 import { syncPunches } from './sync-punches';
 import { runDailyChecks, sendWeeklyManagerAlerts } from './manager-daily-alert';
-import { sendEntryReminders, sendExitReminders, sendSaturdayExitReminders, checkLunchReturnReminders } from './punch-reminders';
+import { sendEntryReminders, sendExitReminders, sendSaturdayExitReminders, sendSaturdayLateExitReminders, checkLunchReturnReminders } from './punch-reminders';
 import { syncUpcomingHolidays } from '../services/holiday-sync';
 
 const jobs: CronJob[] = [];
@@ -124,7 +124,23 @@ export function startScheduler(): void {
     timeZone: 'America/Sao_Paulo',
   });
   jobs.push(saturdayExitReminderJob);
-  console.log('[scheduler] Saturday exit reminder: 11:50 (Sat)');
+  console.log('[scheduler] Saturday exit reminder: 11:50 (Sat) — standard units');
+
+  // Saturday exit reminder at 13:50 for units that work until 14:00
+  const saturdayLateExitReminderJob = CronJob.from({
+    cronTime: '50 13 * * 6',
+    onTick: async () => {
+      try {
+        await sendSaturdayLateExitReminders();
+      } catch (error) {
+        console.error('[scheduler] Saturday late exit reminder error:', error);
+      }
+    },
+    start: true,
+    timeZone: 'America/Sao_Paulo',
+  });
+  jobs.push(saturdayLateExitReminderJob);
+  console.log('[scheduler] Saturday late exit reminder: 13:50 (Sat) — Loja Palmeira dos Indios, Loja Penedo');
 
   // Lunch return reminder check every 5 minutes, 14:00-16:00, Mon-Fri
   const lunchReturnReminderJob = CronJob.from({

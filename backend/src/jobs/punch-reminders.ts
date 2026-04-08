@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
-import { isSaturday } from '../config/constants';
+import { isSaturday, UNIT_SATURDAY_MINUTES } from '../config/constants';
 
 // Cache of employees on vacation for the current day
 let vacationEmployeesCache: Set<number> | null = null;
@@ -174,7 +174,7 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     return;
   }
 
-  console.log('[reminders] Sending Saturday exit reminders (10 min before 12:00)');
+  console.log('[reminders] Sending Saturday exit reminders (10 min before 12:00) — standard units');
 
   try {
     const employees = await queries.getAllEmployees();
@@ -184,13 +184,15 @@ export async function sendSaturdayExitReminders(): Promise<void> {
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
-    // Send to employees who have punch_1 but not punch_2 (didn't leave yet)
+    // Send only to employees whose unit ends at 12:00 (not the 14:00 units)
     let sent = 0;
     for (const emp of employees) {
       if (emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
+      // Skip units with extended Saturday hours (they get their reminder at 13:50)
+      if (emp.sector && UNIT_SATURDAY_MINUTES[emp.sector] !== undefined) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
@@ -203,6 +205,51 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     console.log(`[reminders] Saturday exit reminders sent to ${sent} employees`);
   } catch (error) {
     console.error('[reminders] Error sending Saturday exit reminders:', error);
+  }
+}
+
+/**
+ * Send Saturday exit reminder at 13:50 for units that work until 14:00.
+ * (e.g. Loja Palmeira dos Indios, Loja Penedo)
+ */
+export async function sendSaturdayLateExitReminders(): Promise<void> {
+  resetIfNewDay();
+  const today = new Date().toISOString().split('T')[0];
+
+  if (!isSaturday(today)) {
+    return;
+  }
+
+  console.log('[reminders] Sending Saturday exit reminders (10 min before 14:00) — extended units');
+
+  try {
+    const employees = await queries.getAllEmployees();
+    const records = await queries.getDailyRecordsByDate(today);
+    const onVacation = await getEmployeesOnVacation();
+    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+
+    const recordMap = new Map(records.map(r => [r.employee_id, r]));
+
+    let sent = 0;
+    for (const emp of employees) {
+      if (emp.no_punch_required) continue;
+      if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
+      if (onVacation.has(emp.id)) continue;
+      if (onIntegralFolga.has(emp.id)) continue;
+      // Only units with extended Saturday hours
+      if (!emp.sector || UNIT_SATURDAY_MINUTES[emp.sector] === undefined) continue;
+
+      const record = recordMap.get(emp.id);
+      if (record && record.punch_1 && !record.punch_2) {
+        await sendPunchReminder(emp.slack_id, emp.name, 'exit', 10);
+        markReminderSent(emp.id, 'exit_saturday');
+        sent++;
+      }
+    }
+
+    console.log(`[reminders] Saturday late exit reminders sent to ${sent} employees`);
+  } catch (error) {
+    console.error('[reminders] Error sending Saturday late exit reminders:', error);
   }
 }
 
