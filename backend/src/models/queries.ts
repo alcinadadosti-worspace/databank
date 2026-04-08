@@ -1080,6 +1080,7 @@ const LOGISTICA_PALMEIRA_EMPLOYEES = [
   'Hugo Castro Lopes',
   'João Victor Santos da Silva',
   'Pedro Lucas Rocha da Fonseca',
+  'Robéria Gilo Da Silva',
 ].map(n => n.toLowerCase());
 
 // Maria Taciane's employees that came from Loja Penedo (virtual unit)
@@ -1107,7 +1108,6 @@ const LOJA_CORURIPE_EMPLOYEES = [
 // Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
 const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
   'yasmin abilia ferro da silva',
-  'robéria gilo da silva',
   'valesca meirelle bezerra vitória',
 ];
 
