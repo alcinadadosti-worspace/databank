@@ -13,6 +13,7 @@ import {
   deleteVacationSchedule,
   getFolgas,
   createFolga,
+  createFolgaRange,
   updateFolga,
   deleteFolga,
   type Vacation,
@@ -101,9 +102,13 @@ export default function AdminFerias() {
   const [folgas, setFolgas] = useState<Folga[]>([]);
   const [showFolgaForm, setShowFolgaForm] = useState(false);
   const [editingFolgaId, setEditingFolgaId] = useState<number | null>(null);
+  const [folgaRangeMode, setFolgaRangeMode] = useState(false);
+  const [folgaRangeResult, setFolgaRangeResult] = useState<{ created: number; skipped_dates: { date: string; reason: string }[] } | null>(null);
   const [folgaForm, setFolgaForm] = useState({
     employee_id: 0,
     date: '',
+    start_date: '',
+    end_date: '',
     type: 'integral' as 'integral' | 'partial',
     hours_off: 1,
     notes: '',
@@ -294,8 +299,10 @@ export default function AdminFerias() {
   // ─── Folga CRUD ───────────────────────────────────────────────
 
   function resetFolgaForm() {
-    setFolgaForm({ employee_id: 0, date: '', type: 'integral', hours_off: 1, notes: '' });
+    setFolgaForm({ employee_id: 0, date: '', start_date: '', end_date: '', type: 'integral', hours_off: 1, notes: '' });
     setEditingFolgaId(null);
+    setFolgaRangeMode(false);
+    setFolgaRangeResult(null);
     setShowFolgaForm(false);
     setError('');
   }
@@ -304,6 +311,8 @@ export default function AdminFerias() {
     setFolgaForm({
       employee_id: folga.employee_id,
       date: folga.date,
+      start_date: '',
+      end_date: '',
       type: folga.type,
       hours_off: folga.hours_off,
       notes: folga.notes || '',
@@ -335,6 +344,20 @@ export default function AdminFerias() {
           hours_off: folgaForm.type === 'integral' ? undefined : folgaForm.hours_off,
           notes: folgaForm.notes || undefined,
         });
+        await loadData();
+        resetFolgaForm();
+      } else if (folgaRangeMode) {
+        const result = await createFolgaRange({
+          employee_id: folgaForm.employee_id,
+          leader_id: leaderId,
+          start_date: folgaForm.start_date,
+          end_date: folgaForm.end_date,
+          type: folgaForm.type,
+          hours_off: folgaForm.type === 'integral' ? undefined : folgaForm.hours_off,
+          notes: folgaForm.notes || undefined,
+        });
+        await loadData();
+        setFolgaRangeResult({ created: result.created, skipped_dates: result.skipped_dates });
       } else {
         await createFolga({
           employee_id: folgaForm.employee_id,
@@ -344,9 +367,9 @@ export default function AdminFerias() {
           hours_off: folgaForm.type === 'integral' ? undefined : folgaForm.hours_off,
           notes: folgaForm.notes || undefined,
         });
+        await loadData();
+        resetFolgaForm();
       }
-      await loadData();
-      resetFolgaForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar folga');
     } finally {
@@ -1059,84 +1082,156 @@ export default function AdminFerias() {
 
           {showFolgaForm && (
             <div className="card p-4">
-              <h3 className="text-sm font-semibold text-text-primary mb-4">
-                {editingFolgaId ? 'Editar Folga' : 'Nova Folga'}
-              </h3>
-              <form onSubmit={handleSubmitFolga} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-text-muted mb-1">Colaborador</label>
-                    <select
-                      value={folgaForm.employee_id}
-                      onChange={(e) => setFolgaForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
-                      className="input w-full"
-                      disabled={!!editingFolgaId}
-                      required
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-text-primary">
+                  {editingFolgaId ? 'Editar Folga' : 'Nova Folga'}
+                </h3>
+                {!editingFolgaId && (
+                  <div className="flex items-center gap-1 bg-bg-elevated border border-border rounded p-1">
+                    <button
+                      type="button"
+                      onClick={() => { setFolgaRangeMode(false); setFolgaRangeResult(null); }}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${!folgaRangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
                     >
-                      <option value={0}>Selecione...</option>
-                      {employeesByLeader.map(([leader, emps]) => (
-                        <optgroup key={leader} label={leader}>
-                          {emps.map(emp => (
-                            <option key={emp.id} value={emp.id}>{emp.name}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-muted mb-1">Data</label>
-                    <input
-                      type="date"
-                      value={folgaForm.date}
-                      onChange={(e) => setFolgaForm(prev => ({ ...prev, date: e.target.value }))}
-                      className="input w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-muted mb-1">Tipo</label>
-                    <select
-                      value={folgaForm.type}
-                      onChange={(e) => setFolgaForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
-                      className="input w-full"
+                      Dia único
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFolgaRangeMode(true); setFolgaRangeResult(null); }}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${folgaRangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
                     >
-                      <option value="integral">Integral (dia todo)</option>
-                      <option value="partial">Parcial (horas)</option>
-                    </select>
+                      Período
+                    </button>
                   </div>
-                  {folgaForm.type === 'partial' && (
-                    <div>
-                      <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={7}
-                        value={folgaForm.hours_off}
-                        onChange={(e) => setFolgaForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
-                        className="input w-full"
-                        required
-                      />
-                      <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
+                )}
+              </div>
+
+              {folgaRangeResult ? (
+                <div className="space-y-3">
+                  <div className="bg-green-500/10 border border-green-500/30 text-green-400 px-4 py-3 rounded text-sm">
+                    {folgaRangeResult.created} folga(s) registrada(s) com sucesso.
+                  </div>
+                  {folgaRangeResult.skipped_dates.length > 0 && (
+                    <div className="bg-bg-secondary rounded p-3">
+                      <p className="text-xs text-text-muted mb-2">{folgaRangeResult.skipped_dates.length} dia(s) ignorado(s):</p>
+                      <ul className="space-y-1">
+                        {folgaRangeResult.skipped_dates.map(s => (
+                          <li key={s.date} className="text-xs text-text-secondary">
+                            {s.date.split('-').reverse().join('/')} — {s.reason}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
-                    <input
-                      type="text"
-                      value={folgaForm.notes}
-                      onChange={(e) => setFolgaForm(prev => ({ ...prev, notes: e.target.value }))}
-                      className="input w-full"
-                      placeholder="Ex: compensação de hora extra..."
-                    />
+                  <div className="flex justify-end">
+                    <button type="button" onClick={resetFolgaForm} className="btn-primary text-sm">Fechar</button>
                   </div>
                 </div>
-                <div className="flex gap-2 justify-end">
-                  <button type="button" onClick={resetFolgaForm} className="btn-secondary text-sm">Cancelar</button>
-                  <button type="submit" disabled={saving} className="btn-primary text-sm">
-                    {saving ? 'Salvando...' : editingFolgaId ? 'Salvar' : 'Registrar'}
-                  </button>
-                </div>
-              </form>
+              ) : (
+                <form onSubmit={handleSubmitFolga} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Colaborador</label>
+                      <select
+                        value={folgaForm.employee_id}
+                        onChange={(e) => setFolgaForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
+                        className="input w-full"
+                        disabled={!!editingFolgaId}
+                        required
+                      >
+                        <option value={0}>Selecione...</option>
+                        {employeesByLeader.map(([leader, emps]) => (
+                          <optgroup key={leader} label={leader}>
+                            {emps.map(emp => (
+                              <option key={emp.id} value={emp.id}>{emp.name}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+
+                    {folgaRangeMode ? (
+                      <>
+                        <div>
+                          <label className="block text-xs text-text-muted mb-1">Data início</label>
+                          <input
+                            type="date"
+                            value={folgaForm.start_date}
+                            onChange={(e) => setFolgaForm(prev => ({ ...prev, start_date: e.target.value }))}
+                            className="input w-full"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-text-muted mb-1">Data fim</label>
+                          <input
+                            type="date"
+                            value={folgaForm.end_date}
+                            min={folgaForm.start_date}
+                            onChange={(e) => setFolgaForm(prev => ({ ...prev, end_date: e.target.value }))}
+                            className="input w-full"
+                            required
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <label className="block text-xs text-text-muted mb-1">Data</label>
+                        <input
+                          type="date"
+                          value={folgaForm.date}
+                          onChange={(e) => setFolgaForm(prev => ({ ...prev, date: e.target.value }))}
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Tipo</label>
+                      <select
+                        value={folgaForm.type}
+                        onChange={(e) => setFolgaForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
+                        className="input w-full"
+                      >
+                        <option value="integral">Integral (dia todo)</option>
+                        <option value="partial">Parcial (horas)</option>
+                      </select>
+                    </div>
+                    {folgaForm.type === 'partial' && (
+                      <div>
+                        <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={7}
+                          value={folgaForm.hours_off}
+                          onChange={(e) => setFolgaForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
+                          className="input w-full"
+                          required
+                        />
+                        <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
+                      </div>
+                    )}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
+                      <input
+                        type="text"
+                        value={folgaForm.notes}
+                        onChange={(e) => setFolgaForm(prev => ({ ...prev, notes: e.target.value }))}
+                        className="input w-full"
+                        placeholder="Ex: compensação de hora extra..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" onClick={resetFolgaForm} className="btn-secondary text-sm">Cancelar</button>
+                    <button type="submit" disabled={saving} className="btn-primary text-sm">
+                      {saving ? 'Salvando...' : editingFolgaId ? 'Salvar' : folgaRangeMode ? 'Registrar período' : 'Registrar'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
 
