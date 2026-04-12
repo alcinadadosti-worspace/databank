@@ -192,14 +192,14 @@ export default function ManagerFolgas() {
                 <button
                   type="button"
                   onClick={() => { setRangeMode(false); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}
                 >
                   Dia único
                 </button>
                 <button
                   type="button"
                   onClick={() => { setRangeMode(true); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}
                 >
                   Período
                 </button>
