@@ -475,7 +475,6 @@ export async function sendJustificationReviewNotification(
   const emoji = isApproved ? ':white_check_mark:' : ':x:';
   const statusLabel = isApproved ? 'APROVADA' : 'REJEITADA';
   const typeLabel = type === 'late' ? 'Atraso' : 'Hora Extra';
-  const color = isApproved ? '#36a64f' : '#e01e5a';
 
   const blocks = [
     {
@@ -1051,12 +1050,16 @@ function registerInteractions(app: App): void {
       const payload = JSON.parse((action as any).value);
       const { employee_id, employee_name, date } = payload;
 
-      // Find the record for this employee/date
+      // Find the record for this employee/date (may not exist if employee never punched)
       const record = await queries.getDailyRecord(employee_id, date);
       if (record) {
         await queries.updateRecordClassification(record.id, 'folga');
         await queries.logAudit('MANAGER_SET_FOLGA', 'daily_record', record.id,
           `${employee_name} on ${date} marked as folga`);
+      } else {
+        await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'folga');
+        await queries.logAudit('MANAGER_SET_FOLGA', 'employee', employee_id,
+          `${employee_name} on ${date} marked as folga (no prior record)`);
       }
 
       // Update the message to confirm
@@ -1094,12 +1097,16 @@ function registerInteractions(app: App): void {
       const payload = JSON.parse((action as any).value);
       const { employee_id, employee_name, date } = payload;
 
-      // Find the record for this employee/date
+      // Find the record for this employee/date (may not exist if employee never punched)
       const record = await queries.getDailyRecord(employee_id, date);
       if (record) {
         await queries.updateRecordClassification(record.id, 'falta');
         await queries.logAudit('MANAGER_SET_FALTA', 'daily_record', record.id,
           `${employee_name} on ${date} marked as falta`);
+      } else {
+        await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'falta');
+        await queries.logAudit('MANAGER_SET_FALTA', 'employee', employee_id,
+          `${employee_name} on ${date} marked as falta (no prior record)`);
       }
 
       // Update the message to confirm
@@ -1137,12 +1144,16 @@ function registerInteractions(app: App): void {
       const payload = JSON.parse((action as any).value);
       const { employee_id, employee_name, date } = payload;
 
-      // Find the record for this employee/date
+      // Find the record for this employee/date (may not exist if employee never punched)
       const record = await queries.getDailyRecord(employee_id, date);
       if (record) {
         await queries.updateRecordClassification(record.id, 'aparelho_danificado');
         await queries.logAudit('MANAGER_SET_APARELHO_DANIFICADO', 'daily_record', record.id,
           `${employee_name} on ${date} marked as aparelho danificado`);
+      } else {
+        await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'aparelho_danificado');
+        await queries.logAudit('MANAGER_SET_APARELHO_DANIFICADO', 'employee', employee_id,
+          `${employee_name} on ${date} marked as aparelho danificado (no prior record)`);
       }
 
       // Update the message to confirm
