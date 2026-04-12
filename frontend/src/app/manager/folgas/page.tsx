@@ -188,18 +188,18 @@ export default function ManagerFolgas() {
               {editingId ? 'Editar Folga' : 'Nova Folga'}
             </h3>
             {!editingId && (
-              <div className="flex items-center gap-1 bg-bg-secondary rounded p-1">
+              <div className="flex items-center gap-1 bg-bg-elevated border border-border rounded p-1">
                 <button
                   type="button"
                   onClick={() => { setRangeMode(false); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
                 >
                   Dia único
                 </button>
                 <button
                   type="button"
                   onClick={() => { setRangeMode(true); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent text-white' : 'text-text-muted hover:text-text-primary'}`}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
                 >
                   Período
                 </button>
