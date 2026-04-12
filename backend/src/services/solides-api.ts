@@ -108,42 +108,47 @@ export async function fetchPunches(
   employeeId?: string
 ): Promise<SolidesPunchRecord[]> {
   const allPunches: SolidesPunchRecord[] = [];
-  let page = 0;
-  let totalPages = 1;
 
-  const params: Record<string, string> = {
-    startDate: dateToMillis(startDate),
-    endDate: dateToMillis(endDate, true),
-    page: '0',
-    size: '500',
-    status: 'APPROVED',
-  };
+  // Fetch both APPROVED and PENDING punches — the API does not support multiple
+  // statuses in a single call, so we make two requests and merge the results.
+  for (const status of ['APPROVED', 'PENDING']) {
+    let page = 0;
+    let totalPages = 1;
 
-  if (employeeId) {
-    params.employeeId = employeeId;
-  }
+    const params: Record<string, string> = {
+      startDate: dateToMillis(startDate),
+      endDate: dateToMillis(endDate, true),
+      page: '0',
+      size: '500',
+      status,
+    };
 
-  while (page < totalPages) {
-    params.page = String(page);
-    const data = await readOnlyFetch(PUNCH_URL, '/', params);
-
-    totalPages = data.totalPages || 1;
-    const punches = data.content || [];
-
-    for (const p of punches) {
-      allPunches.push({
-        id: String(p.id),
-        employeeId: String(p.employeeId || p.employee?.id),
-        employeeName: p.employeeName || p.employee?.name || '',
-        date: p.date,
-        dateIn: p.dateIn,
-        dateOut: p.dateOut,
-        type: p.type,
-        status: p.status,
-      });
+    if (employeeId) {
+      params.employeeId = employeeId;
     }
 
-    page++;
+    while (page < totalPages) {
+      params.page = String(page);
+      const data = await readOnlyFetch(PUNCH_URL, '/', params);
+
+      totalPages = data.totalPages || 1;
+      const punches = data.content || [];
+
+      for (const p of punches) {
+        allPunches.push({
+          id: String(p.id),
+          employeeId: String(p.employeeId || p.employee?.id),
+          employeeName: p.employeeName || p.employee?.name || '',
+          date: p.date,
+          dateIn: p.dateIn,
+          dateOut: p.dateOut,
+          type: p.type,
+          status: p.status,
+        });
+      }
+
+      page++;
+    }
   }
 
   return allPunches;
