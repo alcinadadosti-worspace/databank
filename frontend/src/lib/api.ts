@@ -829,3 +829,18 @@ export async function deleteFolga(id: number) {
     method: 'DELETE',
   });
 }
+
+export async function createFolgaRange(data: {
+  employee_id: number;
+  leader_id: number;
+  start_date: string;
+  end_date: string;
+  type: 'integral' | 'partial';
+  hours_off?: number;
+  notes?: string;
+}) {
+  return apiFetch<{ success: boolean; created: number; skipped: number; skipped_dates: { date: string; reason: string }[]; message: string }>('/api/folgas/range', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}

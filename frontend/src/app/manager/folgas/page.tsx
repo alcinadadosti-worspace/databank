@@ -5,6 +5,7 @@ import {
   getFolgasByLeader,
   getEmployees,
   createFolga,
+  createFolgaRange,
   updateFolga,
   deleteFolga,
   type Folga,
@@ -23,9 +24,13 @@ export default function ManagerFolgas() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [rangeMode, setRangeMode] = useState(false);
+  const [rangeResult, setRangeResult] = useState<{ created: number; skipped_dates: { date: string; reason: string }[] } | null>(null);
   const [form, setForm] = useState({
     employee_id: 0,
     date: '',
+    start_date: '',
+    end_date: '',
     type: 'integral' as 'integral' | 'partial',
     hours_off: 1,
     notes: '',
@@ -53,8 +58,10 @@ export default function ManagerFolgas() {
   useEffect(() => { loadData(); }, [manager]);
 
   function resetForm() {
-    setForm({ employee_id: 0, date: '', type: 'integral', hours_off: 1, notes: '' });
+    setForm({ employee_id: 0, date: '', start_date: '', end_date: '', type: 'integral', hours_off: 1, notes: '' });
     setEditingId(null);
+    setRangeMode(false);
+    setRangeResult(null);
     setShowForm(false);
     setError('');
   }
@@ -63,6 +70,8 @@ export default function ManagerFolgas() {
     setForm({
       employee_id: folga.employee_id,
       date: folga.date,
+      start_date: '',
+      end_date: '',
       type: folga.type,
       hours_off: folga.hours_off,
       notes: folga.notes || '',
@@ -92,6 +101,20 @@ export default function ManagerFolgas() {
           hours_off: form.type === 'integral' ? undefined : form.hours_off,
           notes: form.notes || undefined,
         });
+        await loadData();
+        resetForm();
+      } else if (rangeMode) {
+        const result = await createFolgaRange({
+          employee_id: form.employee_id,
+          leader_id: manager.id,
+          start_date: form.start_date,
+          end_date: form.end_date,
+          type: form.type,
+          hours_off: form.type === 'integral' ? undefined : form.hours_off,
+          notes: form.notes || undefined,
+        });
+        await loadData();
+        setRangeResult({ created: result.created, skipped_dates: result.skipped_dates });
       } else {
         await createFolga({
           employee_id: form.employee_id,
@@ -101,9 +124,9 @@ export default function ManagerFolgas() {
           hours_off: form.type === 'integral' ? undefined : form.hours_off,
           notes: form.notes || undefined,
         });
+        await loadData();
+        resetForm();
       }
-      await loadData();
-      resetForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar folga');
     } finally {
@@ -160,80 +183,152 @@ export default function ManagerFolgas() {
 
       {showForm && (
         <div className="card p-4">
-          <h3 className="text-sm font-semibold text-text-primary mb-4">
-            {editingId ? 'Editar Folga' : 'Nova Folga'}
-          </h3>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-text-muted mb-1">Colaborador</label>
-                <select
-                  value={form.employee_id}
-                  onChange={(e) => setForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
-                  className="input w-full"
-                  disabled={!!editingId}
-                  required
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-text-primary">
+              {editingId ? 'Editar Folga' : 'Nova Folga'}
+            </h3>
+            {!editingId && (
+              <div className="flex items-center gap-1 bg-bg-secondary rounded p-1">
+                <button
+                  type="button"
+                  onClick={() => { setRangeMode(false); setRangeResult(null); }}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
                 >
-                  <option value={0}>Selecione...</option>
-                  {employees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-text-muted mb-1">Data</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
-                  className="input w-full"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-text-muted mb-1">Tipo</label>
-                <select
-                  value={form.type}
-                  onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
-                  className="input w-full"
+                  Dia único
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRangeMode(true); setRangeResult(null); }}
+                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent-primary text-white' : 'text-text-muted hover:text-text-primary'}`}
                 >
-                  <option value="integral">Integral (dia todo)</option>
-                  <option value="partial">Parcial (horas)</option>
-                </select>
+                  Período
+                </button>
               </div>
-              {form.type === 'partial' && (
-                <div>
-                  <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={7}
-                    value={form.hours_off}
-                    onChange={(e) => setForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
-                    className="input w-full"
-                    required
-                  />
-                  <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
+            )}
+          </div>
+
+          {rangeResult ? (
+            <div className="space-y-3">
+              <div className="bg-green-500/10 border border-green-500/30 text-green-400 px-4 py-3 rounded text-sm">
+                {rangeResult.created} folga(s) registrada(s) com sucesso.
+              </div>
+              {rangeResult.skipped_dates.length > 0 && (
+                <div className="bg-bg-secondary rounded p-3">
+                  <p className="text-xs text-text-muted mb-2">{rangeResult.skipped_dates.length} dia(s) ignorado(s):</p>
+                  <ul className="space-y-1">
+                    {rangeResult.skipped_dates.map(s => (
+                      <li key={s.date} className="text-xs text-text-secondary">
+                        {s.date.split('-').reverse().join('/')} — {s.reason}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
-                <input
-                  type="text"
-                  value={form.notes}
-                  onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
-                  className="input w-full"
-                  placeholder="Ex: compensação de hora extra..."
-                />
+              <div className="flex justify-end">
+                <button type="button" onClick={resetForm} className="btn-primary text-sm">Fechar</button>
               </div>
             </div>
-            <div className="flex gap-2 justify-end">
-              <button type="button" onClick={resetForm} className="btn-secondary text-sm">Cancelar</button>
-              <button type="submit" disabled={saving} className="btn-primary text-sm">
-                {saving ? 'Salvando...' : editingId ? 'Salvar' : 'Registrar'}
-              </button>
-            </div>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-text-muted mb-1">Colaborador</label>
+                  <select
+                    value={form.employee_id}
+                    onChange={(e) => setForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
+                    className="input w-full"
+                    disabled={!!editingId}
+                    required
+                  >
+                    <option value={0}>Selecione...</option>
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {rangeMode ? (
+                  <>
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Data início</label>
+                      <input
+                        type="date"
+                        value={form.start_date}
+                        onChange={(e) => setForm(prev => ({ ...prev, start_date: e.target.value }))}
+                        className="input w-full"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Data fim</label>
+                      <input
+                        type="date"
+                        value={form.end_date}
+                        min={form.start_date}
+                        onChange={(e) => setForm(prev => ({ ...prev, end_date: e.target.value }))}
+                        className="input w-full"
+                        required
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Data</label>
+                    <input
+                      type="date"
+                      value={form.date}
+                      onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
+                      className="input w-full"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs text-text-muted mb-1">Tipo</label>
+                  <select
+                    value={form.type}
+                    onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
+                    className="input w-full"
+                  >
+                    <option value="integral">Integral (dia todo)</option>
+                    <option value="partial">Parcial (horas)</option>
+                  </select>
+                </div>
+                {form.type === 'partial' && (
+                  <div>
+                    <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={7}
+                      value={form.hours_off}
+                      onChange={(e) => setForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
+                      className="input w-full"
+                      required
+                    />
+                    <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
+                  </div>
+                )}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
+                  <input
+                    type="text"
+                    value={form.notes}
+                    onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
+                    className="input w-full"
+                    placeholder="Ex: compensação de hora extra..."
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={resetForm} className="btn-secondary text-sm">Cancelar</button>
+                <button type="submit" disabled={saving} className="btn-primary text-sm">
+                  {saving ? 'Salvando...' : editingId ? 'Salvar' : rangeMode ? 'Registrar período' : 'Registrar'}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       )}
 
