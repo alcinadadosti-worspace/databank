@@ -358,6 +358,7 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       isApprentice: employee?.is_apprentice ?? false,
       expectedMinutes: employee?.expected_daily_minutes,
       employeeName: employee?.name,
+      scheduleOverrides: employee?.schedule_overrides,
     });
 
     // Build old values for audit

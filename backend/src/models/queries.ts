@@ -1608,6 +1608,7 @@ export interface Employee {
   works_saturday: boolean;
   exemption_days?: number[]; // Days of week exempt from punching: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   exemption_reason?: string; // Human-readable reason (e.g., "Curso às terças-feiras")
+  schedule_overrides?: Record<string, number>; // Per-day expected minutes override: key = JS day-of-week ('0'=Sun...'6'=Sat)
   created_at: string;
 }
 

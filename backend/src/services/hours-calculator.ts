@@ -19,6 +19,7 @@ export interface CalculationOptions {
   isApprentice?: boolean;    // Apprentice has different hours
   expectedMinutes?: number;  // Override expected minutes
   employeeName?: string | null; // Employee name for per-employee Saturday schedule
+  scheduleOverrides?: Record<string, number>; // Per-day expected minutes override: key = JS day-of-week ('0'=Sun...'6'=Sat)
 }
 
 /**
@@ -69,7 +70,7 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   } else if (options?.expectedMinutes !== undefined) {
     expectedMinutes = options.expectedMinutes;
   } else if (date) {
-    expectedMinutes = getExpectedMinutes(date, isApprentice);
+    expectedMinutes = getExpectedMinutes(date, isApprentice, 240, options?.employeeName, options?.scheduleOverrides);
   } else {
     expectedMinutes = WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
   }

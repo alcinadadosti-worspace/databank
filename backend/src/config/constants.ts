@@ -154,7 +154,13 @@ export function getSaturdayMinutes(employeeName: string | null | undefined): num
  * Get expected work minutes for a given date
  * Returns 0 for non-working days, employee-specific minutes for Saturday, 480 for weekdays
  */
-export function getExpectedMinutes(dateStr: string, isApprentice: boolean = false, apprenticeMinutes: number = 240, employeeName?: string | null): number {
+export function getExpectedMinutes(
+  dateStr: string,
+  isApprentice: boolean = false,
+  apprenticeMinutes: number = 240,
+  employeeName?: string | null,
+  scheduleOverrides?: Record<string, number>,
+): number {
   if (!isWorkingDay(dateStr)) {
     return 0;
   }
@@ -162,6 +168,12 @@ export function getExpectedMinutes(dateStr: string, isApprentice: boolean = fals
   if (isSaturday(dateStr)) {
     if (isApprentice) return Math.min(apprenticeMinutes, WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES);
     return getSaturdayMinutes(employeeName);
+  }
+
+  // Per-employee day-of-week override (e.g., 9h Mon-Thu, 8h Fri)
+  if (scheduleOverrides) {
+    const dow = String(new Date(dateStr + 'T12:00:00Z').getUTCDay());
+    if (scheduleOverrides[dow] !== undefined) return scheduleOverrides[dow];
   }
 
   return isApprentice ? apprenticeMinutes : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
