@@ -1148,8 +1148,8 @@ const STORE_LEADER_MAPPING: Record<string, number> = {
   'ana clara de matos chagas': 9,           // → Salão de vendas Penedo
   'erick café santos júnior': 7,            // → Supervisoras Penedo
   'erick cafe santos junior': 7,            // → Supervisoras Penedo (without accent)
+  'mariane santos sousa': 12,               // → Loja Digital
   // Leidiane Souza excluded - Alta Liderança
-  // Mariane Santos Sousa excluded - not a unit leader
 };
 
 // VD leaders from Canal VD (leader_id=1) that should appear in their own VD units
