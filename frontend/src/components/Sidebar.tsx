@@ -18,7 +18,6 @@ const managerNav: NavItem[] = [
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
-  { label: 'Relatorios', href: '/manager/relatorios', icon: <IconFile /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
 ];
 
@@ -28,7 +27,6 @@ const adminNav: NavItem[] = [
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },
-  { label: 'Relatorios', href: '/admin/relatorios', icon: <IconFile /> },
   { label: 'Ferias', href: '/admin/ferias', icon: <IconUmbrella /> },
   { label: 'Feriados', href: '/admin/holidays', icon: <IconCalendar /> },
   { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },
