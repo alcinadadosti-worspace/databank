@@ -489,6 +489,7 @@ export interface UnitEmployee {
   is_on_vacation: boolean;
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
+  is_exempt_today: boolean;
 }
 
 export interface UnitData {

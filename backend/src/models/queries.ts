@@ -1193,6 +1193,7 @@ export interface UnitEmployee {
   is_on_vacation: boolean;
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
+  is_exempt_today: boolean;
 }
 
 export interface UnitData {
@@ -1313,6 +1314,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const units: UnitData[] = [];
 
   // Helper to create UnitEmployee from EmployeeWithLeader
+  const dateDow = new Date(date + 'T12:00:00Z').getUTCDay();
   function toUnitEmployee(emp: EmployeeWithLeader): UnitEmployee {
     const record = recordMap.get(emp.id);
     const noPunchRequired = emp.no_punch_required === true;
@@ -1322,7 +1324,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const folgaRecord = onFolga.get(emp.id);
     const isOnFolga = !!folgaRecord;
     const folgaType = folgaRecord?.type ?? null;
-    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || !!(record?.punch_1);
+    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow));
+    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isExemptToday || !!(record?.punch_1);
     return {
       id: emp.id,
       name: emp.name,
@@ -1337,6 +1340,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       is_on_vacation: isOnVacation,
       is_on_folga: isOnFolga,
       folga_type: folgaType,
+      is_exempt_today: isExemptToday,
     };
   }
 
