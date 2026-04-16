@@ -39,6 +39,9 @@ export function classificationColor(c: string | null): string {
     case 'ferias': return 'text-green-500';
     case 'folga': return 'text-blue-500';
     case 'falta': return 'text-red-600';
+    case 'aparelho_danificado': return 'text-yellow-600';
+    case 'atestado_medico': return 'text-teal-600';
+    case 'outros': return 'text-text-tertiary';
     default: return 'text-text-tertiary';
   }
 }
@@ -53,6 +56,9 @@ export function classificationBadge(c: string | null): string {
     case 'ferias': return 'badge bg-green-500/10 text-green-500';
     case 'folga': return 'badge bg-blue-500/10 text-blue-500';
     case 'falta': return 'badge bg-red-600/10 text-red-600';
+    case 'aparelho_danificado': return 'badge bg-yellow-600/10 text-yellow-600';
+    case 'atestado_medico': return 'badge bg-teal-600/10 text-teal-600';
+    case 'outros': return 'badge bg-bg-hover text-text-tertiary';
     default: return 'badge bg-bg-hover text-text-tertiary';
   }
 }
@@ -67,6 +73,9 @@ export function classificationLabel(c: string | null): string {
     case 'ferias': return 'Férias';
     case 'folga': return 'Folga';
     case 'falta': return 'Falta';
+    case 'aparelho_danificado': return 'Ap. Danificado';
+    case 'atestado_medico': return 'Atestado Médico';
+    case 'outros': return 'Outros';
     default: return 'Pendente';
   }
 }

@@ -2103,6 +2103,21 @@ export async function updateRecordClassification(recordId: number, classificatio
   return true;
 }
 
+export async function updateRecordClassificationWithNote(recordId: number, classification: string, managerNote: string): Promise<boolean> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (snap.empty) return false;
+
+  await snap.docs[0].ref.update({
+    classification,
+    manager_note: managerNote,
+    updated_at: new Date().toISOString(),
+  });
+
+  invalidateCache('records');
+  return true;
+}
+
 export async function markPunchAdjustmentNotificationSent(recordId: number): Promise<void> {
   const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
     .where('daily_record_id', '==', recordId).get();

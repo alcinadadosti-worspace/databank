@@ -548,7 +548,7 @@ export async function sendNoRecordNotification(
           `*Data:* ${date}`,
           '',
           'Este colaborador não bateu nenhum ponto nesta data.',
-          'Por favor, indique se foi *folga* ou *falta*:',
+          'Por favor, indique o motivo:',
         ].join('\n'),
       },
     },
@@ -602,6 +602,35 @@ export async function sendNoRecordNotification(
             decision: 'aparelho_danificado',
           }),
           action_id: 'set_aparelho_danificado',
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🏥 Atestado Médico',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+            decision: 'atestado_medico',
+          }),
+          action_id: 'set_atestado_medico',
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📝 Outros',
+            emoji: true,
+          },
+          value: JSON.stringify({
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date: date,
+          }),
+          action_id: 'set_outros_no_record',
         },
       ],
     },
@@ -1181,6 +1210,175 @@ function registerInteractions(app: App): void {
       console.log(`[slack] Manager set aparelho_danificado for ${employee_name} (${date})`);
     } catch (error) {
       console.error('[slack] Error setting aparelho_danificado:', error);
+    }
+  });
+
+  app.action('set_atestado_medico', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassification(record.id, 'atestado_medico');
+        await queries.logAudit('MANAGER_SET_ATESTADO_MEDICO', 'daily_record', record.id,
+          `${employee_name} on ${date} marked as atestado medico`);
+      } else {
+        await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'atestado_medico');
+        await queries.logAudit('MANAGER_SET_ATESTADO_MEDICO', 'employee', employee_id,
+          `${employee_name} on ${date} marked as atestado medico (no prior record)`);
+      }
+
+      await client.chat.update({
+        channel: (body as any).channel?.id || (body as any).user?.id,
+        ts: (body as any).message?.ts,
+        text: `Marcado como Atestado Médico: ${employee_name} - ${date}`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: [
+                `:white_check_mark: *Decisão registrada!*`,
+                '',
+                `*Colaborador:* ${employee_name}`,
+                `*Data:* ${date}`,
+                `*Status:* 🏥 Atestado Médico`,
+              ].join('\n'),
+            },
+          },
+        ],
+      });
+
+      console.log(`[slack] Manager set atestado_medico for ${employee_name} (${date})`);
+    } catch (error) {
+      console.error('[slack] Error setting atestado_medico:', error);
+    }
+  });
+
+  // Handle "Outros" button for no-record — opens modal for manager to type a reason
+  app.action('set_outros_no_record', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const payload = JSON.parse((action as any).value);
+      const { employee_id, employee_name, date } = payload;
+
+      const messageTs = (body as any).message?.ts;
+      const channelId = (body as any).channel?.id || (body as any).user?.id;
+
+      await client.views.open({
+        trigger_id: (body as any).trigger_id,
+        view: {
+          type: 'modal',
+          callback_id: 'no_record_outros_modal',
+          private_metadata: JSON.stringify({
+            employee_id,
+            employee_name,
+            date,
+            message_ts: messageTs,
+            channel_id: channelId,
+          }),
+          title: {
+            type: 'plain_text',
+            text: 'Outros',
+          },
+          submit: {
+            type: 'plain_text',
+            text: 'Registrar',
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Cancelar',
+          },
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Colaborador:* ${employee_name}\n*Data:* ${date}`,
+              },
+            },
+            {
+              type: 'input',
+              block_id: 'outros_reason_block',
+              element: {
+                type: 'plain_text_input',
+                action_id: 'outros_reason_input',
+                multiline: true,
+                placeholder: {
+                  type: 'plain_text',
+                  text: 'Descreva o motivo da ausência...',
+                },
+                max_length: 500,
+              },
+              label: {
+                type: 'plain_text',
+                text: 'Motivo da ausência',
+              },
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error('[slack] Error opening outros no-record modal:', error);
+    }
+  });
+
+  // Handle "Outros" modal submission
+  app.view('no_record_outros_modal', async ({ ack, body, view, client }) => {
+    await ack();
+
+    try {
+      const metadata = JSON.parse(view.private_metadata);
+      const { employee_id, employee_name, date, message_ts, channel_id } = metadata;
+
+      const reason = view.state.values.outros_reason_block.outros_reason_input.value || '';
+
+      const record = await queries.getDailyRecord(employee_id, date);
+      if (record) {
+        await queries.updateRecordClassificationWithNote(record.id, 'outros', reason.trim());
+        await queries.logAudit('MANAGER_SET_OUTROS', 'daily_record', record.id,
+          `${employee_name} on ${date}: ${reason}`);
+      } else {
+        await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'outros');
+        const newRecord = await queries.getDailyRecord(employee_id, date);
+        if (newRecord) {
+          await queries.updateRecordClassificationWithNote(newRecord.id, 'outros', reason.trim());
+        }
+        await queries.logAudit('MANAGER_SET_OUTROS', 'employee', employee_id,
+          `${employee_name} on ${date}: ${reason} (no prior record)`);
+      }
+
+      if (message_ts && channel_id) {
+        await client.chat.update({
+          channel: channel_id,
+          ts: message_ts,
+          text: `Marcado como Outros: ${employee_name} - ${date}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `:white_check_mark: *Decisão registrada!*`,
+                  '',
+                  `*Colaborador:* ${employee_name}`,
+                  `*Data:* ${date}`,
+                  `*Status:* 📝 Outros`,
+                  `*Motivo:* ${reason}`,
+                ].join('\n'),
+              },
+            },
+          ],
+        });
+      }
+
+      console.log(`[slack] Manager set outros for ${employee_name} (${date}): ${reason}`);
+    } catch (error) {
+      console.error('[slack] Error handling no_record_outros_modal:', error);
     }
   });
 

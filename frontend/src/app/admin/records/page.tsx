@@ -74,6 +74,8 @@ export default function AdminRecords() {
       case 'folga': return 'Folga';
       case 'falta': return 'Falta';
       case 'aparelho_danificado': return 'Ap. Danificado';
+      case 'atestado_medico': return 'Atestado Médico';
+      case 'outros': return 'Outros';
       case 'sem_registro': return 'Sem Registro';
       default: return '-';
     }

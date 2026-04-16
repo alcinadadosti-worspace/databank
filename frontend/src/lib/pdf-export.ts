@@ -68,6 +68,8 @@ function classificationLabel(classification: string | null): string {
     case 'folga': return 'Folga';
     case 'falta': return 'Falta';
     case 'aparelho_danificado': return 'Ap.Danif.';
+    case 'atestado_medico': return 'Atestado';
+    case 'outros': return 'Outros';
     case 'sem_registro': return 'Sem Reg.';
     default: return '-';
   }
