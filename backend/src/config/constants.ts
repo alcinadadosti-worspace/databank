@@ -134,7 +134,6 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   'eduarda pereira costa silva',
   'larissa alexia da silva souza',
   // Loja Penedo (under Maria Taciane, leader_id=11)
-  'cristielle pereira lima da silva',
   'deise gislaine silva vitor',
 ]);
 

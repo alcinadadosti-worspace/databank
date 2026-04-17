@@ -10,9 +10,8 @@ if (getApps().length === 0) {
 const db = getFirestore();
 
 const NAMES_TO_DELETE = [
-  'samyra anchieta',
-  'kamilla silva',
-  'anderson rocha',
+  'cristielle pereira lima da silva',
+  'maria tatiane basto cardoso',
 ];
 
 function matchesTarget(name: string): boolean {
