@@ -336,7 +336,7 @@ export interface SyncStatus {
 export async function syncPunchesRange(startDate: string, endDate: string) {
   return apiFetch<SyncStartResult>('/api/admin/sync-range', {
     method: 'POST',
-    body: JSON.stringify({ startDate, endDate }),
+    body: JSON.stringify({ startDate, endDate, skipNotifications: true }),
   });
 }
 

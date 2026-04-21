@@ -94,7 +94,7 @@ router.post('/resync', async (req: Request, res: Response) => {
       return;
     }
     console.log(`[admin] Manual resync requested for ${date}`);
-    await syncPunches(date);
+    await syncPunches(date, { skipNotifications: true });
     res.json({ success: true, message: `Resync completed for ${date}` });
   } catch (error) {
     console.error('[admin] Error resyncing:', error);
