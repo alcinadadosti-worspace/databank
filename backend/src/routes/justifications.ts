@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { getDb, COLLECTIONS } from '../models/database';
-import { sendJustificationReviewNotification } from '../slack/bot';
+import { sendJustificationReviewNotification, sendReinforceAlert } from '../slack/bot';
 
 const router = Router();
 
@@ -83,6 +83,119 @@ router.get('/leader/:leaderId/pending', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[justifications] Error fetching pending:', error);
     res.status(500).json({ error: 'Failed to fetch pending justifications' });
+  }
+});
+
+/** GET /api/justifications/leader/:leaderId/unjustified?days=30 */
+router.get('/leader/:leaderId/unjustified', async (req: Request, res: Response) => {
+  try {
+    const leaderId = parseInt(req.params.leaderId as string, 10);
+    if (isNaN(leaderId)) {
+      res.status(400).json({ error: 'Invalid leader ID' });
+      return;
+    }
+    const days = parseInt((req.query.days as string) || '30', 10);
+    const records = await queries.getUnjustifiedRecordsByLeader(leaderId, isNaN(days) ? 30 : days);
+    res.json({ records });
+  } catch (error) {
+    console.error('[justifications] Error fetching unjustified:', error);
+    res.status(500).json({ error: 'Failed to fetch unjustified records' });
+  }
+});
+
+/** POST /api/justifications/reinforce-alert - Resend Slack alert to employees */
+router.post('/reinforce-alert', async (req: Request, res: Response) => {
+  try {
+    const { recordIds } = req.body as { recordIds: number[] };
+    if (!Array.isArray(recordIds) || recordIds.length === 0) {
+      res.status(400).json({ error: 'recordIds array is required' });
+      return;
+    }
+
+    let sent = 0;
+    for (const recordId of recordIds) {
+      const record = await queries.getDailyRecordById(recordId);
+      if (!record) continue;
+      const employee = await queries.getEmployeeById(record.employee_id);
+      if (!employee || !employee.slack_id) continue;
+      await sendReinforceAlert(
+        employee.slack_id,
+        employee.name,
+        record.date,
+        record.total_worked_minutes ?? 0,
+        record.difference_minutes ?? 0,
+        record.classification as 'late' | 'overtime',
+        record.id
+      );
+      await queries.logAudit('REINFORCE_ALERT_SENT', 'daily_record', record.id,
+        `Reinforce alert sent to ${employee.name}`);
+      sent++;
+    }
+
+    res.json({ success: true, sent });
+  } catch (error) {
+    console.error('[justifications] Error sending reinforce alert:', error);
+    res.status(500).json({ error: 'Failed to send reinforce alerts' });
+  }
+});
+
+/** POST /api/justifications/record/:recordId/force-review - Manager approves/rejects without employee justification */
+router.post('/record/:recordId/force-review', async (req: Request, res: Response) => {
+  try {
+    const recordId = parseInt(req.params.recordId as string, 10);
+    const { action, reviewedBy, comment, employeeId, type } = req.body as {
+      action: 'approve' | 'reject';
+      reviewedBy: string;
+      comment: string;
+      employeeId: number;
+      type: 'late' | 'overtime';
+    };
+
+    if (isNaN(recordId) || !action || !comment?.trim() || !employeeId || !type) {
+      res.status(400).json({ error: 'Missing required fields' });
+      return;
+    }
+    if (action !== 'approve' && action !== 'reject') {
+      res.status(400).json({ error: 'action must be "approve" or "reject"' });
+      return;
+    }
+
+    const existing = await queries.getJustificationByRecordId(recordId);
+    if (existing) {
+      res.status(409).json({ error: 'Já existe uma justificativa para este registro' });
+      return;
+    }
+
+    const justifId = await queries.insertJustification(
+      recordId, employeeId, type,
+      'Revisado pelo gestor sem justificativa do colaborador'
+    );
+    await queries.updateJustificationStatus(justifId, action === 'approve' ? 'approved' : 'rejected', reviewedBy, comment);
+    await queries.logAudit(
+      action === 'approve' ? 'FORCE_APPROVED' : 'FORCE_REJECTED',
+      'daily_record', recordId,
+      `${action} by ${reviewedBy} without employee justification: ${comment}`
+    );
+
+    // Notify employee via Slack
+    const rSnap = await queries.getDailyRecordById(recordId);
+    const employee = await queries.getEmployeeById(employeeId);
+    if (employee && rSnap) {
+      await sendJustificationReviewNotification(
+        employee.slack_id,
+        employee.name,
+        rSnap.date,
+        type,
+        action === 'approve' ? 'approved' : 'rejected',
+        reviewedBy,
+        comment
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[justifications] Error force reviewing:', error);
+    res.status(500).json({ error: 'Failed to force review record' });
   }
 });
 

@@ -883,6 +883,82 @@ export async function getJustificationsByEmployee(employeeId: number): Promise<J
     .sort((a: any, b: any) => b.date.localeCompare(a.date));
 }
 
+export async function getJustificationByRecordId(dailyRecordId: number) {
+  const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+    .where('daily_record_id', '==', dailyRecordId).limit(1).get();
+  return snap.empty ? null : snap.docs[0].data();
+}
+
+export interface UnjustifiedRecord {
+  daily_record_id: number;
+  employee_id: number;
+  employee_name: string;
+  date: string;
+  type: 'late' | 'overtime';
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  difference_minutes: number;
+  total_worked_minutes: number | null;
+}
+
+export async function getUnjustifiedRecordsByLeader(
+  leaderId: number,
+  days: number = 30
+): Promise<UnjustifiedRecord[]> {
+  const employees = await getEmployeesByLeaderId(leaderId);
+  if (employees.length === 0) return [];
+
+  const empIds = employees.map(e => e.id);
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  const allRecords: any[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('employee_id', 'in', chunk)
+      .where('classification', 'in', ['late', 'overtime'])
+      .get();
+    allRecords.push(...docsToArray<any>(snap));
+  }
+
+  const filtered = allRecords.filter(r =>
+    r.date >= cutoffStr &&
+    Math.abs(r.difference_minutes ?? 0) >= 11
+  );
+
+  if (filtered.length === 0) return [];
+
+  const allJustifs: any[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.JUSTIFICATIONS)
+      .where('employee_id', 'in', chunk).get();
+    allJustifs.push(...docsToArray<any>(snap));
+  }
+  const justifiedRecordIds = new Set(allJustifs.map(j => j.daily_record_id));
+
+  return filtered
+    .filter(r => !justifiedRecordIds.has(r.id))
+    .map(r => ({
+      daily_record_id: r.id,
+      employee_id: r.employee_id,
+      employee_name: empMap.get(r.employee_id)?.name ?? '',
+      date: r.date,
+      type: r.classification as 'late' | 'overtime',
+      punch_1: r.punch_1 ?? null,
+      punch_2: r.punch_2 ?? null,
+      punch_3: r.punch_3 ?? null,
+      punch_4: r.punch_4 ?? null,
+      difference_minutes: r.difference_minutes ?? 0,
+      total_worked_minutes: r.total_worked_minutes ?? null,
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
 // Unit name mapping for admin panel
 const UNIT_NAMES_MAP: Record<number, string> = {
   2: 'Logistica',

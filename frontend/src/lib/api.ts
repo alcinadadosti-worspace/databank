@@ -277,6 +277,56 @@ export async function submitJustification(data: {
   });
 }
 
+export interface UnjustifiedRecord {
+  daily_record_id: number;
+  employee_id: number;
+  employee_name: string;
+  date: string;
+  type: 'late' | 'overtime';
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  difference_minutes: number;
+  total_worked_minutes: number | null;
+}
+
+export async function getUnjustifiedRecords(leaderId: number, days = 30) {
+  return apiFetch<{ records: UnjustifiedRecord[] }>(
+    `/api/justifications/leader/${leaderId}/unjustified?days=${days}`,
+    { authType: 'manager' }
+  );
+}
+
+export async function forceReviewRecord(
+  recordId: number,
+  action: 'approve' | 'reject',
+  reviewedBy: string,
+  comment: string,
+  employeeId: number,
+  type: 'late' | 'overtime'
+) {
+  return apiFetch<{ success: boolean }>(
+    `/api/justifications/record/${recordId}/force-review`,
+    {
+      method: 'POST',
+      authType: 'manager',
+      body: JSON.stringify({ action, reviewedBy, comment, employeeId, type }),
+    }
+  );
+}
+
+export async function reinforceAlert(recordIds: number[]) {
+  return apiFetch<{ success: boolean; sent: number }>(
+    '/api/justifications/reinforce-alert',
+    {
+      method: 'POST',
+      authType: 'manager',
+      body: JSON.stringify({ recordIds }),
+    }
+  );
+}
+
 // ─── Admin ─────────────────────────────────────────────────────
 
 export async function getDashboardStats() {

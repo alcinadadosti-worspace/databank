@@ -168,6 +168,83 @@ export async function sendEmployeeAlert(
   }
 }
 
+// ─── Send Reinforce Alert to Employee ──────────────────────────
+
+export async function sendReinforceAlert(
+  employeeSlackId: string | null,
+  employeeName: string,
+  date: string,
+  totalWorkedMinutes: number,
+  differenceMinutes: number,
+  classification: 'late' | 'overtime',
+  dailyRecordId: number
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employeeSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping reinforce alert for ${employeeName} — no slack_id`);
+    return;
+  }
+
+  const isLate = classification === 'late';
+  const emoji = isLate ? ':warning:' : ':clock3:';
+  const typeLabel = isLate ? 'ATRASO' : 'HORA EXTRA';
+  const justifications = isLate ? LATE_JUSTIFICATIONS : OVERTIME_JUSTIFICATIONS;
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: { type: 'plain_text' as const, text: `${emoji} Reforço: Justificativa pendente`, emoji: true },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employeeName}`,
+          `*Data:* ${date}`,
+          `*Total trabalhado:* ${formatMinutes(totalWorkedMinutes)}`,
+          `*${isLate ? 'Atraso' : 'Hora extra'}:* ${formatMinutes(Math.abs(differenceMinutes))}`,
+          '',
+          ':loudspeaker: *Seu gestor solicita que você justifique este registro.*',
+          '',
+          'Por favor, selecione uma justificativa:',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `justification_${dailyRecordId}`,
+      elements: [
+        ...justifications.map((reason, index) => ({
+          type: 'button' as const,
+          text: { type: 'plain_text' as const, text: reason, emoji: true },
+          value: JSON.stringify({ daily_record_id: dailyRecordId, employee_name: employeeName, type: classification, reason }),
+          action_id: `justify_${index}`,
+        })),
+        {
+          type: 'button' as const,
+          text: { type: 'plain_text' as const, text: 'Outros...', emoji: true },
+          value: JSON.stringify({ daily_record_id: dailyRecordId, employee_name: employeeName, type: classification }),
+          action_id: 'justify_other',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await rateLimitedPostMessage(app, {
+      channel: targetUser,
+      text: `Reforço de alerta: ${typeLabel} pendente de justificativa — ${date}`,
+      blocks,
+    });
+    console.log(`[slack] Reinforce alert sent for ${employeeName} (${date})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send reinforce alert:`, error);
+  }
+}
+
 // ─── Send Daily Manager Summary ────────────────────────────────
 
 export async function sendManagerDailySummary(
@@ -911,6 +988,27 @@ function registerInteractions(app: App): void {
         const payload = JSON.parse((action as any).value);
         const { daily_record_id, employee_name, type, reason } = payload;
 
+        const channel = (body as any).channel?.id || (body as any).user?.id;
+        const ts = (body as any).message?.ts;
+
+        // Guard: check if already reviewed by manager
+        const existing = await queries.getJustificationByRecordId(daily_record_id);
+        if (existing) {
+          await client.chat.update({
+            channel,
+            ts,
+            text: 'Este registro já foi revisado pelo seu gestor.',
+            blocks: [{
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: ':information_source: *Este registro já foi revisado pelo seu gestor. Nenhuma ação necessária.*',
+              },
+            }],
+          });
+          return;
+        }
+
         // Find the employee by record ID
         const record = await queries.getDailyRecordById(daily_record_id);
         const employeeId = record?.employee_id || null;
@@ -923,8 +1021,8 @@ function registerInteractions(app: App): void {
 
         // Update the message to confirm
         await client.chat.update({
-          channel: (body as any).channel?.id || (body as any).user?.id,
-          ts: (body as any).message?.ts,
+          channel,
+          ts,
           text: `Justificativa registrada: ${reason}`,
           blocks: [
             {
@@ -1027,6 +1125,26 @@ function registerInteractions(app: App): void {
       const { daily_record_id, employee_name, type, message_ts, channel_id } = metadata;
 
       const customReason = view.state.values.custom_reason_block.custom_reason_input.value || '';
+
+      // Guard: check if already reviewed by manager
+      const existingJustif = await queries.getJustificationByRecordId(daily_record_id);
+      if (existingJustif) {
+        if (message_ts && channel_id) {
+          await client.chat.update({
+            channel: channel_id,
+            ts: message_ts,
+            text: 'Este registro já foi revisado pelo seu gestor.',
+            blocks: [{
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: ':information_source: *Este registro já foi revisado pelo seu gestor. Nenhuma ação necessária.*',
+              },
+            }],
+          });
+        }
+        return;
+      }
 
       // Find the employee by record ID
       const record = await queries.getDailyRecordById(daily_record_id);
