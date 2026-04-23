@@ -1103,6 +1103,8 @@ const LOJA_PENEDO_EMPLOYEES = [
   'cristielle pereira lima da silva',
   'deise gislaine silva vitor',
   'samyra anchieta bispo',
+  'maria fernanda gomes vieira',
+  'joanna queiroz',
 ];
 
 // Maria Taciane's employees that came from Loja Teotonio Vilela (virtual unit)
@@ -1110,6 +1112,8 @@ const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
   'camille kauane da silva nunes',
   'eliene da silva santos',
   'maria tatiane basto cardoso',
+  'josenildo alves',
+  'shayane ferreira',
 ];
 
 // Maria Taciane's original employees from Loja Coruripe (including herself as manager)
