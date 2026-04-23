@@ -921,9 +921,10 @@ export async function getUnjustifiedRecordsByLeader(
   for (const chunk of chunkArray(empIds, 10)) {
     const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
       .where('employee_id', 'in', chunk)
-      .where('classification', 'in', ['late', 'overtime'])
       .get();
-    allRecords.push(...docsToArray<any>(snap));
+    allRecords.push(...docsToArray<any>(snap).filter(
+      r => r.classification === 'late' || r.classification === 'overtime'
+    ));
   }
 
   const filtered = allRecords.filter(r =>

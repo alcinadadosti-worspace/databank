@@ -26,12 +26,14 @@ function PunchRow({ r }: { r: Pick<UnjustifiedRecord, 'punch_1' | 'punch_2' | 'p
           {r.punch_4 && <span><span className="text-text-muted font-medium">Saída:</span> {r.punch_4}</span>}
         </div>
       )}
-      <p className="text-sm">
-        <span className="text-text-muted font-medium">{r.type === 'late' ? 'Atraso:' : 'Hora extra:'}</span>{' '}
-        <span className={r.type === 'late' ? 'text-red-500' : 'text-blue-500'}>
-          {formatMins(Math.abs(r.difference_minutes))}
-        </span>
-      </p>
+      {r.difference_minutes != null && (
+        <p className="text-sm">
+          <span className="text-text-muted font-medium">{r.type === 'late' ? 'Atraso:' : 'Hora extra:'}</span>{' '}
+          <span className={r.type === 'late' ? 'text-red-500' : 'text-blue-500'}>
+            {formatMins(Math.abs(r.difference_minutes))}
+          </span>
+        </p>
+      )}
     </div>
   );
 }
