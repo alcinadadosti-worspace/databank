@@ -61,7 +61,7 @@ let employeesCache: EmployeeWithLeader[] | null = null;
 function invalidateCaches() {
   leadersCache = null;
   employeesCache = null;
-  invalidateCache(); // Clear all cache
+  invalidateCache(); // Clear all cache (includes 'all_employees' TTL entry)
 }
 
 // ─── Leaders ───────────────────────────────────────────────────
@@ -105,14 +105,16 @@ export async function insertLeader(name: string, nameNormalized: string, slackId
 // ─── Employees ─────────────────────────────────────────────────
 
 export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
-  if (employeesCache) return employeesCache;
+  const cached = getCached<EmployeeWithLeader[]>('all_employees');
+  if (cached) return cached;
+
   const leaders = await getAllLeaders();
   const leaderMap = new Map(leaders.map(l => [l.id, l]));
 
   const snap = await getDb().collection(COLLECTIONS.EMPLOYEES).orderBy('name').get();
   const employees = docsToArray<Employee>(snap);
 
-  employeesCache = employees.map(e => {
+  const result = employees.map(e => {
     const leader = leaderMap.get(e.leader_id);
     return {
       ...e,
@@ -121,7 +123,9 @@ export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
       sector: leader?.sector ?? null,
     };
   });
-  return employeesCache;
+
+  employeesCache = result; // keep legacy variable in sync
+  return setCache('all_employees', result, CACHE_TTL.EMPLOYEES);
 }
 
 export async function getEmployeesByLeaderId(leaderId: number): Promise<EmployeeWithLeader[]> {
@@ -577,11 +581,17 @@ export async function upsertDailyRecord(
   const now = new Date().toISOString();
 
   if (existing.exists) {
+    const prev = existing.data() || {};
+    // Never overwrite an existing value with null — keeps the last known good value
+    // if Sólides returns incomplete data on a subsequent sync.
     await ref.update({
-      punch_1: punch1, punch_2: punch2, punch_3: punch3, punch_4: punch4,
-      total_worked_minutes: totalWorkedMinutes,
-      difference_minutes: differenceMinutes,
-      classification,
+      punch_1: punch1 ?? prev.punch_1 ?? null,
+      punch_2: punch2 ?? prev.punch_2 ?? null,
+      punch_3: punch3 ?? prev.punch_3 ?? null,
+      punch_4: punch4 ?? prev.punch_4 ?? null,
+      total_worked_minutes: totalWorkedMinutes ?? prev.total_worked_minutes ?? null,
+      difference_minutes: differenceMinutes ?? prev.difference_minutes ?? null,
+      classification: classification ?? prev.classification ?? null,
       updated_at: now,
     });
   } else {

@@ -23,8 +23,7 @@ export function startScheduler(): void {
   jobs.push(syncJob);
   console.log('[scheduler] Punch sync: every 5 min (Mon-Sat, 07:00-23:00)');
 
-  // Catch-up sync at 07:50 Mon-Sat — syncs YESTERDAY to pick up punches made after
-  // 23:00 or processed by Sólides with delay, before the 08:00 daily check runs
+  // Catch-up sync at 07:50 Mon-Sat — first pass to pick up yesterday's late punches
   const catchUpSyncJob = CronJob.from({
     cronTime: '50 7 * * 1-6',
     onTick: async () => {
@@ -44,9 +43,30 @@ export function startScheduler(): void {
   jobs.push(catchUpSyncJob);
   console.log('[scheduler] Catch-up sync (yesterday): 07:50 (Mon-Sat)');
 
-  // Daily checks at 08:00, Mon-Sat (employee notifications only)
+  // Second catch-up sync at 09:30 Mon-Sat — second pass before the daily check,
+  // giving Sólides ~2h extra to process end-of-day punches
+  const catchUpSync2Job = CronJob.from({
+    cronTime: '30 9 * * 1-6',
+    onTick: async () => {
+      try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        console.log(`[scheduler] Running second catch-up sync for ${yesterdayStr}...`);
+        await syncPunches(yesterdayStr, { skipNotifications: true });
+      } catch (error) {
+        console.error('[scheduler] Second catch-up sync error:', error);
+      }
+    },
+    start: true,
+    timeZone: 'America/Sao_Paulo',
+  });
+  jobs.push(catchUpSync2Job);
+  console.log('[scheduler] Second catch-up sync (yesterday): 09:30 (Mon-Sat)');
+
+  // Daily checks at 10:00, Mon-Sat (employee notifications only)
   const dailyCheckJob = CronJob.from({
-    cronTime: '0 8 * * 1-6',
+    cronTime: '0 10 * * 1-6',
     onTick: async () => {
       try {
         await runDailyChecks();
@@ -58,7 +78,7 @@ export function startScheduler(): void {
     timeZone: 'America/Sao_Paulo',
   });
   jobs.push(dailyCheckJob);
-  console.log('[scheduler] Daily employee check: 08:00 (Mon-Sat)');
+  console.log('[scheduler] Daily employee check: 10:00 (Mon-Sat)');
 
   // Weekly manager summary at 08:00 on Friday
   const weeklyManagerJob = CronJob.from({
