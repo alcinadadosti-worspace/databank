@@ -10,6 +10,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  external?: boolean;
 }
 
 const managerNav: NavItem[] = [
@@ -19,6 +20,7 @@ const managerNav: NavItem[] = [
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
+  { label: 'Relatórios', href: 'https://relatoriodehours.onrender.com', icon: <IconChart />, external: true },
 ];
 
 const adminNav: NavItem[] = [
@@ -33,6 +35,7 @@ const adminNav: NavItem[] = [
   { label: 'Sincronizar', href: '/admin/sync', icon: <IconRefresh /> },
   { label: 'Logs', href: '/admin/logs', icon: <IconTerminal /> },
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
+  { label: 'Relatórios', href: 'https://relatoriodehoras.onrender.com', icon: <IconChart />, external: true },
 ];
 
 interface SidebarProps {
@@ -117,6 +120,20 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
           const showAdjustmentBadge = role === 'manager' && item.href === '/manager/ajustes' && pendingAdjustments > 0;
           const badgeCount = showJustificationBadge ? pendingJustifications : showAdjustmentBadge ? pendingAdjustments : 0;
           const showBadge = showJustificationBadge || showAdjustmentBadge;
+          if (item.external) {
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sidebar-link relative"
+              >
+                <span className="w-4 h-4 opacity-60">{item.icon}</span>
+                {item.label}
+              </a>
+            );
+          }
           return (
             <Link
               key={item.href}
