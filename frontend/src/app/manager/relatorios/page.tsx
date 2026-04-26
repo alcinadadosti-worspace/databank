@@ -2,15 +2,15 @@
 
 export default function ManagerRelatorios() {
   function handleOpenReports() {
-    window.open('https://relatoriodehours.onrender.com', '_blank');
+    window.open('https://relatoriodehoras.onrender.com', '_blank');
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Relatorios</h2>
+        <h2 className="text-lg font-semibold text-text-primary">Relatórios</h2>
         <p className="text-sm text-text-tertiary mt-1">
-          Acesse os relatorios semanais de horas
+          Acesse os relatórios semanais de horas
         </p>
       </div>
 
@@ -34,7 +34,7 @@ export default function ManagerRelatorios() {
         </svg>
 
         <p className="text-text-secondary mb-6 text-center max-w-md">
-          Clique no botao abaixo para acessar o sistema de relatorios de horas
+          Clique no botão abaixo para acessar o sistema de relatórios de horas
         </p>
 
         <button
@@ -55,7 +55,7 @@ export default function ManagerRelatorios() {
             <polyline points="15 3 21 3 21 9" />
             <line x1="10" y1="14" x2="21" y2="3" />
           </svg>
-          Ir para Relatorios
+          Ir para Relatórios
         </button>
       </div>
     </div>
