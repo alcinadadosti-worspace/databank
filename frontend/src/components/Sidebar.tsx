@@ -10,7 +10,6 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
-  externalUrl?: string;
 }
 
 const managerNav: NavItem[] = [
@@ -20,7 +19,7 @@ const managerNav: NavItem[] = [
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
-  { label: 'Relatórios', href: '#', icon: <IconChart />, externalUrl: 'https://relatoriodehoras.onrender.com' },
+  { label: 'Banco de Horas', href: 'https://relatoriodehoras.onrender.com', icon: <IconChart /> },
 ];
 
 const adminNav: NavItem[] = [
@@ -35,7 +34,7 @@ const adminNav: NavItem[] = [
   { label: 'Sincronizar', href: '/admin/sync', icon: <IconRefresh /> },
   { label: 'Logs', href: '/admin/logs', icon: <IconTerminal /> },
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
-  { label: 'Relatórios', href: '#', icon: <IconChart />, externalUrl: 'https://relatoriodehoras.onrender.com' },
+  { label: 'Banco de Horas', href: 'https://relatoriodehoras.onrender.com', icon: <IconChart /> },
 ];
 
 interface SidebarProps {
@@ -120,16 +119,19 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
           const showAdjustmentBadge = role === 'manager' && item.href === '/manager/ajustes' && pendingAdjustments > 0;
           const badgeCount = showJustificationBadge ? pendingJustifications : showAdjustmentBadge ? pendingAdjustments : 0;
           const showBadge = showJustificationBadge || showAdjustmentBadge;
-          if (item.externalUrl) {
+          const isExternal = item.href.startsWith('http');
+          if (isExternal) {
             return (
-              <button
-                key={item.externalUrl}
-                onClick={() => window.open(item.externalUrl, '_blank')}
-                className="sidebar-link relative w-full text-left"
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sidebar-link relative"
               >
                 <span className="w-4 h-4 opacity-60">{item.icon}</span>
                 {item.label}
-              </button>
+              </a>
             );
           }
           return (
