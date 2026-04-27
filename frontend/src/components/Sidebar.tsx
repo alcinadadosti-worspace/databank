@@ -122,16 +122,18 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
           const isExternal = item.href.startsWith('http');
           if (isExternal) {
             return (
-              <a
+              <button
                 key={item.href}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="sidebar-link relative"
+                type="button"
+                onClick={() => {
+                  const w = window.open(item.href, '_blank', 'noopener,noreferrer');
+                  if (!w) window.location.href = item.href;
+                }}
+                className="sidebar-link relative w-full text-left"
               >
                 <span className="w-4 h-4 opacity-60">{item.icon}</span>
                 {item.label}
-              </a>
+              </button>
             );
           }
           return (
