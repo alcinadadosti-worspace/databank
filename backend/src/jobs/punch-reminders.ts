@@ -199,6 +199,8 @@ export async function sendSaturdayExitReminders(): Promise<void> {
       if (EXTENDED_SATURDAY_EMPLOYEES.has(emp.name.toLowerCase())) continue;
       // Loja Sustentável employees exit at 21:00 on Saturday — not covered by this reminder
       if (isLojaSustentavelEmployee(emp.name)) continue;
+      // Skip employees who don't work on Saturdays
+      if (emp.works_saturday === false) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
