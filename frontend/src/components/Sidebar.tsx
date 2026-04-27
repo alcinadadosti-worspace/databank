@@ -19,7 +19,7 @@ const managerNav: NavItem[] = [
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
-  { label: 'Banco de Horas', href: 'https://relatoriodehoras.onrender.com', icon: <IconChart /> },
+  { label: 'Banco de Horas', href: 'https://relatoriodehours.onrender.com', icon: <IconChart /> },
 ];
 
 const adminNav: NavItem[] = [
@@ -34,7 +34,7 @@ const adminNav: NavItem[] = [
   { label: 'Sincronizar', href: '/admin/sync', icon: <IconRefresh /> },
   { label: 'Logs', href: '/admin/logs', icon: <IconTerminal /> },
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
-  { label: 'Banco de Horas', href: 'https://relatoriodehoras.onrender.com', icon: <IconChart /> },
+  { label: 'Banco de Horas', href: 'https://relatoriodehours.onrender.com', icon: <IconChart /> },
 ];
 
 interface SidebarProps {

@@ -2,7 +2,7 @@
 
 export default function ManagerRelatorios() {
   function handleOpenReports() {
-    window.open('https://relatoriodehoras.onrender.com', '_blank');
+    window.open('https://relatoriodehours.onrender.com', '_blank');
   }
 
   return (
