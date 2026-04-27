@@ -10,6 +10,7 @@ interface NavItem {
   label: string;
   href: string;
   icon: React.ReactNode;
+  externalUrl?: string;
 }
 
 const managerNav: NavItem[] = [
@@ -19,7 +20,7 @@ const managerNav: NavItem[] = [
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
-  { label: 'Relatórios', href: '/manager/relatorios', icon: <IconChart /> },
+  { label: 'Relatórios', href: '#', icon: <IconChart />, externalUrl: 'https://relatoriodehoras.onrender.com' },
 ];
 
 const adminNav: NavItem[] = [
@@ -34,7 +35,7 @@ const adminNav: NavItem[] = [
   { label: 'Sincronizar', href: '/admin/sync', icon: <IconRefresh /> },
   { label: 'Logs', href: '/admin/logs', icon: <IconTerminal /> },
   { label: 'Exportar', href: '/admin/export', icon: <IconDownload /> },
-  { label: 'Relatórios', href: '/admin/relatorios', icon: <IconChart /> },
+  { label: 'Relatórios', href: '#', icon: <IconChart />, externalUrl: 'https://relatoriodehoras.onrender.com' },
 ];
 
 interface SidebarProps {
@@ -119,6 +120,18 @@ export default function Sidebar({ role, managerName, onLogout, pendingJustificat
           const showAdjustmentBadge = role === 'manager' && item.href === '/manager/ajustes' && pendingAdjustments > 0;
           const badgeCount = showJustificationBadge ? pendingJustifications : showAdjustmentBadge ? pendingAdjustments : 0;
           const showBadge = showJustificationBadge || showAdjustmentBadge;
+          if (item.externalUrl) {
+            return (
+              <button
+                key={item.externalUrl}
+                onClick={() => window.open(item.externalUrl, '_blank')}
+                className="sidebar-link relative w-full text-left"
+              >
+                <span className="w-4 h-4 opacity-60">{item.icon}</span>
+                {item.label}
+              </button>
+            );
+          }
           return (
             <Link
               key={item.href}
