@@ -1,6 +1,6 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
 import { shouldAlert, CalculationResult } from '../services/hours-calculator';
-import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
 import { env } from '../config/env';
@@ -102,8 +102,13 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
       const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
-      // Skip non-working days (Sundays and holidays - checks both static and database)
-      const workingDay = await queries.isWorkingDayAsync(date);
+      const isLojasSustentavel = isLojaSustentavelEmployee(employee.name);
+      const isSundayDate = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
+
+      // Skip non-working days (Loja Sustentável employees work on Sundays)
+      const workingDay = (isLojasSustentavel && isSundayDate)
+        ? true
+        : await queries.isWorkingDayAsync(date);
       if (!workingDay) {
         // Still save the punches but don't calculate/classify
         await queries.upsertDailyRecord(
@@ -113,7 +118,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
           punch2,
           punch3,
           punch4,
-          null, // no calculation for non-working days
+          null,
           null,
           null
         );
@@ -133,20 +138,24 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       }
 
       // Calculate using epoch millis from API records (handles cross-midnight)
-      // Saturday: only need 1 pair (08:00-12:00), expected 4h
-      // Weekdays: need 2 pairs (morning + afternoon), expected 8h
-      // Apprentices: follow their custom schedule
+      // Saturday: only need 1 pair, Apprentices: custom schedule
+      // Loja Sustentável: 1 pair, Mon-Sat 720 min, Sun 660 min
       const isApprentice = employee.is_apprentice === true;
       const isSat = isSaturday(date);
 
-      // Get expected minutes based on day type; reduce for partial folga
-      let expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee.name, employee.schedule_overrides);
+      // Get expected minutes; reduce for partial folga
+      let expectedMinutes: number;
+      if (isLojasSustentavel) {
+        expectedMinutes = getLojaSustentavelExpectedMinutes(date);
+      } else {
+        expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee.name, employee.schedule_overrides);
+      }
       if (folgaRecord?.type === 'partial') {
         expectedMinutes = Math.max(0, expectedMinutes - (folgaRecord.hours_off * 60));
       }
 
-      // Saturday and apprentices only need 1 complete pair; regular weekdays need 2
-      const minPairs = (isSat || isApprentice) ? 1 : 2;
+      // Saturday, apprentices, and Loja Sustentável only need 1 complete pair; regular weekdays need 2
+      const minPairs = (isSat || isApprentice || isLojasSustentavel) ? 1 : 2;
 
       let result: CalculationResult | null = null;
       const completePairs = punches.filter(p => p.dateIn && p.dateOut);

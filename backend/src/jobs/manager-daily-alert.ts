@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendManagerWeeklySummary, sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
-import { WORK_SCHEDULE } from '../config/constants';
+import { WORK_SCHEDULE, isLojaSustentavelEmployee } from '../config/constants';
 
 // Cache of employees on vacation for specific dates
 const vacationCache = new Map<string, Set<number>>();
@@ -78,6 +78,18 @@ export async function checkPreviousDayRecords(): Promise<void> {
         continue;
       }
 
+      // For Loja Sustentável rotation: skip the resting employee (they worked the previous day)
+      if (isLojaSustentavelEmployee(employee.name)) {
+        const prevDateObj = new Date(dateObj.getTime());
+        prevDateObj.setUTCDate(prevDateObj.getUTCDate() - 1);
+        const prevDateStr = prevDateObj.toISOString().split('T')[0];
+        const prevRecord = await queries.getDailyRecord(employee.id, prevDateStr);
+        if (prevRecord?.punch_1) {
+          // Worked the previous day → resting today → no alerts
+          continue;
+        }
+      }
+
       const record = recordsByEmpId.get(employee.id);
       const punchCount = countPunches(record);
       const expectedPunches = getExpectedPunches(isSaturday, employee);
@@ -95,7 +107,7 @@ export async function checkPreviousDayRecords(): Promise<void> {
       if (punchCount < expectedPunches) {
         if (record) {
           await queries.updateRecordClassification(record.id, 'ajuste');
-          const missingPunches = getMissingPunches(record, isSaturday);
+          const missingPunches = getMissingPunches(record, isSaturday, employee);
           await sendMissingPunchNotification(employee, record, date, missingPunches);
         }
         continue;
@@ -110,9 +122,10 @@ export async function checkPreviousDayRecords(): Promise<void> {
 
       // Case 4: Any non-last punch after 17:00 → ajuste, notify employee
       // For weekdays: check punch_1, punch_2, punch_3 (punch_4 is the last)
-      // For Saturdays or apprentices: check punch_1 only (punch_2 is the last)
+      // For Saturdays, apprentices, or Loja Sustentável: check punch_1 only (punch_2 is the last)
       if (record) {
-        const punchesBeforeLast = (isSaturday || employee.is_apprentice || employee.is_intern)
+        const isTwoPunch = isSaturday || employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name);
+        const punchesBeforeLast = isTwoPunch
           ? [record.punch_1]
           : [record.punch_1, record.punch_2, record.punch_3];
 
@@ -138,14 +151,15 @@ function countPunches(record: queries.DailyRecord | undefined): number {
 }
 
 function getExpectedPunches(isSaturday: boolean, employee: queries.EmployeeWithLeader): number {
-  if (employee.is_apprentice || employee.is_intern) return 2; // Apprentices and interns only punch in/out
+  if (employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name)) return 2;
   return isSaturday ? 2 : 4;
 }
 
-function getMissingPunches(record: queries.DailyRecord, isSaturday: boolean): string[] {
+function getMissingPunches(record: queries.DailyRecord, isSaturday: boolean, employee?: queries.EmployeeWithLeader): string[] {
   const missing: string[] = [];
   if (!record.punch_1) missing.push('Entrada');
-  if (isSaturday) {
+  const isTwoPunch = isSaturday || (employee && isLojaSustentavelEmployee(employee.name));
+  if (isTwoPunch) {
     if (!record.punch_2) missing.push('Saída');
   } else {
     if (!record.punch_2) missing.push('Intervalo');
@@ -166,9 +180,12 @@ export async function runDailyChecks(): Promise<void> {
   yesterday.setDate(yesterday.getDate() - 1);
   const date = yesterday.toISOString().split('T')[0];
 
-  // Skip if yesterday was not a working day (Sunday or holiday)
   const workingDay = await queries.isWorkingDayAsync(date);
-  if (!workingDay) {
+  const yesterdayDow = new Date(date + 'T12:00:00Z').getUTCDay();
+  // Loja Sustentável employees work on Sundays, so run checks for Sundays too
+  const lojaSustentavelSunday = !workingDay && yesterdayDow === 0;
+
+  if (!workingDay && !lojaSustentavelSunday) {
     console.log(`[daily-check] Skipping ${date} - not a working day`);
     return;
   }
@@ -176,8 +193,10 @@ export async function runDailyChecks(): Promise<void> {
   // Run the end-of-day checks (sends notifications to employees and managers for no-record)
   await checkPreviousDayRecords();
 
-  // Send daily summary to managers
-  await sendDailyManagerSummaries(date);
+  // Send daily summary to managers (only for regular working days)
+  if (workingDay) {
+    await sendDailyManagerSummaries(date);
+  }
 
   console.log(`[daily-check] Completed for ${date}`);
 }

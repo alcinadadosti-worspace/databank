@@ -129,15 +129,37 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   // Loja Palmeira dos Indios (under Kemilly, leader_id=10)
   'yasmin abilia ferro da silva',
   'valesca meirelle bezerra vitória',
-  // Loja Sustentável Palmeira (temporarily working at Loja Palmeira dos Indios until inauguration)
   'maria cicília brito veiga',
-  'eduarda pereira costa silva',
-  'larissa alexia da silva souza',
   // Loja Penedo (under Maria Taciane, leader_id=11)
   'deise gislaine silva vitor',
   'maria fernanda gomes vieira',
   'joanna queiroz',
 ]);
+
+/**
+ * "Loja Sustentável Palmeira" employees with a 2-punch rotation schedule.
+ * Only ONE employee works per day (alternating). Schedule:
+ *   Mon-Sat: 09:00–21:00 (720 min)
+ *   Sun:     09:00–20:00 (660 min)
+ */
+export const LOJA_SUSTENTAVEL_EMPLOYEES = new Set([
+  'eduarda pereira costa silva',
+  'larissa alexia da silva souza',
+]);
+
+export function isLojaSustentavelEmployee(employeeName: string | null | undefined): boolean {
+  return !!(employeeName && LOJA_SUSTENTAVEL_EMPLOYEES.has(employeeName.toLowerCase()));
+}
+
+/**
+ * Get expected work minutes for a Loja Sustentável employee.
+ * Sun (0): 09:00–20:00 = 660 min
+ * Mon-Sat (1-6): 09:00–21:00 = 720 min
+ */
+export function getLojaSustentavelExpectedMinutes(dateStr: string): number {
+  const dayOfWeek = new Date(dateStr + 'T12:00:00Z').getUTCDay();
+  return dayOfWeek === 0 ? 660 : 720;
+}
 
 /**
  * Return the expected Saturday work minutes for a given employee.

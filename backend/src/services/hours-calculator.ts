@@ -1,4 +1,4 @@
-import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, getExpectedMinutes, getSaturdayMinutes } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, isHoliday, getExpectedMinutes, getSaturdayMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes } from '../config/constants';
 
 export interface PunchSet {
   punch1: string | null; // Entry
@@ -53,10 +53,30 @@ function timeToMinutes(time: string): number {
 export function calculateDailyHours(punches: PunchSet, options?: CalculationOptions): CalculationResult | null {
   const date = options?.date;
   const isApprentice = options?.isApprentice ?? false;
+  const isLojasSustentavel = isLojaSustentavelEmployee(options?.employeeName);
 
-  // Check if it's a non-working day
-  if (date && !isWorkingDay(date)) {
-    return null; // No calculation for Sundays/holidays
+  // Loja Sustentável employees work on Sundays but not on holidays
+  if (date && isLojasSustentavel) {
+    if (isHoliday(date)) return null;
+  } else if (date && !isWorkingDay(date)) {
+    return null;
+  }
+
+  // Loja Sustentável Palmeira: 2-punch schedule (09:00-21:00 Mon-Sat, 09:00-20:00 Sun)
+  if (isLojasSustentavel) {
+    if (!punches.punch1 || !punches.punch2) return null;
+    const expectedMins = options?.expectedMinutes !== undefined
+      ? options.expectedMinutes
+      : (date ? getLojaSustentavelExpectedMinutes(date) : 720);
+    const p1 = timeToMinutes(punches.punch1);
+    const p2 = timeToMinutes(punches.punch2);
+    const totalWorkedMinutes = p2 - p1;
+    const differenceMinutes = totalWorkedMinutes - expectedMins;
+    let classification: HourClassification;
+    if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) classification = 'normal';
+    else if (differenceMinutes < 0) classification = 'late';
+    else classification = 'overtime';
+    return { totalWorkedMinutes, differenceMinutes, classification, isComplete: true };
   }
 
   // Determine if it's Saturday

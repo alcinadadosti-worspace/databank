@@ -1215,6 +1215,7 @@ const LOJA_CORURIPE_EMPLOYEES = [
 const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
   'yasmin abilia ferro da silva',
   'valesca meirelle bezerra vitória',
+  'maria cicília brito veiga',
 ];
 
 // Kemilly's original employees for Loja Sao Sebastiao (including herself as manager)
@@ -1224,9 +1225,8 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
   'maryanna francielly trajano da silva',
 ];
 
-// Kemilly's employees for Loja Sustentável Palmeira (new unit)
+// Kemilly's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
 const LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES = [
-  'maria cicília brito veiga',
   'eduarda pereira costa silva',
   'larissa alexia da silva souza',
 ];
@@ -1308,6 +1308,22 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
 
   const onVacation = await getEmployeesOnVacation(date);
   const onFolga = await getEmployeesOnFolga(date);
+
+  // Loja Sustentável rotation: determine who worked yesterday to mark the other as exempt today
+  const yesterdayObj = new Date(date + 'T12:00:00Z');
+  yesterdayObj.setUTCDate(yesterdayObj.getUTCDate() - 1);
+  const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+  const yesterdaySnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '==', yesterdayStr).get();
+  const yesterdayRecords = docsToArray<DailyRecord>(yesterdaySnap);
+  const lojaSustentavelWorkedYesterday = new Set<number>();
+  for (const rec of yesterdayRecords) {
+    if (rec.punch_1 && LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(
+      (employees.find(e => e.id === rec.employee_id)?.name ?? '').toLowerCase()
+    )) {
+      lojaSustentavelWorkedYesterday.add(rec.employee_id);
+    }
+  }
 
   // Separate employees who don't punch from regular employees
   const noPunchEmployees: EmployeeWithLeader[] = [];
@@ -1415,7 +1431,9 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const folgaRecord = onFolga.get(emp.id);
     const isOnFolga = !!folgaRecord;
     const folgaType = folgaRecord?.type ?? null;
-    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow));
+    const isRotationExempt = LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
+      && lojaSustentavelWorkedYesterday.has(emp.id);
+    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt;
     const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isExemptToday || !!(record?.punch_1);
     return {
       id: emp.id,
@@ -1920,7 +1938,7 @@ export async function getHolidaysForYear(year: number): Promise<Holiday[]> {
 }
 
 // Import static holiday check
-import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay } from '../config/constants';
+import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee } from '../config/constants';
 
 /**
  * Check if a date is a holiday (combines static + database holidays)
@@ -1963,8 +1981,12 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
   const dateObj = new Date(dateStr + 'T12:00:00Z');
   const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday, 6 = Saturday
 
-  // Sunday - not a working day for anyone
+  // Sunday - Loja Sustentável employees work on Sundays (except holidays)
   if (dayOfWeek === 0) {
+    if (isLojaSustentavelEmployee(employee.name)) {
+      const dbHoliday = await getHolidayForDate(dateStr);
+      return !dbHoliday && !isStaticHoliday(dateStr);
+    }
     return false;
   }
 
