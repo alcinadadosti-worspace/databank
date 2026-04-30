@@ -4,18 +4,37 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   getFolgasByLeader,
   getEmployees,
+  getVacationSchedules,
   createFolga,
   createFolgaRange,
   updateFolga,
   deleteFolga,
   type Folga,
   type Employee,
+  type VacationSchedule,
 } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
 
+type SubTab = 'folgas' | 'ferias';
+
+function getScheduleStatus(date: string): { bg: string; text: string; label: string } {
+  const today = new Date().toISOString().split('T')[0];
+  const diffDays = Math.ceil(
+    (new Date(date + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const label = formatDate(date);
+  if (diffDays < 0) return { bg: 'bg-red-500/20', text: 'text-red-400', label };
+  if (diffDays <= 30) return { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label };
+  if (diffDays <= 90) return { bg: 'bg-orange-500/20', text: 'text-orange-400', label };
+  return { bg: 'bg-blue-500/20', text: 'text-blue-400', label };
+}
+
 export default function ManagerFolgas() {
   const { manager } = useManagerAuth();
+  const [activeTab, setActiveTab] = useState<SubTab>('folgas');
+
+  // Folgas state
   const [folgas, setFolgas] = useState<Folga[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,17 +56,24 @@ export default function ManagerFolgas() {
   });
   const [search, setSearch] = useState('');
 
+  // Férias (vencimentos) state
+  const [schedules, setSchedules] = useState<VacationSchedule[]>([]);
+  const [scheduleSearch, setScheduleSearch] = useState('');
+
   async function loadData() {
     if (!manager) return;
     setLoading(true);
     try {
-      const [folgaData, empData] = await Promise.all([
+      const [folgaData, empData, scheduleData] = await Promise.all([
         getFolgasByLeader(manager.id),
         getEmployees(),
+        getVacationSchedules(),
       ]);
+      const teamEmployees = empData.employees.filter(e => e.leader_id === manager.id);
       setFolgas(folgaData.folgas);
-      // Only show employees from this manager's team
-      setEmployees(empData.employees.filter(e => e.leader_id === manager.id));
+      setEmployees(teamEmployees);
+      const teamIds = new Set(teamEmployees.map(e => e.id));
+      setSchedules(scheduleData.schedules.filter(sc => teamIds.has(sc.employee_id)));
     } catch {
       setError('Erro ao carregar dados');
     } finally {
@@ -86,13 +112,11 @@ export default function ManagerFolgas() {
     if (!manager) return;
     setSaving(true);
     setError('');
-
     if (form.employee_id === 0) {
       setError('Selecione um colaborador');
       setSaving(false);
       return;
     }
-
     try {
       if (editingId) {
         await updateFolga(editingId, {
@@ -150,28 +174,47 @@ export default function ManagerFolgas() {
     return folgas.filter(f => f.employee_name?.toLowerCase().includes(s));
   }, [folgas, search]);
 
+  const filteredSchedules = useMemo(() => {
+    const getEarliestDate = (sc: VacationSchedule) => {
+      const dates = [sc.period_1_date, sc.period_2_date].filter(Boolean) as string[];
+      return dates.sort()[0];
+    };
+    const list = scheduleSearch.trim()
+      ? schedules.filter(sc => sc.employee_name?.toLowerCase().includes(scheduleSearch.toLowerCase()))
+      : schedules;
+    return [...list].sort((a, b) => getEarliestDate(a).localeCompare(getEarliestDate(b)));
+  }, [schedules, scheduleSearch]);
+
   if (!manager) return null;
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h2 className="text-lg font-semibold text-text-primary">Folgas</h2>
-        <p className="text-sm text-text-tertiary mt-1">Agende folgas integrais ou parciais para sua equipe</p>
+        <h2 className="text-lg font-semibold text-text-primary">Folgas / Férias</h2>
+        <p className="text-sm text-text-tertiary mt-1">Gerencie folgas e acompanhe os vencimentos de férias da sua equipe</p>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <input
-          type="text"
-          placeholder="Buscar por colaborador..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input flex-1"
-        />
+      {/* Sub-tabs */}
+      <div className="flex border-b border-border">
         <button
-          onClick={() => { resetForm(); setShowForm(true); }}
-          className="btn-primary text-sm whitespace-nowrap"
+          onClick={() => { setActiveTab('folgas'); setError(''); }}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            activeTab === 'folgas'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
         >
-          + Nova Folga
+          Folgas
+        </button>
+        <button
+          onClick={() => { setActiveTab('ferias'); setError(''); }}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            activeTab === 'ferias'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Vencimentos de Férias
         </button>
       </div>
 
@@ -181,209 +224,310 @@ export default function ManagerFolgas() {
         </div>
       )}
 
-      {showForm && (
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-text-primary">
-              {editingId ? 'Editar Folga' : 'Nova Folga'}
-            </h3>
-            {!editingId && (
-              <div className="flex items-center gap-1 bg-bg-elevated border border-border rounded p-1">
-                <button
-                  type="button"
-                  onClick={() => { setRangeMode(false); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
-                >
-                  Dia único
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setRangeMode(true); setRangeResult(null); }}
-                  className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
-                >
-                  Período
-                </button>
-              </div>
-            )}
+      {/* ── ABA FOLGAS ── */}
+      {activeTab === 'folgas' && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <input
+              type="text"
+              placeholder="Buscar por colaborador..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input flex-1"
+            />
+            <button
+              onClick={() => { resetForm(); setShowForm(true); }}
+              className="btn-primary text-sm whitespace-nowrap"
+            >
+              + Nova Folga
+            </button>
           </div>
 
-          {rangeResult ? (
-            <div className="space-y-3">
-              <div className="bg-green-500/10 border border-green-500/30 text-green-400 px-4 py-3 rounded text-sm">
-                {rangeResult.created} folga(s) registrada(s) com sucesso.
+          {showForm && (
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-text-primary">
+                  {editingId ? 'Editar Folga' : 'Nova Folga'}
+                </h3>
+                {!editingId && (
+                  <div className="flex items-center gap-1 bg-bg-elevated border border-border rounded p-1">
+                    <button
+                      type="button"
+                      onClick={() => { setRangeMode(false); setRangeResult(null); }}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${!rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                    >
+                      Dia único
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setRangeMode(true); setRangeResult(null); }}
+                      className={`text-xs px-3 py-1 rounded transition-colors ${rangeMode ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}
+                    >
+                      Período
+                    </button>
+                  </div>
+                )}
               </div>
-              {rangeResult.skipped_dates.length > 0 && (
-                <div className="bg-bg-secondary rounded p-3">
-                  <p className="text-xs text-text-muted mb-2">{rangeResult.skipped_dates.length} dia(s) ignorado(s):</p>
-                  <ul className="space-y-1">
-                    {rangeResult.skipped_dates.map(s => (
-                      <li key={s.date} className="text-xs text-text-secondary">
-                        {s.date.split('-').reverse().join('/')} — {s.reason}
-                      </li>
-                    ))}
-                  </ul>
+
+              {rangeResult ? (
+                <div className="space-y-3">
+                  <div className="bg-green-500/10 border border-green-500/30 text-green-400 px-4 py-3 rounded text-sm">
+                    {rangeResult.created} folga(s) registrada(s) com sucesso.
+                  </div>
+                  {rangeResult.skipped_dates.length > 0 && (
+                    <div className="bg-bg-secondary rounded p-3">
+                      <p className="text-xs text-text-muted mb-2">{rangeResult.skipped_dates.length} dia(s) ignorado(s):</p>
+                      <ul className="space-y-1">
+                        {rangeResult.skipped_dates.map(s => (
+                          <li key={s.date} className="text-xs text-text-secondary">
+                            {s.date.split('-').reverse().join('/')} — {s.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button type="button" onClick={resetForm} className="btn-primary text-sm">Fechar</button>
+                  </div>
                 </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Colaborador</label>
+                      <select
+                        value={form.employee_id}
+                        onChange={(e) => setForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
+                        className="input w-full"
+                        disabled={!!editingId}
+                        required
+                      >
+                        <option value={0}>Selecione...</option>
+                        {employees.map(emp => (
+                          <option key={emp.id} value={emp.id}>{emp.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {rangeMode ? (
+                      <>
+                        <div>
+                          <label className="block text-xs text-text-muted mb-1">Data início</label>
+                          <input
+                            type="date"
+                            value={form.start_date}
+                            onChange={(e) => setForm(prev => ({ ...prev, start_date: e.target.value }))}
+                            className="input w-full"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-text-muted mb-1">Data fim</label>
+                          <input
+                            type="date"
+                            value={form.end_date}
+                            min={form.start_date}
+                            onChange={(e) => setForm(prev => ({ ...prev, end_date: e.target.value }))}
+                            className="input w-full"
+                            required
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <label className="block text-xs text-text-muted mb-1">Data</label>
+                        <input
+                          type="date"
+                          value={form.date}
+                          onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
+                          className="input w-full"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-xs text-text-muted mb-1">Tipo</label>
+                      <select
+                        value={form.type}
+                        onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
+                        className="input w-full"
+                      >
+                        <option value="integral">Integral (dia todo)</option>
+                        <option value="partial">Parcial (horas)</option>
+                      </select>
+                    </div>
+                    {form.type === 'partial' && (
+                      <div>
+                        <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={7}
+                          value={form.hours_off}
+                          onChange={(e) => setForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
+                          className="input w-full"
+                          required
+                        />
+                        <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
+                      </div>
+                    )}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
+                      <input
+                        type="text"
+                        value={form.notes}
+                        onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
+                        className="input w-full"
+                        placeholder="Ex: compensação de hora extra..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" onClick={resetForm} className="btn-secondary text-sm">Cancelar</button>
+                    <button type="submit" disabled={saving} className="btn-primary text-sm">
+                      {saving ? 'Salvando...' : editingId ? 'Salvar' : rangeMode ? 'Registrar período' : 'Registrar'}
+                    </button>
+                  </div>
+                </form>
               )}
-              <div className="flex justify-end">
-                <button type="button" onClick={resetForm} className="btn-primary text-sm">Fechar</button>
-              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <p className="text-sm text-text-muted">Carregando...</p>
+          ) : filtered.length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-text-tertiary">Nenhuma folga registrada para sua equipe</p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-text-muted mb-1">Colaborador</label>
-                  <select
-                    value={form.employee_id}
-                    onChange={(e) => setForm(prev => ({ ...prev, employee_id: parseInt(e.target.value) }))}
-                    className="input w-full"
-                    disabled={!!editingId}
-                    required
-                  >
-                    <option value={0}>Selecione...</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {rangeMode ? (
-                  <>
-                    <div>
-                      <label className="block text-xs text-text-muted mb-1">Data início</label>
-                      <input
-                        type="date"
-                        value={form.start_date}
-                        onChange={(e) => setForm(prev => ({ ...prev, start_date: e.target.value }))}
-                        className="input w-full"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-text-muted mb-1">Data fim</label>
-                      <input
-                        type="date"
-                        value={form.end_date}
-                        min={form.start_date}
-                        onChange={(e) => setForm(prev => ({ ...prev, end_date: e.target.value }))}
-                        className="input w-full"
-                        required
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div>
-                    <label className="block text-xs text-text-muted mb-1">Data</label>
-                    <input
-                      type="date"
-                      value={form.date}
-                      onChange={(e) => setForm(prev => ({ ...prev, date: e.target.value }))}
-                      className="input w-full"
-                      required
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-xs text-text-muted mb-1">Tipo</label>
-                  <select
-                    value={form.type}
-                    onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value as 'integral' | 'partial' }))}
-                    className="input w-full"
-                  >
-                    <option value="integral">Integral (dia todo)</option>
-                    <option value="partial">Parcial (horas)</option>
-                  </select>
-                </div>
-                {form.type === 'partial' && (
-                  <div>
-                    <label className="block text-xs text-text-muted mb-1">Horas de folga</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={7}
-                      value={form.hours_off}
-                      onChange={(e) => setForm(prev => ({ ...prev, hours_off: parseInt(e.target.value) }))}
-                      className="input w-full"
-                      required
-                    />
-                    <p className="text-2xs text-text-muted mt-1">Horas descontadas da jornada (1–7h)</p>
-                  </div>
-                )}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs text-text-muted mb-1">Observações (opcional)</label>
-                  <input
-                    type="text"
-                    value={form.notes}
-                    onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
-                    className="input w-full"
-                    placeholder="Ex: compensação de hora extra..."
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={resetForm} className="btn-secondary text-sm">Cancelar</button>
-                <button type="submit" disabled={saving} className="btn-primary text-sm">
-                  {saving ? 'Salvando...' : editingId ? 'Salvar' : rangeMode ? 'Registrar período' : 'Registrar'}
-                </button>
-              </div>
-            </form>
+            <div className="card overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Colaborador</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Data</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Tipo</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Observações</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {filtered.map((folga) => (
+                    <tr key={folga.id} className="hover:bg-bg-hover transition-colors">
+                      <td className="px-4 py-3 text-sm text-text-primary font-medium">{folga.employee_name}</td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">{formatDate(folga.date)}</td>
+                      <td className="px-4 py-3">
+                        {folga.type === 'integral' ? (
+                          <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Integral</span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">{folga.hours_off}h parcial</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-text-muted">{folga.notes || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEdit(folga)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleDelete(folga.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </>
       )}
 
-      {loading ? (
-        <p className="text-sm text-text-muted">Carregando...</p>
-      ) : filtered.length === 0 ? (
-        <div className="card text-center py-8">
-          <p className="text-text-tertiary">Nenhuma folga registrada para sua equipe</p>
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Colaborador</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Data</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Observações</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {filtered.map((folga) => (
-                <tr key={folga.id} className="hover:bg-bg-hover transition-colors">
-                  <td className="px-4 py-3 text-sm text-text-primary font-medium">{folga.employee_name}</td>
-                  <td className="px-4 py-3 text-sm text-text-secondary">{formatDate(folga.date)}</td>
-                  <td className="px-4 py-3">
-                    {folga.type === 'integral' ? (
-                      <span className="text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">Integral</span>
-                    ) : (
-                      <span className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-400">{folga.hours_off}h parcial</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-text-muted">{folga.notes || '—'}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => handleEdit(folga)} className="text-text-muted hover:text-accent-primary transition-colors" title="Editar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button onClick={() => handleDelete(folga.id)} className="text-text-muted hover:text-red-400 transition-colors" title="Excluir">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* ── ABA FÉRIAS ── */}
+      {activeTab === 'ferias' && (
+        <>
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              placeholder="Buscar por colaborador..."
+              value={scheduleSearch}
+              onChange={(e) => setScheduleSearch(e.target.value)}
+              className="input flex-1"
+            />
+          </div>
+
+          {/* Legenda */}
+          <div className="flex flex-wrap gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> Vencido
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> Vence em até 30 dias
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-400 inline-block" /> Vence em até 90 dias
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-text-muted">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-400 inline-block" /> Vence em mais de 90 dias
+            </span>
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-text-muted">Carregando...</p>
+          ) : filteredSchedules.length === 0 ? (
+            <div className="card text-center py-8">
+              <p className="text-text-tertiary">
+                {scheduleSearch ? 'Nenhum colaborador encontrado' : 'Nenhum vencimento cadastrado para sua equipe'}
+              </p>
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Colaborador</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Período 1</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Período 2</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-muted">Observações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle">
+                  {filteredSchedules.map((sc) => {
+                    const p1 = getScheduleStatus(sc.period_1_date);
+                    const p2 = sc.period_2_date ? getScheduleStatus(sc.period_2_date) : null;
+                    return (
+                      <tr key={sc.id} className="hover:bg-bg-hover transition-colors">
+                        <td className="px-4 py-3 text-sm text-text-primary font-medium">{sc.employee_name}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
+                            {p1.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {p2 ? (
+                            <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
+                              {p2.label}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-text-muted">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-muted">{sc.notes || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

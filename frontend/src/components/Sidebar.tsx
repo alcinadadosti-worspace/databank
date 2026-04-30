@@ -17,7 +17,7 @@ const managerNav: NavItem[] = [
   { label: 'Equipe', href: '/manager/team', icon: <IconList /> },
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
-  { label: 'Folgas', href: '/manager/folgas', icon: <IconUmbrella /> },
+  { label: 'Folgas / Férias', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
   { label: 'Banco de Horas', href: 'https://relatoriodehours.onrender.com', icon: <IconChart /> },
 ];
