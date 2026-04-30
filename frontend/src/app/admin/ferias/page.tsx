@@ -404,12 +404,20 @@ export default function AdminFerias() {
   }, [vacations, filterStatus, searchTerm]);
 
   const filteredSchedules = useMemo(() => {
-    if (!scheduleSearch.trim()) return schedules;
-    const s = scheduleSearch.toLowerCase();
-    return schedules.filter(sc =>
-      sc.employee_name?.toLowerCase().includes(s) ||
-      sc.leader_name?.toLowerCase().includes(s)
-    );
+    const getEarliestDate = (sc: VacationSchedule) => {
+      const dates = [sc.period_1_date, sc.period_2_date].filter(Boolean) as string[];
+      return dates.sort()[0];
+    };
+    const filtered = scheduleSearch.trim()
+      ? (() => {
+          const s = scheduleSearch.toLowerCase();
+          return schedules.filter(sc =>
+            sc.employee_name?.toLowerCase().includes(s) ||
+            sc.leader_name?.toLowerCase().includes(s)
+          );
+        })()
+      : schedules;
+    return [...filtered].sort((a, b) => getEarliestDate(a).localeCompare(getEarliestDate(b)));
   }, [schedules, scheduleSearch]);
 
   const filteredFolgas = useMemo(() => {
