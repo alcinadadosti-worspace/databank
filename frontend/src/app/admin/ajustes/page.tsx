@@ -28,7 +28,7 @@ export default function AdminAjustes() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'justifications' | 'punch_adjustments'>('justifications');
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [startDate, setStartDate] = useState(daysAgo(30));
+  const [startDate, setStartDate] = useState(daysAgo(7));
   const [endDate, setEndDate] = useState(todayISO());
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<number | null>(null);
