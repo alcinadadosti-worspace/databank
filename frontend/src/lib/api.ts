@@ -487,7 +487,8 @@ export interface DailyRecord {
   punch_4: string | null;
   total_worked_minutes: number | null;
   difference_minutes: number | null;
-  classification: 'normal' | 'late' | 'overtime' | null;
+  classification: 'normal' | 'late' | 'overtime' | 'folga' | 'falta' | 'aparelho_danificado' | 'atestado_medico' | 'outros' | 'sem_registro' | null;
+  manager_note?: string | null;
   employee_name?: string;
   employee_slack_id?: string | null;
   leader_name?: string;
@@ -670,6 +671,10 @@ export async function deletePunchAdjustment(adjustmentId: number) {
 
 export async function getReviewedPunchAdjustments() {
   return apiFetch<{ adjustments: PunchAdjustmentFull[] }>('/api/punch-adjustments/reviewed');
+}
+
+export async function getNoPunchDecisions(start: string, end: string) {
+  return apiFetch<{ records: DailyRecord[] }>(`/api/records/no-punch-decisions?start=${start}&end=${end}`);
 }
 
 // ─── Reports ─────────────────────────────────────────────────────

@@ -99,6 +99,22 @@ router.get('/leader/:leaderId', async (req: Request, res: Response) => {
   }
 });
 
+/** GET /api/records/no-punch-decisions?start=YYYY-MM-DD&end=YYYY-MM-DD (Admin only) */
+router.get('/no-punch-decisions', async (req: Request, res: Response) => {
+  try {
+    const { start, end } = req.query;
+    if (!start || !end || typeof start !== 'string' || typeof end !== 'string') {
+      res.status(400).json({ error: 'start and end query parameters required (YYYY-MM-DD)' });
+      return;
+    }
+    const records = await queries.getNoRecordDecisionsRange(start, end);
+    res.json({ records });
+  } catch (error) {
+    console.error('[records] Error fetching no-punch decisions:', error);
+    res.status(500).json({ error: 'Failed to fetch no-punch decisions' });
+  }
+});
+
 /** GET /api/records/all?start=YYYY-MM-DD&end=YYYY-MM-DD&limit=100&offset=0 (Admin only) */
 router.get('/all', async (req: Request, res: Response) => {
   try {

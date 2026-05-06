@@ -564,6 +564,35 @@ export async function getAllRecordsRange(
   return result;
 }
 
+const NO_PUNCH_CLASSIFICATIONS = ['folga', 'falta', 'aparelho_danificado', 'atestado_medico', 'outros', 'sem_registro'];
+
+export async function getNoRecordDecisionsRange(
+  startDate: string, endDate: string
+): Promise<DailyRecordFull[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('date', '>=', startDate)
+    .where('date', '<=', endDate)
+    .orderBy('date', 'desc')
+    .get();
+  const records = docsToArray<DailyRecord>(snap)
+    .filter(r => r.classification && NO_PUNCH_CLASSIFICATIONS.includes(r.classification));
+
+  const employees = await getAllEmployees();
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  return records.map(r => {
+    const emp = empMap.get(r.employee_id);
+    return {
+      ...r,
+      employee_name: emp?.name ?? '',
+      employee_slack_id: emp?.slack_id ?? null,
+      leader_name: emp?.leader_name ?? '',
+      leader_slack_id: emp?.leader_slack_id ?? null,
+      leader_id: emp?.leader_id ?? 0,
+    };
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+}
+
 export async function upsertDailyRecord(
   employeeId: number,
   date: string,
@@ -1742,6 +1771,7 @@ export interface DailyRecord {
   total_worked_minutes: number | null;
   difference_minutes: number | null;
   classification: string | null;
+  manager_note?: string | null;
   alert_sent: number;
   manager_alert_sent: number;
   created_at: string;

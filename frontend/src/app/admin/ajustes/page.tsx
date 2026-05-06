@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, getReviewedPunchAdjustments, deletePunchAdjustment, type JustificationFull, type PunchAdjustmentFull } from '@/lib/api';
+import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, getReviewedPunchAdjustments, deletePunchAdjustment, getNoPunchDecisions, type JustificationFull, type PunchAdjustmentFull, type DailyRecord } from '@/lib/api';
 import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
 import { exportJustificationsToPDF, exportPunchAdjustmentsToPDF } from '@/lib/pdf-export';
 import * as XLSX from 'xlsx';
@@ -22,11 +22,27 @@ function isSaturday(dateStr: string): boolean {
   return date.getDay() === 6;
 }
 
+const NO_PUNCH_LABELS: Record<string, { label: string; color: string }> = {
+  folga:              { label: 'Folga',             color: 'text-blue-400' },
+  falta:              { label: 'Falta',             color: 'text-red-500' },
+  aparelho_danificado:{ label: 'Ap. Danificado',    color: 'text-orange-400' },
+  atestado_medico:    { label: 'Atestado Medico',   color: 'text-yellow-400' },
+  outros:             { label: 'Outros',             color: 'text-purple-400' },
+  sem_registro:       { label: 'Sem Registro',       color: 'text-text-muted' },
+};
+
+function NoPunchBadge({ classification }: { classification: string | null }) {
+  const entry = classification ? NO_PUNCH_LABELS[classification] : null;
+  if (!entry) return <span className="text-text-muted">-</span>;
+  return <span className={`font-medium ${entry.color}`}>{entry.label}</span>;
+}
+
 export default function AdminAjustes() {
   const [justifications, setJustifications] = useState<JustificationFull[]>([]);
   const [punchAdjustments, setPunchAdjustments] = useState<PunchAdjustmentFull[]>([]);
+  const [noPunchDecisions, setNoPunchDecisions] = useState<DailyRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'justifications' | 'punch_adjustments'>('justifications');
+  const [activeTab, setActiveTab] = useState<'justifications' | 'punch_adjustments' | 'no_punch'>('justifications');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [startDate, setStartDate] = useState(daysAgo(7));
   const [endDate, setEndDate] = useState(todayISO());
@@ -36,16 +52,19 @@ export default function AdminAjustes() {
   async function loadJustifications() {
     setLoading(true);
     try {
-      const [justData, adjData] = await Promise.all([
+      const [justData, adjData, noPunchData] = await Promise.all([
         getReviewedJustifications(),
         getReviewedPunchAdjustments(),
+        getNoPunchDecisions(startDate, endDate),
       ]);
       setJustifications(justData.justifications);
       setPunchAdjustments(adjData.adjustments);
+      setNoPunchDecisions(noPunchData.records);
       // Expand all managers by default
       const managers = new Set([
         ...justData.justifications.map(j => j.leader_name || 'Sem Gestor'),
         ...adjData.adjustments.map(a => (a as any).leader_name || 'Sem Gestor'),
+        ...noPunchData.records.map(r => r.leader_name || 'Sem Gestor'),
       ]);
       setExpandedManagers(managers);
     } catch (error) {
@@ -58,6 +77,13 @@ export default function AdminAjustes() {
   useEffect(() => {
     loadJustifications();
   }, []);
+
+  // Reload no-punch decisions when date range changes
+  useEffect(() => {
+    getNoPunchDecisions(startDate, endDate)
+      .then(data => setNoPunchDecisions(data.records))
+      .catch(err => console.error('Failed to load no-punch decisions:', err));
+  }, [startDate, endDate]);
 
   // Filter justifications by status and date
   const filtered = justifications.filter(j => {
@@ -239,6 +265,16 @@ export default function AdminAjustes() {
     return acc;
   }, {} as Record<string, Record<string, PunchAdjustmentFull[]>>);
 
+  // Group no-punch decisions by manager (already date-filtered from API)
+  const groupedNoPunch = noPunchDecisions.reduce((acc, r) => {
+    const manager = r.leader_name || 'Sem Gestor';
+    if (!acc[manager]) acc[manager] = {};
+    const employee = r.employee_name || 'Desconhecido';
+    if (!acc[manager][employee]) acc[manager][employee] = [];
+    acc[manager][employee].push(r);
+    return acc;
+  }, {} as Record<string, Record<string, DailyRecord[]>>);
+
   async function handleDeletePunchAdjustment(id: number) {
     if (!confirm('Tem certeza que deseja excluir este ajuste de ponto?')) return;
     setDeleting(id);
@@ -346,6 +382,16 @@ export default function AdminAjustes() {
         >
           Pontos Incompletos ({punchAdjustments.length})
         </button>
+        <button
+          onClick={() => setActiveTab('no_punch')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'no_punch'
+              ? 'border-accent-primary text-accent-primary'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Ausencias ({noPunchDecisions.length})
+        </button>
       </div>
 
       {/* Date Filter */}
@@ -373,7 +419,9 @@ export default function AdminAjustes() {
           <span className="text-xs text-text-muted">
             {activeTab === 'justifications'
               ? `${filtered.length} de ${justifications.length} justificativas`
-              : `${filteredAdjustments.length} de ${punchAdjustments.length} ajustes`
+              : activeTab === 'punch_adjustments'
+              ? `${filteredAdjustments.length} de ${punchAdjustments.length} ajustes`
+              : `${noPunchDecisions.length} ausencias`
             }
           </span>
         </div>
@@ -615,7 +663,7 @@ export default function AdminAjustes() {
           })}
         </div>
         )
-      ) : (
+      ) : activeTab === 'punch_adjustments' ? (
         /* Punch Adjustments Tab */
         filteredAdjustments.length === 0 ? (
           <div className="card text-center py-12">
@@ -779,6 +827,100 @@ export default function AdminAjustes() {
                                           </svg>
                                         )}
                                       </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )
+      ) : (
+        /* No-Punch Decisions Tab */
+        noPunchDecisions.length === 0 ? (
+          <div className="card text-center py-12">
+            <p className="text-text-tertiary text-sm">Nenhuma ausencia registrada no periodo</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(groupedNoPunch).sort(([a], [b]) => a.localeCompare(b)).map(([manager, employees]) => {
+              const isExpanded = expandedManagers.has(manager);
+              const totalForManager = Object.values(employees).flat().length;
+
+              return (
+                <div key={manager} className="card p-0 overflow-hidden">
+                  <div className="flex items-center bg-bg-secondary">
+                    <button
+                      onClick={() => toggleManager(manager)}
+                      className="flex-1 px-4 py-3 flex items-center justify-between hover:bg-bg-hover transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                          ▶
+                        </span>
+                        <span className="font-semibold text-text-primary">{manager}</span>
+                        <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded-full">
+                          {Object.keys(employees).length} colaborador{Object.keys(employees).length !== 1 ? 'es' : ''}
+                        </span>
+                      </div>
+                      <span className="text-text-muted text-xs">{totalForManager} total</span>
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="divide-y divide-border-subtle">
+                      {Object.entries(employees).sort(([a], [b]) => a.localeCompare(b)).map(([employee, items]) => (
+                        <div key={employee} className="px-4 py-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm font-medium text-text-primary">{employee}</span>
+                            <span className="text-xs text-text-muted">
+                              ({items.length} ausencia{items.length !== 1 ? 's' : ''})
+                            </span>
+                          </div>
+
+                          {/* Mobile cards */}
+                          <div className="lg:hidden space-y-2">
+                            {items.map((r) => (
+                              <div key={r.id} className="card p-2 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-mono text-text-secondary">{formatDate(r.date)}</span>
+                                  <NoPunchBadge classification={r.classification} />
+                                </div>
+                                {r.manager_note && (
+                                  <p className="text-xs text-text-secondary truncate">Motivo: {r.manager_note}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Desktop table */}
+                          <div className="hidden lg:block overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-text-muted">
+                                  <th className="px-2 py-1">Data</th>
+                                  <th className="px-2 py-1">Classificacao</th>
+                                  <th className="px-2 py-1">Motivo</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border-subtle">
+                                {items.map((r) => (
+                                  <tr key={r.id} className="hover:bg-bg-hover">
+                                    <td className="px-2 py-2 font-mono text-text-secondary">{formatDate(r.date)}</td>
+                                    <td className="px-2 py-2">
+                                      <NoPunchBadge classification={r.classification} />
+                                    </td>
+                                    <td className="px-2 py-2 text-text-secondary max-w-[300px]">
+                                      <span className="truncate block" title={r.manager_note || ''}>
+                                        {r.manager_note || '-'}
+                                      </span>
                                     </td>
                                   </tr>
                                 ))}
