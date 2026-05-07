@@ -564,8 +564,6 @@ export async function getAllRecordsRange(
   return result;
 }
 
-const NO_PUNCH_CLASSIFICATIONS = ['folga', 'falta', 'aparelho_danificado', 'atestado_medico', 'outros', 'sem_registro'];
-
 export async function getNoRecordDecisionsRange(
   startDate: string, endDate: string
 ): Promise<DailyRecordFull[]> {
@@ -575,7 +573,7 @@ export async function getNoRecordDecisionsRange(
     .orderBy('date', 'desc')
     .get();
   const records = docsToArray<DailyRecord>(snap)
-    .filter(r => r.classification && NO_PUNCH_CLASSIFICATIONS.includes(r.classification));
+    .filter(r => r.classification && (ABSENCE_CLASSIFICATIONS as readonly string[]).includes(r.classification));
 
   const employees = await getAllEmployees();
   const empMap = new Map(employees.map(e => [e.id, e]));
@@ -1968,7 +1966,7 @@ export async function getHolidaysForYear(year: number): Promise<Holiday[]> {
 }
 
 // Import static holiday check
-import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee } from '../config/constants';
+import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee, ABSENCE_CLASSIFICATIONS } from '../config/constants';
 
 /**
  * Check if a date is a holiday (combines static + database holidays)

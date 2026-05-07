@@ -184,10 +184,19 @@ export function formatMinutes(minutes: number): string {
 /**
  * Format classification for display.
  */
-export function classificationLabel(classification: HourClassification): string {
+export function classificationLabel(classification: HourClassification | string): string {
   switch (classification) {
     case 'normal': return 'Normal';
     case 'late': return 'Atraso';
     case 'overtime': return 'Hora Extra';
+    case 'ajuste': return 'Ajuste';
+    case 'folga': return 'Folga';
+    case 'falta': return 'Falta';
+    case 'ferias': return 'Férias';
+    case 'aparelho_danificado': return 'Aparelho Danificado';
+    case 'atestado_medico': return 'Atestado Médico';
+    case 'outros': return 'Outros';
+    case 'sem_registro': return 'Sem Registro';
+    default: return classification;
   }
 }

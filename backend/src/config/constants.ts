@@ -226,3 +226,8 @@ export type Justification = LateJustification | OvertimeJustification;
 
 /** Hour classification */
 export type HourClassification = 'normal' | 'late' | 'overtime';
+
+/** Classifications set by manager via Slack buttons (absence decisions, not hour anomalies) */
+export const ABSENCE_CLASSIFICATIONS = [
+  'folga', 'falta', 'aparelho_danificado', 'atestado_medico', 'outros', 'sem_registro',
+] as const;

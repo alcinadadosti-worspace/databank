@@ -274,7 +274,7 @@ export async function sendManagerDailySummary(
 
   const lines = alertRecords.map(r => {
     const emoji = r.classification === 'late' ? ':red_circle:' : ':large_blue_circle:';
-    const label = classificationLabel(r.classification as any);
+    const label = classificationLabel(r.classification);
     const mins = formatMinutes(Math.abs(r.difference_minutes));
     const justif = r.justification_reason ? ` | _${r.justification_reason}_` : ' | _Sem justificativa_';
     return `${emoji} *${r.employee_name}* — ${label}: ${mins}${justif}`;
