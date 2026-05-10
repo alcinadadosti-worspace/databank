@@ -673,6 +673,58 @@ export async function getReviewedPunchAdjustments() {
   return apiFetch<{ adjustments: PunchAdjustmentFull[] }>('/api/punch-adjustments/reviewed');
 }
 
+// ─── Records without Punch Adjustment ──────────────────────────
+
+export interface RecordWithoutAdjustment {
+  daily_record_id: number;
+  employee_id: number;
+  employee_name: string;
+  date: string;
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  missing_punches: string[];
+}
+
+export async function getRecordsWithoutAdjustment(leaderId: number, days = 30) {
+  return apiFetch<{ records: RecordWithoutAdjustment[] }>(
+    `/api/punch-adjustments/leader/${leaderId}/unadjusted?days=${days}`
+  );
+}
+
+export async function reinforcePunchAdjustmentAlert(recordIds: number[]) {
+  return apiFetch<{ success: boolean; sent: number; skipped: number }>(
+    '/api/punch-adjustments/reinforce-alert',
+    {
+      method: 'POST',
+      body: JSON.stringify({ recordIds }),
+    }
+  );
+}
+
+export async function forceReviewPunchAdjustment(
+  recordId: number,
+  action: 'approve' | 'reject',
+  reviewedBy: string,
+  comment: string,
+  employeeId: number,
+  correctedTimes?: {
+    corrected_punch_1?: string | null;
+    corrected_punch_2?: string | null;
+    corrected_punch_3?: string | null;
+    corrected_punch_4?: string | null;
+  }
+) {
+  return apiFetch<{ success: boolean; adjustmentId: number }>(
+    `/api/punch-adjustments/record/${recordId}/force-review`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ action, reviewedBy, comment, employeeId, ...(correctedTimes ?? {}) }),
+    }
+  );
+}
+
 export async function getNoPunchDecisions(start: string, end: string) {
   return apiFetch<{ records: DailyRecord[] }>(`/api/records/no-punch-decisions?start=${start}&end=${end}`);
 }
