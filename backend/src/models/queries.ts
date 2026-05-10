@@ -1250,6 +1250,7 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
   'kemilly rafaelly souza silva',
   'gabrielle vitoria dos santos',
   'maryanna francielly trajano da silva',
+  'nayara soares kimura',
 ];
 
 // Kemilly's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
