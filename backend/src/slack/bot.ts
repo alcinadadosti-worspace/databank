@@ -245,6 +245,79 @@ export async function sendReinforceAlert(
   }
 }
 
+// ─── Send Reinforce Punch Adjustment Alert to Employee ─────────
+
+export async function sendReinforcePunchAdjustmentAlert(
+  employee: { id: number; name: string; slack_id?: string | null },
+  record: { id: number; punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null },
+  date: string,
+  missingPunches: string[]
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employee.slack_id || null);
+  if (!targetUser) {
+    console.log(`[slack] Skipping reinforce ajuste alert for ${employee.name} — no slack_id`);
+    return;
+  }
+
+  const missingCount = missingPunches.length;
+  const punchesText = missingPunches.map(p => `• ${p}`).join('\n');
+
+  const blocks = [
+    {
+      type: 'header' as const,
+      text: { type: 'plain_text' as const, text: '📣 Reforço: Ajuste de ponto pendente', emoji: true },
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: [
+          `*Colaborador:* ${employee.name}`,
+          `*Data:* ${date}`,
+          '',
+          `Você esqueceu de bater *${missingCount} ponto(s)* no dia ${date}:`,
+          punchesText,
+          '',
+          ':loudspeaker: *Seu gestor solicita que você solicite o ajuste deste registro.*',
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions' as const,
+      block_id: `reinforce_adjustment_${record.id}`,
+      elements: [
+        {
+          type: 'button' as const,
+          text: { type: 'plain_text' as const, text: '📝 Solicitar Ajuste', emoji: true },
+          style: 'primary' as const,
+          value: JSON.stringify({
+            daily_record_id: record.id,
+            employee_id: employee.id,
+            employee_name: employee.name,
+            date,
+            missing_punches: missingPunches,
+            type: 'missing_punch',
+          }),
+          action_id: 'request_punch_adjustment',
+        },
+      ],
+    },
+  ];
+
+  try {
+    await rateLimitedPostMessage(app, {
+      channel: targetUser,
+      text: `Reforço: ajuste de ponto pendente para ${date}`,
+      blocks,
+    });
+    console.log(`[slack] Reinforce ajuste alert sent for ${employee.name} (${date})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send reinforce ajuste alert:`, error);
+  }
+}
+
 // ─── Send Daily Manager Summary ────────────────────────────────
 
 export async function sendManagerDailySummary(

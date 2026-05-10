@@ -2705,3 +2705,210 @@ export async function getFolgaById(id: number): Promise<Folga | undefined> {
   if (snap.empty) return undefined;
   return snap.docs[0].data() as Folga;
 }
+
+// ─── Records without Adjustment (Reforço de Ajuste) ────────────
+
+export interface RecordWithoutAdjustment {
+  daily_record_id: number;
+  employee_id: number;
+  employee_name: string;
+  date: string;
+  punch_1: string | null;
+  punch_2: string | null;
+  punch_3: string | null;
+  punch_4: string | null;
+  missing_punches: string[];
+}
+
+function isDateSaturday(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  return d.getUTCDay() === 6;
+}
+
+function computeMissingPunchesForRecord(
+  record: { punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null; date: string },
+  employee: { name: string; is_apprentice?: boolean; is_intern?: boolean }
+): string[] {
+  const isSat = isDateSaturday(record.date);
+  const isTwoPunch = isSat || !!employee.is_apprentice || !!employee.is_intern || isLojaSustentavelEmployee(employee.name);
+  const missing: string[] = [];
+  if (!record.punch_1) missing.push('Entrada');
+  if (isTwoPunch) {
+    if (!record.punch_2) missing.push('Saída');
+  } else {
+    if (!record.punch_2) missing.push('Intervalo');
+    if (!record.punch_3) missing.push('Retorno');
+    if (!record.punch_4) missing.push('Saída');
+  }
+  return missing;
+}
+
+export async function getRecordsWithoutAdjustmentByLeader(
+  leaderId: number,
+  days = 30
+): Promise<RecordWithoutAdjustment[]> {
+  const employees = await getEmployeesByLeaderId(leaderId);
+  if (employees.length === 0) return [];
+
+  const empIds = employees.map(e => e.id);
+  const empMap = new Map(employees.map(e => [e.id, e]));
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1) Daily records with classification === 'ajuste' (primary filter — flips on approval)
+  const ajusteRecords: DailyRecord[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('employee_id', 'in', chunk)
+      .get();
+    ajusteRecords.push(...docsToArray<DailyRecord>(snap).filter(
+      r => r.classification === 'ajuste' && r.date >= cutoffStr && r.date < today
+    ));
+  }
+  if (ajusteRecords.length === 0) return [];
+
+  // 2) Pull ALL punch_adjustments for these employees (ANY status) — defense in depth
+  const allAdjustments: PunchAdjustmentRequest[] = [];
+  for (const chunk of chunkArray(empIds, 10)) {
+    const snap = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+      .where('employee_id', 'in', chunk).get();
+    allAdjustments.push(...docsToArray<PunchAdjustmentRequest>(snap));
+  }
+
+  // 3) Build TWO exclusion keys — protects against daily_record_id field corruption
+  const excludedRecordIds = new Set<number>();
+  for (const a of allAdjustments) {
+    if (typeof a.daily_record_id === 'number') excludedRecordIds.add(a.daily_record_id);
+  }
+  // Map adjustment → date via daily_records, build secondary (employee_id|date) exclusion set
+  const adjustedRecordIdSet = new Set<number>(
+    allAdjustments.map(a => a.daily_record_id).filter(id => typeof id === 'number')
+  );
+  const excludedEmpDate = new Set<string>();
+  if (adjustedRecordIdSet.size > 0) {
+    const idsArr = [...adjustedRecordIdSet];
+    for (const chunk of chunkArray(idsArr, 30)) {
+      const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+        .where('id', 'in', chunk).get();
+      for (const doc of snap.docs) {
+        const r = doc.data() as DailyRecord;
+        excludedEmpDate.add(`${r.employee_id}|${r.date}`);
+      }
+    }
+  }
+
+  // 4) Filter: exclude if record id OR (employee+date) is in any exclusion set
+  const result: RecordWithoutAdjustment[] = ajusteRecords
+    .filter(r => !excludedRecordIds.has(r.id) && !excludedEmpDate.has(`${r.employee_id}|${r.date}`))
+    .map(r => {
+      const emp = empMap.get(r.employee_id);
+      return {
+        daily_record_id: r.id,
+        employee_id: r.employee_id,
+        employee_name: emp?.name ?? '',
+        date: r.date,
+        punch_1: r.punch_1 ?? null,
+        punch_2: r.punch_2 ?? null,
+        punch_3: r.punch_3 ?? null,
+        punch_4: r.punch_4 ?? null,
+        missing_punches: emp ? computeMissingPunchesForRecord(r, emp) : [],
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  return result;
+}
+
+/**
+ * Check whether a given daily_record can still receive a "reinforce ajuste" alert
+ * or be force-reviewed. Returns true only if classification is 'ajuste' AND no
+ * punch_adjustment exists for that record id OR same employee+date. Defense-in-depth
+ * gate used by routes to refuse stale frontend requests in production.
+ */
+export async function isRecordEligibleForAdjustmentAction(recordId: number): Promise<{
+  eligible: boolean;
+  record?: DailyRecord;
+  reason?: string;
+}> {
+  const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('id', '==', recordId).limit(1).get();
+  if (recordSnap.empty) return { eligible: false, reason: 'record_not_found' };
+  const record = recordSnap.docs[0].data() as DailyRecord;
+  if (record.classification !== 'ajuste') {
+    return { eligible: false, record, reason: 'classification_not_ajuste' };
+  }
+  // Check by daily_record_id
+  const byId = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('daily_record_id', '==', recordId).limit(1).get();
+  if (!byId.empty) return { eligible: false, record, reason: 'adjustment_exists_by_id' };
+  // Check by employee_id+date (secondary safety) — fetch employee adjustments and compare via daily_record
+  const byEmp = await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS)
+    .where('employee_id', '==', record.employee_id).get();
+  if (!byEmp.empty) {
+    const otherIds = byEmp.docs.map(d => (d.data() as PunchAdjustmentRequest).daily_record_id)
+      .filter(id => typeof id === 'number' && id !== recordId);
+    if (otherIds.length > 0) {
+      for (const chunk of chunkArray(otherIds, 30)) {
+        const drSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+          .where('id', 'in', chunk).get();
+        for (const doc of drSnap.docs) {
+          const r = doc.data() as DailyRecord;
+          if (r.date === record.date && r.employee_id === record.employee_id) {
+            return { eligible: false, record, reason: 'adjustment_exists_by_emp_date' };
+          }
+        }
+      }
+    }
+  }
+  return { eligible: true, record };
+}
+
+/**
+ * Force-create a punch_adjustment without employee submission. Used by manager to
+ * resolve a day where the employee never submitted an ajuste. If action='approve',
+ * applies corrected punches to daily_record and recalculates hours; if 'reject',
+ * just records the rejection (record stays as 'ajuste' but is excluded from the
+ * "sem ajuste" list by the existing adjustment).
+ */
+export async function forcePunchAdjustment(opts: {
+  recordId: number;
+  employeeId: number;
+  action: 'approve' | 'reject';
+  reviewedBy: string;
+  comment: string;
+  missingPunches: string[];
+  correctedTimes?: {
+    punch_1?: string | null;
+    punch_2?: string | null;
+    punch_3?: string | null;
+    punch_4?: string | null;
+  };
+}): Promise<{ adjustmentId: number }> {
+  const adjId = await getNextId(COLLECTIONS.PUNCH_ADJUSTMENTS);
+  const now = new Date().toISOString();
+  const record: PunchAdjustmentRequest = {
+    id: adjId,
+    daily_record_id: opts.recordId,
+    employee_id: opts.employeeId,
+    type: 'missing_punch',
+    missing_punches: opts.missingPunches,
+    reason: 'Revisado pelo gestor sem solicitação do colaborador',
+    status: opts.action === 'approve' ? 'approved' : 'rejected',
+    corrected_punch_1: opts.correctedTimes?.punch_1 ?? null,
+    corrected_punch_2: opts.correctedTimes?.punch_2 ?? null,
+    corrected_punch_3: opts.correctedTimes?.punch_3 ?? null,
+    corrected_punch_4: opts.correctedTimes?.punch_4 ?? null,
+    reviewed_by: opts.reviewedBy,
+    reviewed_at: now,
+    manager_comment: opts.comment,
+    submitted_at: now,
+    notification_sent: true,
+  };
+  await getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS).doc(String(adjId)).set(record);
+  invalidateCache('punch_adjustments');
+  invalidateCache('records');
+  return { adjustmentId: adjId };
+}
