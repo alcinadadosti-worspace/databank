@@ -116,10 +116,18 @@ export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
 
   const result = employees.map(e => {
     const leader = leaderMap.get(e.leader_id);
+    // If the leader has a cover_leader_id set (e.g. on vacation), route alerts
+    // to the covering leader's slack_id. Everything else (leader_id, leader_name,
+    // sector, web access) stays unchanged.
+    let leaderSlackId = leader?.slack_id ?? null;
+    if (leader?.cover_leader_id) {
+      const cover = leaderMap.get(leader.cover_leader_id);
+      if (cover?.slack_id) leaderSlackId = cover.slack_id;
+    }
     return {
       ...e,
       leader_name: leader?.name ?? '',
-      leader_slack_id: leader?.slack_id ?? null,
+      leader_slack_id: leaderSlackId,
       sector: leader?.sector ?? null,
     };
   });
@@ -1732,6 +1740,10 @@ export interface Leader {
   slack_id: string | null;
   sector: string | null;
   parent_leader_id: number | null;
+  // When set, all Slack alerts for this leader's team are routed to the
+  // covering leader's slack_id (e.g. vacation coverage). The leader_id,
+  // team membership and web access remain unchanged.
+  cover_leader_id?: number | null;
   created_at: string;
 }
 
