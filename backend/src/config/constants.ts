@@ -144,7 +144,6 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
  */
 export const LOJA_SUSTENTAVEL_EMPLOYEES = new Set([
   'eduarda pereira costa silva',
-  'larissa alexia da silva souza',
 ]);
 
 export function isLojaSustentavelEmployee(employeeName: string | null | undefined): boolean {

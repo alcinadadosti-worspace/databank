@@ -1218,6 +1218,7 @@ const LOGISTICA_PALMEIRA_EMPLOYEES = [
   'João Victor Santos da Silva',
   'Pedro Lucas Rocha da Fonseca',
   'Robéria Gilo Da Silva',
+  'Samuel Monteiro da Silva',
 ].map(n => n.toLowerCase());
 
 // Maria Taciane's employees that came from Loja Penedo (virtual unit)
@@ -1243,7 +1244,6 @@ const LOJA_CORURIPE_EMPLOYEES = [
   'maria taciane pereira barbosa',
   'ana paula amaral santos ismerim',
   'bruna rayane oliveira dos santos',
-  'thamirys silvestrini morales',
 ];
 
 // Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
@@ -1264,7 +1264,6 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
 // Kemilly's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
 const LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES = [
   'eduarda pereira costa silva',
-  'larissa alexia da silva souza',
 ];
 
 // Store leaders from Canal Loja (leader_id=6) that should appear in their own units
