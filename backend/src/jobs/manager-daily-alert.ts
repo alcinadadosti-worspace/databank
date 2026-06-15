@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendManagerWeeklySummary, sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
-import { WORK_SCHEDULE, isLojaSustentavelEmployee } from '../config/constants';
+import { WORK_SCHEDULE, isLojaSustentavelEmployee, isNoLunchEmployee } from '../config/constants';
 
 // Cache of employees on vacation for specific dates
 const vacationCache = new Map<string, Set<number>>();
@@ -124,7 +124,7 @@ export async function checkPreviousDayRecords(): Promise<void> {
       // For weekdays: check punch_1, punch_2, punch_3 (punch_4 is the last)
       // For Saturdays, apprentices, or Loja Sustentável: check punch_1 only (punch_2 is the last)
       if (record) {
-        const isTwoPunch = isSaturday || employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name);
+        const isTwoPunch = isSaturday || employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name) || isNoLunchEmployee(employee.name);
         const punchesBeforeLast = isTwoPunch
           ? [record.punch_1]
           : [record.punch_1, record.punch_2, record.punch_3];
@@ -151,14 +151,14 @@ function countPunches(record: queries.DailyRecord | undefined): number {
 }
 
 function getExpectedPunches(isSaturday: boolean, employee: queries.EmployeeWithLeader): number {
-  if (employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name)) return 2;
+  if (employee.is_apprentice || employee.is_intern || isLojaSustentavelEmployee(employee.name) || isNoLunchEmployee(employee.name)) return 2;
   return isSaturday ? 2 : 4;
 }
 
 function getMissingPunches(record: queries.DailyRecord, isSaturday: boolean, employee?: queries.EmployeeWithLeader): string[] {
   const missing: string[] = [];
   if (!record.punch_1) missing.push('Entrada');
-  const isTwoPunch = isSaturday || (employee && isLojaSustentavelEmployee(employee.name));
+  const isTwoPunch = isSaturday || (employee && (isLojaSustentavelEmployee(employee.name) || isNoLunchEmployee(employee.name)));
   if (isTwoPunch) {
     if (!record.punch_2) missing.push('Saída');
   } else {

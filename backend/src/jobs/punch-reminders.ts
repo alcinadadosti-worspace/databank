@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
-import { isSaturday, EXTENDED_SATURDAY_EMPLOYEES, isLojaSustentavelEmployee } from '../config/constants';
+import { isSaturday, EXTENDED_SATURDAY_EMPLOYEES, isLojaSustentavelEmployee, isNoLunchEmployee } from '../config/constants';
 
 // Cache of employees on vacation for the current day
 let vacationEmployeesCache: Set<number> | null = null;
@@ -148,6 +148,8 @@ export async function sendExitReminders(): Promise<void> {
       if (onIntegralFolga.has(emp.id)) continue;
       // Loja Sustentável employees exit at 21:00, not 18:00 — skip standard 17:50 reminder
       if (isLojaSustentavelEmployee(emp.name)) continue;
+      // No-lunch employees have no lunch return (punch_2 is their exit) — standard exit check doesn't apply
+      if (isNoLunchEmployee(emp.name)) continue;
 
       const record = recordMap.get(emp.id);
       // Has returned from lunch but hasn't left yet
@@ -298,6 +300,8 @@ export async function checkLunchReturnReminders(): Promise<void> {
       if (onIntegralFolga.has(emp.id)) continue;
       // Loja Sustentável employees don't have a lunch break (punch_2 is their exit)
       if (isLojaSustentavelEmployee(emp.name)) continue;
+      // No-lunch employees don't have a lunch break either (punch_2 is their exit)
+      if (isNoLunchEmployee(emp.name)) continue;
 
       const record = recordMap.get(emp.id);
       // Has gone to lunch but hasn't returned yet

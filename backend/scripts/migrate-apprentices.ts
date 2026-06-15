@@ -10,7 +10,7 @@ import * as queries from '../src/models/queries';
 const APPRENTICE_NAMES = [
   'Raquele Fragoso Da Silva',
   'Yuri Castro Gomes',
-  'Lianda Melinda Santos Calixto',
+  // Lianda Melinda Santos Calixto — efetivada (8h, 4 pontos); não é mais aprendiz/estagiária
 ];
 
 const EXPECTED_DAILY_MINUTES = 240; // 4 hours

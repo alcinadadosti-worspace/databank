@@ -1978,7 +1978,7 @@ export async function getHolidaysForYear(year: number): Promise<Holiday[]> {
 }
 
 // Import static holiday check
-import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee, ABSENCE_CLASSIFICATIONS } from '../config/constants';
+import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee, isNoLunchEmployee, ABSENCE_CLASSIFICATIONS } from '../config/constants';
 
 /**
  * Check if a date is a holiday (combines static + database holidays)
@@ -2741,7 +2741,7 @@ function computeMissingPunchesForRecord(
   employee: { name: string; is_apprentice?: boolean; is_intern?: boolean }
 ): string[] {
   const isSat = isDateSaturday(record.date);
-  const isTwoPunch = isSat || !!employee.is_apprentice || !!employee.is_intern || isLojaSustentavelEmployee(employee.name);
+  const isTwoPunch = isSat || !!employee.is_apprentice || !!employee.is_intern || isLojaSustentavelEmployee(employee.name) || isNoLunchEmployee(employee.name);
   const missing: string[] = [];
   if (!record.punch_1) missing.push('Entrada');
   if (isTwoPunch) {

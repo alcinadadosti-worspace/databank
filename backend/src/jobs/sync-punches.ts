@@ -1,6 +1,6 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
 import { shouldAlert, CalculationResult } from '../services/hours-calculator';
-import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
 import { env } from '../config/env';
@@ -103,6 +103,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
 
       const isLojasSustentavel = isLojaSustentavelEmployee(employee.name);
+      const isNoLunch = isNoLunchEmployee(employee.name);
       const isSundayDate = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
 
       // Skip non-working days (Loja Sustentável employees work on Sundays)
@@ -154,8 +155,8 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         expectedMinutes = Math.max(0, expectedMinutes - (folgaRecord.hours_off * 60));
       }
 
-      // Saturday, apprentices, and Loja Sustentável only need 1 complete pair; regular weekdays need 2
-      const minPairs = (isSat || isApprentice || isLojasSustentavel) ? 1 : 2;
+      // Saturday, apprentices, Loja Sustentável, and no-lunch employees only need 1 complete pair; regular weekdays need 2
+      const minPairs = (isSat || isApprentice || isLojasSustentavel || isNoLunch) ? 1 : 2;
 
       let result: CalculationResult | null = null;
       const completePairs = punches.filter(p => p.dateIn && p.dateOut);

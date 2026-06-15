@@ -9,8 +9,10 @@ if (getApps().length === 0) {
 
 const db = getFirestore();
 
-// Anny Karoline Andrade Santos - employee id 64
-// Jornada: Seg-Sex 08:30 → 17:30 com 30 min de almoço = 8h30 = 510 min/dia
+// Anny Karoline Andrade Santos - employee id 64 (Loja Digital)
+// Jornada: Seg-Sex 08:30 → 17:30 DIRETO, sem intervalo de almoço = 9h = 540 min/dia.
+// Bate apenas 2 pontos por dia (entrada e saída) — tratada como "no-lunch employee"
+// (ver NO_LUNCH_EMPLOYEES em src/config/constants.ts).
 // Não trabalha aos sábados.
 // JS day-of-week: 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
 async function main() {
@@ -24,13 +26,13 @@ async function main() {
 
   await ref.update({
     works_saturday: false,
-    schedule_overrides: { '1': 510, '2': 510, '3': 510, '4': 510, '5': 510 },
-    expected_daily_minutes: 510,
+    schedule_overrides: { '1': 540, '2': 540, '3': 540, '4': 540, '5': 540 },
+    expected_daily_minutes: 540,
   });
 
   const after = (await ref.get()).data();
   console.log('\nDepois:', JSON.stringify(after, null, 2));
-  console.log('\n✓ Jornada atualizada: Seg-Sex 08:30→17:30 (510 min/dia, almoço 30min). Não trabalha sábado.');
+  console.log('\n✓ Jornada atualizada: Seg-Sex 08:30→17:30 direto (540 min/dia, sem almoço, 2 pontos). Não trabalha sábado.');
   process.exit(0);
 }
 

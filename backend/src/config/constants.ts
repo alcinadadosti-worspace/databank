@@ -161,6 +161,22 @@ export function getLojaSustentavelExpectedMinutes(dateStr: string): number {
 }
 
 /**
+ * Employees who work a straight shift with NO lunch break, punching only twice
+ * per weekday (entry and exit). Unlike Loja Sustentável, their expected minutes
+ * come from the normal schedule (expected_daily_minutes / schedule_overrides),
+ * so only the "1 pair, no lunch deduction" behavior is shared.
+ *   Anny Karoline (Loja Digital): Mon-Fri 08:30–17:30 = 540 min, 2 punches.
+ * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
+ */
+export const NO_LUNCH_EMPLOYEES = new Set([
+  'anny karoline andrade santos',
+]);
+
+export function isNoLunchEmployee(employeeName: string | null | undefined): boolean {
+  return !!(employeeName && NO_LUNCH_EMPLOYEES.has(employeeName.toLowerCase()));
+}
+
+/**
  * Return the expected Saturday work minutes for a given employee.
  * Employees in Loja Palmeira dos Indios and Loja Penedo work until 14:00 (360 min).
  * All others work until 12:00 (240 min).

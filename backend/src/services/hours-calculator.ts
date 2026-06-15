@@ -1,4 +1,4 @@
-import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, isHoliday, getExpectedMinutes, getSaturdayMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, isHoliday, getExpectedMinutes, getSaturdayMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee } from '../config/constants';
 
 export interface PunchSet {
   punch1: string | null; // Entry
@@ -54,6 +54,7 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   const date = options?.date;
   const isApprentice = options?.isApprentice ?? false;
   const isLojasSustentavel = isLojaSustentavelEmployee(options?.employeeName);
+  const isNoLunch = isNoLunchEmployee(options?.employeeName);
 
   // Loja Sustentável employees work on Sundays but not on holidays
   if (date && isLojasSustentavel) {
@@ -95,8 +96,8 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
     expectedMinutes = WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
   }
 
-  // Saturday or Apprentice: only need 2 punches (entry and exit)
-  if (isSat || isApprentice) {
+  // Saturday, Apprentice, or no-lunch employee: only need 2 punches (entry and exit)
+  if (isSat || isApprentice || isNoLunch) {
     if (!punches.punch1 || !punches.punch2) {
       return null;
     }
