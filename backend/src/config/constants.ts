@@ -138,12 +138,14 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
 
 /**
  * "Loja Sustentável Palmeira" employees with a 2-punch rotation schedule.
- * Only ONE employee works per day (alternating). Schedule:
+ * Only ONE employee works per day (Eduarda and Tayná alternate). Schedule:
  *   Mon-Sat: 09:00–21:00 (720 min)
  *   Sun:     09:00–20:00 (660 min)
+ * Names stored in lowercase form to match employee.name.toLowerCase().
  */
 export const LOJA_SUSTENTAVEL_EMPLOYEES = new Set([
   'eduarda pereira costa silva',
+  'luciene tayná félix da silva',
 ]);
 
 export function isLojaSustentavelEmployee(employeeName: string | null | undefined): boolean {
