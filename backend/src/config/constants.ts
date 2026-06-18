@@ -128,7 +128,6 @@ export function isSaturday(dateStr: string): boolean {
 export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   // Loja Palmeira dos Indios (under Kemilly, leader_id=10)
   'yasmin abilia ferro da silva',
-  'valesca meirelle bezerra vitória',
   'maria cicília brito veiga',
   // Loja Penedo (under Maria Taciane, leader_id=11)
   'deise gislaine silva vitor',

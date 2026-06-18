@@ -1249,7 +1249,6 @@ const LOJA_CORURIPE_EMPLOYEES = [
 // Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
 const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
   'yasmin abilia ferro da silva',
-  'valesca meirelle bezerra vitória',
   'maria cicília brito veiga',
 ];
 
