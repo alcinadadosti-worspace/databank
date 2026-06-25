@@ -1252,6 +1252,8 @@ const LOJA_CORURIPE_EMPLOYEES = [
 const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
   'yasmin abilia ferro da silva',
   'maria cicília brito veiga',
+  'bruna soares siqueira',
+  'edlane silva de lima',
 ];
 
 // Kemilly's original employees for Loja Sao Sebastiao (including herself as manager)
@@ -1265,6 +1267,7 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
 // Kemilly's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
 const LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES = [
   'eduarda pereira costa silva',
+  'luciene tayná félix da silva',
 ];
 
 // Store leaders from Canal Loja (leader_id=6) that should appear in their own units
