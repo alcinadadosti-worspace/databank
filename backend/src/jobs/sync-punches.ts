@@ -191,8 +191,10 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         result?.classification ?? null
       );
 
-      // Send alert if threshold exceeded (skip if silent sync)
-      if (!skipNotifications && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
+      // Send alert if threshold exceeded (skip if silent sync).
+      // no_punch_required employees are off the punch radar: keep saving their
+      // record for hours tracking, but never alert them even if Sólides has punches.
+      if (!skipNotifications && !employee.no_punch_required && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
         const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
           // Only send if Slack is configured

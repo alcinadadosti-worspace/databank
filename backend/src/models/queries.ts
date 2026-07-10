@@ -381,6 +381,7 @@ export async function getDailyRecordsByDate(date: string): Promise<DailyRecordFu
       leader_name: emp?.leader_name ?? '',
       leader_slack_id: emp?.leader_slack_id ?? null,
       leader_id: emp?.leader_id ?? 0,
+      no_punch_required: emp?.no_punch_required ?? false,
     };
   }).sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 }
@@ -1798,6 +1799,7 @@ export interface DailyRecordFull extends DailyRecord {
   leader_name: string;
   leader_slack_id: string | null;
   leader_id: number;
+  no_punch_required?: boolean;
   justification_reason?: string | null;
   justification_type?: string | null;
 }

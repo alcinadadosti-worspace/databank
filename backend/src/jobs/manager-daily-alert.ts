@@ -208,7 +208,10 @@ async function sendDailyManagerSummaries(date: string): Promise<void> {
   console.log(`[daily-manager-summary] Sending summaries for ${date}`);
 
   try {
-    const records = await queries.getDailyRecordsByDate(date);
+    const allRecords = await queries.getDailyRecordsByDate(date);
+    // Exclude no-punch-required employees — they are off the punch radar and
+    // must not appear in the manager's daily summary.
+    const records = allRecords.filter(r => !r.no_punch_required);
 
     if (records.length === 0) {
       console.log('[daily-manager-summary] No records for this date');
@@ -299,7 +302,8 @@ export async function sendWeeklyManagerAlerts(): Promise<void> {
     const allRecords: queries.DailyRecord[] = [];
     for (const date of dates) {
       const records = await queries.getDailyRecordsByDate(date);
-      allRecords.push(...records);
+      // Exclude no-punch-required employees from the weekly manager summary.
+      allRecords.push(...records.filter(r => !r.no_punch_required));
     }
 
     if (allRecords.length === 0) {
