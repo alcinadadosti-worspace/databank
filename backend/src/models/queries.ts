@@ -1238,6 +1238,7 @@ const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
   'maria tatiane basto cardoso',
   'josenildo alves',
   'shayane ferreira',
+  'jayane da silva dias',
 ];
 
 // Maria Taciane's original employees from Loja Coruripe (including herself as manager)
