@@ -5,10 +5,14 @@ import { todayISO, daysAgo } from '@/lib/utils';
 
 interface DateRangePickerProps {
   onRangeChange: (start: string, end: string) => void;
+  /** Days back used for the initial range (default: 30) */
+  initialDays?: number;
+  /** Show a "Tudo" button that clears both dates and emits empty strings */
+  allowClear?: boolean;
 }
 
-export default function DateRangePicker({ onRangeChange }: DateRangePickerProps) {
-  const [start, setStart] = useState(daysAgo(30));
+export default function DateRangePicker({ onRangeChange, initialDays = 30, allowClear = false }: DateRangePickerProps) {
+  const [start, setStart] = useState(daysAgo(initialDays));
   const [end, setEnd] = useState(todayISO());
 
   // Debounce the API call to avoid multiple requests when dates change rapidly
@@ -59,6 +63,16 @@ export default function DateRangePicker({ onRangeChange }: DateRangePickerProps)
     onRangeChange(s, e);
   }
 
+  // Empty dates mean "no date filter" for the consumer
+  function handleClear() {
+    setStart('');
+    setEnd('');
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    onRangeChange('', '');
+  }
+
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <div className="flex items-center gap-2">
@@ -86,6 +100,14 @@ export default function DateRangePicker({ onRangeChange }: DateRangePickerProps)
             {p.label}
           </button>
         ))}
+        {allowClear && (
+          <button
+            onClick={handleClear}
+            className="px-2.5 py-1 text-xs text-text-secondary hover:text-text-primary bg-bg-tertiary hover:bg-bg-hover border border-border rounded transition-colors"
+          >
+            Tudo
+          </button>
+        )}
       </div>
     </div>
   );

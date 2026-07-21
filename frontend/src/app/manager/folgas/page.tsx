@@ -13,7 +13,8 @@ import {
   type Employee,
   type VacationSchedule,
 } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatDate, todayISO, daysAgo } from '@/lib/utils';
+import DateRangePicker from '@/components/DateRangePicker';
 import { useManagerAuth } from '../ManagerAuthContext';
 
 type SubTab = 'folgas' | 'ferias';
@@ -55,6 +56,9 @@ export default function ManagerFolgas() {
     notes: '',
   });
   const [search, setSearch] = useState('');
+  // Filtro de data das folgas — abre nos últimos 7 dias
+  const [dateFrom, setDateFrom] = useState(daysAgo(7));
+  const [dateTo, setDateTo] = useState(todayISO());
 
   // Férias (vencimentos) state
   const [schedules, setSchedules] = useState<VacationSchedule[]>([]);
@@ -169,10 +173,14 @@ export default function ManagerFolgas() {
   }
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return folgas;
-    const s = search.toLowerCase();
-    return folgas.filter(f => f.employee_name?.toLowerCase().includes(s));
-  }, [folgas, search]);
+    const s = search.trim().toLowerCase();
+    return folgas.filter(f => {
+      if (dateFrom && f.date < dateFrom) return false;
+      if (dateTo && f.date > dateTo) return false;
+      if (s && !f.employee_name?.toLowerCase().includes(s)) return false;
+      return true;
+    });
+  }, [folgas, search, dateFrom, dateTo]);
 
   const filteredSchedules = useMemo(() => {
     const getEarliestDate = (sc: VacationSchedule) => {
@@ -242,6 +250,12 @@ export default function ManagerFolgas() {
               + Nova Folga
             </button>
           </div>
+
+          <DateRangePicker
+            initialDays={7}
+            allowClear
+            onRangeChange={(start, end) => { setDateFrom(start); setDateTo(end); }}
+          />
 
           {showForm && (
             <div className="card p-4">
@@ -398,7 +412,11 @@ export default function ManagerFolgas() {
             <p className="text-sm text-text-muted">Carregando...</p>
           ) : filtered.length === 0 ? (
             <div className="card text-center py-8">
-              <p className="text-text-tertiary">Nenhuma folga registrada para sua equipe</p>
+              <p className="text-text-tertiary">
+                {folgas.length > 0
+                  ? 'Nenhuma folga encontrada com os filtros aplicados'
+                  : 'Nenhuma folga registrada para sua equipe'}
+              </p>
             </div>
           ) : (
             <div className="card overflow-hidden">

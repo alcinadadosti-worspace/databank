@@ -21,7 +21,8 @@ import {
   type VacationSchedule,
   type Folga,
 } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatDate, todayISO, daysAgo } from '@/lib/utils';
+import DateRangePicker from '@/components/DateRangePicker';
 
 type Tab = 'ferias' | 'vencimentos' | 'folgas';
 
@@ -114,6 +115,9 @@ export default function AdminFerias() {
     notes: '',
   });
   const [folgaSearch, setFolgaSearch] = useState('');
+  // Filtro de data das folgas — abre nos últimos 7 dias
+  const [folgaDateFrom, setFolgaDateFrom] = useState(daysAgo(7));
+  const [folgaDateTo, setFolgaDateTo] = useState(todayISO());
 
   // Filter states
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'scheduled' | 'completed'>('all');
@@ -421,13 +425,14 @@ export default function AdminFerias() {
   }, [schedules, scheduleSearch]);
 
   const filteredFolgas = useMemo(() => {
-    if (!folgaSearch.trim()) return folgas;
-    const s = folgaSearch.toLowerCase();
-    return folgas.filter(f =>
-      f.employee_name?.toLowerCase().includes(s) ||
-      f.leader_name?.toLowerCase().includes(s)
-    );
-  }, [folgas, folgaSearch]);
+    const s = folgaSearch.trim().toLowerCase();
+    return folgas.filter(f => {
+      if (folgaDateFrom && f.date < folgaDateFrom) return false;
+      if (folgaDateTo && f.date > folgaDateTo) return false;
+      if (s && !f.employee_name?.toLowerCase().includes(s) && !f.leader_name?.toLowerCase().includes(s)) return false;
+      return true;
+    });
+  }, [folgas, folgaSearch, folgaDateFrom, folgaDateTo]);
 
   const employeesByLeader = useMemo(() => {
     const grouped = new Map<string, Employee[]>();
@@ -1088,6 +1093,12 @@ export default function AdminFerias() {
             </button>
           </div>
 
+          <DateRangePicker
+            initialDays={7}
+            allowClear
+            onRangeChange={(start, end) => { setFolgaDateFrom(start); setFolgaDateTo(end); }}
+          />
+
           {showFolgaForm && (
             <div className="card p-4">
               <div className="flex items-center justify-between mb-4">
@@ -1247,7 +1258,9 @@ export default function AdminFerias() {
             <p className="text-sm text-text-muted">Carregando...</p>
           ) : filteredFolgas.length === 0 ? (
             <div className="card text-center py-8">
-              <p className="text-text-tertiary">Nenhuma folga registrada</p>
+              <p className="text-text-tertiary">
+                {folgas.length > 0 ? 'Nenhuma folga encontrada com os filtros aplicados' : 'Nenhuma folga registrada'}
+              </p>
             </div>
           ) : (
             <>
