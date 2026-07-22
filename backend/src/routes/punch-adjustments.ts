@@ -82,9 +82,11 @@ router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (
       const employee = await queries.getEmployeeById(record.employee_id);
       const isApprentice = employee?.is_apprentice ?? false;
 
+      // scheduleOverrides is required here: without it an employee with a custom
+      // day-of-week schedule would be recalculated against the default 8h.
       const result = calculateDailyHours(
         { punch1: newPunch1 ?? null, punch2: newPunch2 ?? null, punch3: newPunch3 ?? null, punch4: newPunch4 ?? null },
-        { date: record.date, isApprentice, employeeName: employee?.name }
+        { date: record.date, isApprentice, employeeName: employee?.name, scheduleOverrides: employee?.schedule_overrides }
       );
 
       const totalWorkedMinutes = result?.totalWorkedMinutes ?? null;
@@ -297,9 +299,11 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       const employee = await queries.getEmployeeById(gate.record.employee_id);
       const isApprentice = employee?.is_apprentice ?? false;
 
+      // scheduleOverrides is required here: without it an employee with a custom
+      // day-of-week schedule would be recalculated against the default 8h.
       const result = calculateDailyHours(
         { punch1: newPunch1, punch2: newPunch2, punch3: newPunch3, punch4: newPunch4 },
-        { date: gate.record.date, isApprentice, employeeName: employee?.name }
+        { date: gate.record.date, isApprentice, employeeName: employee?.name, scheduleOverrides: employee?.schedule_overrides }
       );
 
       await queries.updateDailyRecordPunches(
