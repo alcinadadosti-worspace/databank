@@ -446,6 +446,14 @@ export async function editRecord(recordId: number, data: EditRecordData) {
   });
 }
 
+export async function editLeaderRecord(leaderId: number, recordId: number, data: EditRecordData) {
+  return apiFetch<EditRecordResult>(`/api/records/leader/${leaderId}/record/${recordId}`, {
+    method: 'PUT',
+    authType: 'manager',
+    body: JSON.stringify(data),
+  });
+}
+
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface User {
@@ -487,7 +495,7 @@ export interface DailyRecord {
   punch_4: string | null;
   total_worked_minutes: number | null;
   difference_minutes: number | null;
-  classification: 'normal' | 'late' | 'overtime' | 'folga' | 'falta' | 'aparelho_danificado' | 'atestado_medico' | 'outros' | 'sem_registro' | null;
+  classification: 'normal' | 'late' | 'overtime' | 'ajuste' | 'ferias' | 'folga' | 'falta' | 'aparelho_danificado' | 'atestado_medico' | 'outros' | 'sem_registro' | null;
   manager_note?: string | null;
   employee_name?: string;
   employee_slack_id?: string | null;

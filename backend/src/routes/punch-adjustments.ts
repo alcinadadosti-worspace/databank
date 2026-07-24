@@ -78,15 +78,13 @@ router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (
       const newPunch4 = corrected_punch_4 || record.punch_4;
 
       // Recalculate hours with new punches
-      const { calculateDailyHours } = await import('../services/hours-calculator');
+      const { calculateDailyHoursForEmployee } = await import('../services/hours-calculator');
       const employee = await queries.getEmployeeById(record.employee_id);
-      const isApprentice = employee?.is_apprentice ?? false;
 
-      // scheduleOverrides is required here: without it an employee with a custom
-      // day-of-week schedule would be recalculated against the default 8h.
-      const result = calculateDailyHours(
+      const result = calculateDailyHoursForEmployee(
         { punch1: newPunch1 ?? null, punch2: newPunch2 ?? null, punch3: newPunch3 ?? null, punch4: newPunch4 ?? null },
-        { date: record.date, isApprentice, employeeName: employee?.name, scheduleOverrides: employee?.schedule_overrides }
+        record.date,
+        employee
       );
 
       const totalWorkedMinutes = result?.totalWorkedMinutes ?? null;
@@ -295,15 +293,13 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       const newPunch3 = corrected_punch_3 ?? gate.record.punch_3 ?? null;
       const newPunch4 = corrected_punch_4 ?? gate.record.punch_4 ?? null;
 
-      const { calculateDailyHours } = await import('../services/hours-calculator');
+      const { calculateDailyHoursForEmployee } = await import('../services/hours-calculator');
       const employee = await queries.getEmployeeById(gate.record.employee_id);
-      const isApprentice = employee?.is_apprentice ?? false;
 
-      // scheduleOverrides is required here: without it an employee with a custom
-      // day-of-week schedule would be recalculated against the default 8h.
-      const result = calculateDailyHours(
+      const result = calculateDailyHoursForEmployee(
         { punch1: newPunch1, punch2: newPunch2, punch3: newPunch3, punch4: newPunch4 },
-        { date: gate.record.date, isApprentice, employeeName: employee?.name, scheduleOverrides: employee?.schedule_overrides }
+        gate.record.date,
+        employee
       );
 
       await queries.updateDailyRecordPunches(

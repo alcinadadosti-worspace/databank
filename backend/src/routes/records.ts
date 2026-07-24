@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { calculateDailyHoursForEmployee } from '../services/hours-calculator';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -96,6 +98,114 @@ router.get('/leader/:leaderId', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[records] Error fetching leader records:', error);
     res.status(500).json({ error: 'Failed to fetch records' });
+  }
+});
+
+/** PUT /api/records/leader/:leaderId/record/:recordId - Manager edits punches of their own team member */
+router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const leaderId = parseInt(req.params.leaderId as string, 10);
+    const recordId = parseInt(req.params.recordId as string, 10);
+    if (isNaN(leaderId) || isNaN(recordId)) {
+      res.status(400).json({ error: 'Invalid leader or record ID' });
+      return;
+    }
+
+    // Manager token must match the leader in the URL (admins can edit any team)
+    if (req.user!.role !== 'admin' && req.user!.id !== leaderId) {
+      res.status(403).json({ error: 'Acesso negado. Você só pode editar registros da sua equipe' });
+      return;
+    }
+
+    const { punch_1, punch_2, punch_3, punch_4, editedBy, reason } = req.body;
+
+    // Validate time format (HH:MM or null)
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    const punches = [punch_1, punch_2, punch_3, punch_4];
+    for (const p of punches) {
+      if (p !== null && p !== '' && !timeRegex.test(p)) {
+        res.status(400).json({ error: `Invalid time format: ${p}. Use HH:MM` });
+        return;
+      }
+    }
+
+    const existingRecord = await queries.getDailyRecordById(recordId);
+    if (!existingRecord) {
+      res.status(404).json({ error: 'Record not found' });
+      return;
+    }
+
+    // Same membership rule as the team listing (direct reports + secondary approvals)
+    const employee = await queries.getEmployeeById(existingRecord.employee_id);
+    if (!employee || (employee.leader_id !== leaderId && employee.secondary_approver_id !== leaderId)) {
+      res.status(403).json({ error: 'Colaborador não pertence à sua equipe' });
+      return;
+    }
+
+    // Recalculate hours with new punches
+    const punchSet = {
+      punch1: punch_1 || null,
+      punch2: punch_2 || null,
+      punch3: punch_3 || null,
+      punch4: punch_4 || null,
+    };
+
+    const calcResult = calculateDailyHoursForEmployee(punchSet, existingRecord.date, employee);
+
+    // Build old values for audit
+    const oldValues = {
+      punch_1: existingRecord.punch_1,
+      punch_2: existingRecord.punch_2,
+      punch_3: existingRecord.punch_3,
+      punch_4: existingRecord.punch_4,
+    };
+
+    const updated = await queries.updateDailyRecordPunches(
+      recordId,
+      punch_1 || null,
+      punch_2 || null,
+      punch_3 || null,
+      punch_4 || null,
+      calcResult?.totalWorkedMinutes ?? null,
+      calcResult?.differenceMinutes ?? null,
+      calcResult?.classification ?? null
+    );
+
+    if (!updated) {
+      res.status(404).json({ error: 'Record not found' });
+      return;
+    }
+
+    await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
+      JSON.stringify({
+        editedBy: editedBy || req.user!.name || 'gestor',
+        editorRole: 'manager',
+        leaderId,
+        reason: reason || 'Correção manual',
+        date: existingRecord.date,
+        employeeId: existingRecord.employee_id,
+        oldValues,
+        newValues: { punch_1, punch_2, punch_3, punch_4 },
+      })
+    );
+
+    res.json({
+      success: true,
+      message: 'Registro atualizado com sucesso',
+      record: {
+        id: recordId,
+        punch_1: punch_1 || null,
+        punch_2: punch_2 || null,
+        punch_3: punch_3 || null,
+        punch_4: punch_4 || null,
+        total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
+        difference_minutes: calcResult?.differenceMinutes ?? null,
+        classification: calcResult?.classification ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[records] Error editing leader record:', error);
+    res.status(500).json({ error: 'Failed to edit record' });
   }
 });
 

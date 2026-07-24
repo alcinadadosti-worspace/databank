@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
 import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
-import { calculateDailyHours } from '../services/hours-calculator';
+import { calculateDailyHours, calculateDailyHoursForEmployee } from '../services/hours-calculator';
 
 const router = Router();
 
@@ -353,13 +353,7 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       punch4: punch_4 || null,
     };
 
-    const calcResult = calculateDailyHours(punchSet, {
-      date: existingRecord.date,
-      isApprentice: employee?.is_apprentice ?? false,
-      expectedMinutes: employee?.expected_daily_minutes,
-      employeeName: employee?.name,
-      scheduleOverrides: employee?.schedule_overrides,
-    });
+    const calcResult = calculateDailyHoursForEmployee(punchSet, existingRecord.date, employee);
 
     // Build old values for audit
     const oldValues = {

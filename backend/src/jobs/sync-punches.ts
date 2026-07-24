@@ -1,5 +1,5 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
-import { shouldAlert, CalculationResult } from '../services/hours-calculator';
+import { shouldAlert, CalculationResult, calculateDailyHoursForEmployee } from '../services/hours-calculator';
 import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
@@ -56,6 +56,10 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
     // Get folgas for today (fetched once, used per employee)
     const onFolga = await queries.getEmployeesOnFolga(today);
 
+    // Existing records for the day — needed to preserve manually corrected punches
+    const existingRecords = await queries.getDailyRecordsByDate(today);
+    const existingByEmployee = new Map(existingRecords.map(r => [r.employee_id, r]));
+
     // Get all employees for matching
     const employees = await queries.getAllEmployees();
     const employeeBySolidesId = new Map<string, typeof employees[0]>();
@@ -97,10 +101,21 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const uniqueTimes = [...new Set(allTimestamps)].sort((a, b) => a - b);
 
       // Assign to punch1-4 in chronological order
-      const punch1 = uniqueTimes[0] ? millisToTime(uniqueTimes[0]) : null; // Entrada
-      const punch2 = uniqueTimes[1] ? millisToTime(uniqueTimes[1]) : null; // Saida almoco
-      const punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
-      const punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
+      let punch1 = uniqueTimes[0] ? millisToTime(uniqueTimes[0]) : null; // Entrada
+      let punch2 = uniqueTimes[1] ? millisToTime(uniqueTimes[1]) : null; // Saida almoco
+      let punch3 = uniqueTimes[2] ? millisToTime(uniqueTimes[2]) : null; // Retorno almoco
+      let punch4 = uniqueTimes[3] ? millisToTime(uniqueTimes[3]) : null; // Saida final
+
+      // Manually corrected fields (admin/manager edit, approved adjustment) win
+      // over Sólides data — otherwise every 5-min sync would silently revert them.
+      const existing = existingByEmployee.get(employee.id);
+      const manualFields = new Set<string>(
+        existing && existing.date === date ? existing.manual_punches ?? [] : []
+      );
+      if (manualFields.has('punch_1')) punch1 = existing!.punch_1;
+      if (manualFields.has('punch_2')) punch2 = existing!.punch_2;
+      if (manualFields.has('punch_3')) punch3 = existing!.punch_3;
+      if (manualFields.has('punch_4')) punch4 = existing!.punch_4;
 
       const isLojasSustentavel = isLojaSustentavelEmployee(employee.name);
       const isNoLunch = isNoLunchEmployee(employee.name);
@@ -159,24 +174,35 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const minPairs = (isSat || isApprentice || isLojasSustentavel || isNoLunch) ? 1 : 2;
 
       let result: CalculationResult | null = null;
-      const completePairs = punches.filter(p => p.dateIn && p.dateOut);
-      if (completePairs.length >= minPairs) {
-        completePairs.sort((a, b) => a.dateIn - b.dateIn);
-        let totalMs = 0;
-        for (const pair of completePairs) {
-          totalMs += pair.dateOut! - pair.dateIn;
+      if (manualFields.size > 0) {
+        // Epoch pairs from Sólides no longer reflect the stored punches after a
+        // manual correction — recalculate from the merged punch strings, exactly
+        // like the edit endpoints do, so the numbers never flip back and forth.
+        result = calculateDailyHoursForEmployee(
+          { punch1, punch2, punch3, punch4 },
+          date,
+          employee
+        );
+      } else {
+        const completePairs = punches.filter(p => p.dateIn && p.dateOut);
+        if (completePairs.length >= minPairs) {
+          completePairs.sort((a, b) => a.dateIn - b.dateIn);
+          let totalMs = 0;
+          for (const pair of completePairs) {
+            totalMs += pair.dateOut! - pair.dateIn;
+          }
+          const totalWorkedMinutes = Math.round(totalMs / 60000);
+          const differenceMinutes = totalWorkedMinutes - expectedMinutes;
+          let classification: HourClassification;
+          if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {
+            classification = 'normal';
+          } else if (differenceMinutes < 0) {
+            classification = 'late';
+          } else {
+            classification = 'overtime';
+          }
+          result = { totalWorkedMinutes, differenceMinutes, classification, isComplete: true };
         }
-        const totalWorkedMinutes = Math.round(totalMs / 60000);
-        const differenceMinutes = totalWorkedMinutes - expectedMinutes;
-        let classification: HourClassification;
-        if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {
-          classification = 'normal';
-        } else if (differenceMinutes < 0) {
-          classification = 'late';
-        } else {
-          classification = 'overtime';
-        }
-        result = { totalWorkedMinutes, differenceMinutes, classification, isComplete: true };
       }
 
       await queries.upsertDailyRecord(

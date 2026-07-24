@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import RecordsTable from '@/components/RecordsTable';
-import { getAllRecords, editRecord, type DailyRecord } from '@/lib/api';
+import { getLeaderRecords, editLeaderRecord, type DailyRecord } from '@/lib/api';
 import { exportRecordsToPDF } from '@/lib/pdf-export';
-import { formatDate } from '@/lib/utils';
+import { formatDate, daysAgo, todayISO } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { useManagerAuth } from '../ManagerAuthContext';
 
-export default function AdminRecords() {
+export default function ManagerRecords() {
+  const { manager } = useManagerAuth();
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
@@ -26,28 +28,13 @@ export default function AdminRecords() {
   const [error, setError] = useState('');
 
   // Filters
-  const [selectedLeaderId, setSelectedLeaderId] = useState<number | ''>('');
   const [searchName, setSearchName] = useState('');
 
-  const leaderOptions = useMemo(() => {
-    const map = new Map<number, string>();
-    for (const r of records) {
-      if (r.leader_id && r.leader_name) map.set(r.leader_id, r.leader_name);
-    }
-    return Array.from(map.entries())
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [records]);
-
   const filteredRecords = useMemo(() => {
-    let result = records;
-    if (selectedLeaderId !== '') result = result.filter(r => r.leader_id === selectedLeaderId);
-    if (searchName.trim()) {
-      const q = searchName.toLowerCase().trim();
-      result = result.filter(r => r.employee_name?.toLowerCase().includes(q));
-    }
-    return result;
-  }, [records, selectedLeaderId, searchName]);
+    if (!searchName.trim()) return records;
+    const q = searchName.toLowerCase().trim();
+    return records.filter(r => r.employee_name?.toLowerCase().includes(q));
+  }, [records, searchName]);
 
   function isSaturday(dateStr: string): boolean {
     const date = new Date(dateStr + 'T12:00:00');
@@ -88,11 +75,8 @@ export default function AdminRecords() {
       return;
     }
 
-    // Sort by manager, then employee, then date (raw ISO date — formatted DD/MM/YYYY doesn't sort chronologically)
+    // Sort by employee, then date (raw ISO date — formatted DD/MM/YYYY doesn't sort chronologically)
     const sortedRecords = [...filteredRecords].sort((a, b) => {
-      const leaderA = a.leader_name || 'Sem Gestor';
-      const leaderB = b.leader_name || 'Sem Gestor';
-      if (leaderA !== leaderB) return leaderA.localeCompare(leaderB);
       const nameA = a.employee_name || '';
       const nameB = b.employee_name || '';
       if (nameA !== nameB) return nameA.localeCompare(nameB);
@@ -102,7 +86,6 @@ export default function AdminRecords() {
     const excelData = sortedRecords.map(r => {
       const saturday = isSaturday(r.date);
       return {
-        'Gestor': r.leader_name || 'Sem Gestor',
         'ID': r.employee_id,
         'Colaborador': r.employee_name || '-',
         'Data': formatDate(r.date),
@@ -121,7 +104,6 @@ export default function AdminRecords() {
     const ws = XLSX.utils.json_to_sheet(excelData);
 
     ws['!cols'] = [
-      { wch: 20 },  // Gestor
       { wch: 8 },   // ID
       { wch: 25 },  // Colaborador
       { wch: 12 },  // Data
@@ -137,15 +119,16 @@ export default function AdminRecords() {
 
     XLSX.utils.book_append_sheet(wb, ws, 'Registros');
 
-    const filename = `registros_${dateRange.start}_a_${dateRange.end}.xlsx`;
+    const filename = `registros_equipe_${dateRange.start}_a_${dateRange.end}.xlsx`;
     XLSX.writeFile(wb, filename);
   }
 
   async function loadRecords(start: string, end: string) {
+    if (!manager) return;
     setLoading(true);
     setDateRange({ start, end });
     try {
-      const data = await getAllRecords(start, end);
+      const data = await getLeaderRecords(manager.id, start, end);
       setRecords(data.records);
     } catch (error) {
       console.error('Failed to load records:', error);
@@ -153,6 +136,12 @@ export default function AdminRecords() {
       setLoading(false);
     }
   }
+
+  // Initial load with the DateRangePicker's default range (last 30 days)
+  useEffect(() => {
+    if (manager) loadRecords(daysAgo(30), todayISO());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manager?.id]);
 
   function openEditModal(record: DailyRecord) {
     setEditingRecord(record);
@@ -172,17 +161,18 @@ export default function AdminRecords() {
   }
 
   async function handleSaveEdit() {
-    if (!editingRecord) return;
+    if (!editingRecord || !manager) return;
 
     setSaving(true);
     setError('');
 
     try {
-      const result = await editRecord(editingRecord.id, {
+      const result = await editLeaderRecord(manager.id, editingRecord.id, {
         punch_1: editForm.punch_1 || null,
         punch_2: editForm.punch_2 || null,
         punch_3: editForm.punch_3 || null,
         punch_4: editForm.punch_4 || null,
+        editedBy: manager.name,
         reason: editForm.reason || 'Correção manual',
       });
 
@@ -210,11 +200,15 @@ export default function AdminRecords() {
     }
   }
 
+  if (!manager) {
+    return null;
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Registros</h2>
-        <p className="text-sm text-text-tertiary mt-1">Todos os registros de ponto (clique no lápis para editar)</p>
+        <p className="text-sm text-text-tertiary mt-1">Registros de ponto da sua equipe (clique no lápis para corrigir)</p>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-end gap-4">
@@ -222,9 +216,9 @@ export default function AdminRecords() {
         <div className="flex gap-2">
           <button
             onClick={() => dateRange && exportRecordsToPDF(filteredRecords, {
-              title: 'Relatorio de Ponto',
+              title: 'Relatorio de Ponto - Equipe',
               dateRange,
-              showLeader: true,
+              leaderName: manager.name,
             })}
             disabled={filteredRecords.length === 0 || !dateRange}
             className="btn-secondary text-sm flex items-center gap-2 h-fit disabled:opacity-50 disabled:cursor-not-allowed"
@@ -254,19 +248,6 @@ export default function AdminRecords() {
       {records.length > 0 && (
         <div className="card p-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-text-tertiary">Gestor</label>
-              <select
-                value={selectedLeaderId}
-                onChange={(e) => setSelectedLeaderId(e.target.value ? Number(e.target.value) : '')}
-                className="input max-w-[220px]"
-              >
-                <option value="">Todos os gestores</option>
-                {leaderOptions.map(({ id, name }) => (
-                  <option key={id} value={id}>{name}</option>
-                ))}
-              </select>
-            </div>
             <div className="flex flex-col gap-1 flex-1">
               <label className="text-xs text-text-tertiary">Buscar colaborador</label>
               <input
@@ -277,10 +258,10 @@ export default function AdminRecords() {
                 className="input"
               />
             </div>
-            {(selectedLeaderId !== '' || searchName) && (
+            {searchName && (
               <div className="flex items-end">
                 <button
-                  onClick={() => { setSelectedLeaderId(''); setSearchName(''); }}
+                  onClick={() => setSearchName('')}
                   className="btn-secondary text-sm px-3 py-2"
                 >
                   Limpar
@@ -288,7 +269,7 @@ export default function AdminRecords() {
               </div>
             )}
           </div>
-          {(selectedLeaderId !== '' || searchName) && (
+          {searchName && (
             <p className="text-xs text-text-tertiary mt-2">
               {filteredRecords.length} de {records.length} registros
             </p>
@@ -302,7 +283,6 @@ export default function AdminRecords() {
         <RecordsTable
           records={filteredRecords}
           showEmployee
-          showLeader
           onEdit={openEditModal}
         />
       )}

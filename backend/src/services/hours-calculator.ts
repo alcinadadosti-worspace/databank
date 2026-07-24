@@ -161,6 +161,40 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   };
 }
 
+/** Minimal employee shape needed to recalculate a day's hours. */
+export interface EmployeeScheduleInfo {
+  name?: string | null;
+  is_apprentice?: boolean;
+  expected_daily_minutes?: number;
+  schedule_overrides?: Record<string, number>;
+}
+
+/**
+ * Recalculate a day's hours from punch strings for a specific employee.
+ * Single source of truth for every manual-edit path (admin edit, manager edit,
+ * punch-adjustment approval, sync recalc of manually-edited records).
+ *
+ * expectedMinutes is only forced for apprentices (their custom daily minutes);
+ * for everyone else calculateDailyHours must resolve it from the date so that
+ * schedule_overrides, Loja Sustentável and Saturday schedules apply — passing
+ * expectedMinutes explicitly would short-circuit all of those.
+ */
+export function calculateDailyHoursForEmployee(
+  punches: PunchSet,
+  date: string,
+  employee?: EmployeeScheduleInfo | null,
+): CalculationResult | null {
+  const isApprentice = employee?.is_apprentice === true;
+  const forceApprenticeMinutes = isApprentice && !employee?.schedule_overrides;
+  return calculateDailyHours(punches, {
+    date,
+    isApprentice,
+    ...(forceApprenticeMinutes ? { expectedMinutes: employee?.expected_daily_minutes || 240 } : {}),
+    employeeName: employee?.name,
+    scheduleOverrides: employee?.schedule_overrides,
+  });
+}
+
 /**
  * Check if a record should trigger an alert.
  * Returns true if |difference| >= ALERT_THRESHOLD_MINUTES (11).

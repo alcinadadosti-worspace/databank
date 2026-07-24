@@ -351,6 +351,15 @@ export async function updateDailyRecordPunches(
     .where('id', '==', recordId).limit(1).get();
   if (snap.empty) return false;
 
+  // Track which punch fields were changed by this manual edit so the Sólides
+  // sync never overwrites them again (see syncPunches).
+  const prev = snap.docs[0].data() || {};
+  const manualPunches = new Set<string>(Array.isArray(prev.manual_punches) ? prev.manual_punches : []);
+  if ((punch1 ?? null) !== (prev.punch_1 ?? null)) manualPunches.add('punch_1');
+  if ((punch2 ?? null) !== (prev.punch_2 ?? null)) manualPunches.add('punch_2');
+  if ((punch3 ?? null) !== (prev.punch_3 ?? null)) manualPunches.add('punch_3');
+  if ((punch4 ?? null) !== (prev.punch_4 ?? null)) manualPunches.add('punch_4');
+
   await snap.docs[0].ref.update({
     punch_1: punch1,
     punch_2: punch2,
@@ -359,8 +368,10 @@ export async function updateDailyRecordPunches(
     total_worked_minutes: totalWorkedMinutes,
     difference_minutes: differenceMinutes,
     classification,
+    manual_punches: Array.from(manualPunches),
     updated_at: new Date().toISOString(),
   });
+  invalidateCache('records_');
   return true;
 }
 
@@ -1788,6 +1799,7 @@ export interface DailyRecord {
   difference_minutes: number | null;
   classification: string | null;
   manager_note?: string | null;
+  manual_punches?: string[]; // Punch fields manually corrected (admin/manager edit); sync must not overwrite them
   alert_sent: number;
   manager_alert_sent: number;
   created_at: string;
