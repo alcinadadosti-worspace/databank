@@ -134,6 +134,7 @@ export default function ManagerAbsences() {
           <input
             type="date"
             value={date}
+            max={todayISO()}
             onChange={(e) => setDate(e.target.value)}
             className="input max-w-[150px]"
           />
@@ -266,7 +267,8 @@ export default function ManagerAbsences() {
               </div>
 
               <p className="text-xs text-gray-500">
-                No sábado, preencha apenas Entrada e Saída Almoço (que vale como saída).
+                Jornadas de 2 pontos (sábado, colaborador sem intervalo, Loja Sustentável):
+                preencha apenas Entrada e Saída Almoço — o segundo horário vale como saída.
               </p>
 
               <div>

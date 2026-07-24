@@ -222,7 +222,7 @@ router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, asyn
       res.status(400).json({ error: 'Invalid leader or employee ID' });
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date + 'T12:00:00Z').getTime())) {
       res.status(400).json({ error: 'Invalid date. Use YYYY-MM-DD' });
       return;
     }
