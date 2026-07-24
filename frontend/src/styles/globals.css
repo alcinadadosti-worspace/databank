@@ -179,6 +179,15 @@
     opacity: 0.6;
   }
 
+  /* Inputs inside white containers (edit modals) always sit on a light background,
+     so keep the dark icon even when the app theme is dark */
+  .bg-white input[type="date"]::-webkit-calendar-picker-indicator,
+  .bg-white input[type="time"]::-webkit-calendar-picker-indicator,
+  .bg-white input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: none;
+    opacity: 0.6;
+  }
+
   .sidebar-link {
     color: var(--text-secondary);
     @apply flex items-center gap-3 px-3 py-2 text-sm rounded transition-colors;
