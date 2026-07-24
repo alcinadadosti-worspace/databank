@@ -375,6 +375,79 @@ export async function updateDailyRecordPunches(
   return true;
 }
 
+/**
+ * Create or overwrite a daily record from a manual edit (admin/manager).
+ * Unlike upsertDailyRecord (sync), punches are REPLACED as given — and every
+ * field set/changed manually is flagged in manual_punches so the Sólides sync
+ * never overwrites it. Returns the record id.
+ */
+export async function upsertManualDailyRecord(
+  employeeId: number,
+  date: string,
+  punch1: string | null,
+  punch2: string | null,
+  punch3: string | null,
+  punch4: string | null,
+  totalWorkedMinutes: number | null,
+  differenceMinutes: number | null,
+  classification: string | null
+): Promise<number> {
+  const docId = dailyRecordDocId(employeeId, date);
+  const ref = getDb().collection(COLLECTIONS.DAILY_RECORDS).doc(docId);
+  const existing = await ref.get();
+  const now = new Date().toISOString();
+
+  if (existing.exists) {
+    const prev = existing.data() || {};
+    const manualPunches = new Set<string>(Array.isArray(prev.manual_punches) ? prev.manual_punches : []);
+    if ((punch1 ?? null) !== (prev.punch_1 ?? null)) manualPunches.add('punch_1');
+    if ((punch2 ?? null) !== (prev.punch_2 ?? null)) manualPunches.add('punch_2');
+    if ((punch3 ?? null) !== (prev.punch_3 ?? null)) manualPunches.add('punch_3');
+    if ((punch4 ?? null) !== (prev.punch_4 ?? null)) manualPunches.add('punch_4');
+
+    await ref.update({
+      punch_1: punch1,
+      punch_2: punch2,
+      punch_3: punch3,
+      punch_4: punch4,
+      total_worked_minutes: totalWorkedMinutes,
+      difference_minutes: differenceMinutes,
+      classification,
+      manual_punches: Array.from(manualPunches),
+      updated_at: now,
+    });
+    invalidateCache('records_');
+    return prev.id as number;
+  }
+
+  const id = await getNextId(COLLECTIONS.DAILY_RECORDS);
+  const manualPunches: string[] = [];
+  if (punch1) manualPunches.push('punch_1');
+  if (punch2) manualPunches.push('punch_2');
+  if (punch3) manualPunches.push('punch_3');
+  if (punch4) manualPunches.push('punch_4');
+
+  await ref.set({
+    id,
+    employee_id: employeeId,
+    date,
+    punch_1: punch1,
+    punch_2: punch2,
+    punch_3: punch3,
+    punch_4: punch4,
+    total_worked_minutes: totalWorkedMinutes,
+    difference_minutes: differenceMinutes,
+    classification,
+    manual_punches: manualPunches,
+    alert_sent: 0,
+    manager_alert_sent: 0,
+    created_at: now,
+    updated_at: now,
+  });
+  invalidateCache('records_');
+  return id;
+}
+
 export async function getDailyRecordsByDate(date: string): Promise<DailyRecordFull[]> {
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('date', '==', date).get();

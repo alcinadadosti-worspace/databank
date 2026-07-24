@@ -16,6 +16,7 @@ const managerNav: NavItem[] = [
   { label: 'Visao Geral', href: '/manager', icon: <IconUsers /> },
   { label: 'Equipe', href: '/manager/team', icon: <IconList /> },
   { label: 'Registros', href: '/manager/registros', icon: <IconClock /> },
+  { label: 'Ausências', href: '/manager/ausencias', icon: <IconUser /> },
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
   { label: 'Folgas / Férias', href: '/manager/folgas', icon: <IconUmbrella /> },

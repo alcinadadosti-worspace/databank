@@ -209,6 +209,117 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
   }
 });
 
+/** PUT /api/records/leader/:leaderId/employee/:employeeId/day/:date
+ *  Manager fills in punches for a team member's day — creates the daily record
+ *  when the employee has no record at all (e.g. forgot to punch the whole day). */
+router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const leaderId = parseInt(req.params.leaderId as string, 10);
+    const employeeId = parseInt(req.params.employeeId as string, 10);
+    const date = req.params.date as string;
+
+    if (isNaN(leaderId) || isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid leader or employee ID' });
+      return;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Invalid date. Use YYYY-MM-DD' });
+      return;
+    }
+
+    // Manager token must match the leader in the URL (admins can edit any team)
+    if (req.user!.role !== 'admin' && req.user!.id !== leaderId) {
+      res.status(403).json({ error: 'Acesso negado. Você só pode editar registros da sua equipe' });
+      return;
+    }
+
+    const { punch_1, punch_2, punch_3, punch_4, editedBy, reason } = req.body;
+
+    // Validate time format (HH:MM or null)
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    const punches = [punch_1, punch_2, punch_3, punch_4];
+    for (const p of punches) {
+      if (p !== null && p !== undefined && p !== '' && !timeRegex.test(p)) {
+        res.status(400).json({ error: `Invalid time format: ${p}. Use HH:MM` });
+        return;
+      }
+    }
+    if (!punch_1 && !punch_2 && !punch_3 && !punch_4) {
+      res.status(400).json({ error: 'Informe pelo menos um horário' });
+      return;
+    }
+
+    // Same membership rule as the team listing (direct reports + secondary approvals)
+    const employee = await queries.getEmployeeById(employeeId);
+    if (!employee || (employee.leader_id !== leaderId && employee.secondary_approver_id !== leaderId)) {
+      res.status(403).json({ error: 'Colaborador não pertence à sua equipe' });
+      return;
+    }
+
+    const punchSet = {
+      punch1: punch_1 || null,
+      punch2: punch_2 || null,
+      punch3: punch_3 || null,
+      punch4: punch_4 || null,
+    };
+
+    const calcResult = calculateDailyHoursForEmployee(punchSet, date, employee);
+
+    // Existing record (if any) for the audit trail
+    const existingRecord = await queries.getDailyRecord(employeeId, date);
+    const oldValues = {
+      punch_1: existingRecord?.punch_1 ?? null,
+      punch_2: existingRecord?.punch_2 ?? null,
+      punch_3: existingRecord?.punch_3 ?? null,
+      punch_4: existingRecord?.punch_4 ?? null,
+    };
+
+    const recordId = await queries.upsertManualDailyRecord(
+      employeeId,
+      date,
+      punch_1 || null,
+      punch_2 || null,
+      punch_3 || null,
+      punch_4 || null,
+      calcResult?.totalWorkedMinutes ?? null,
+      calcResult?.differenceMinutes ?? null,
+      calcResult?.classification ?? null
+    );
+
+    await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
+      JSON.stringify({
+        editedBy: editedBy || req.user!.name || 'gestor',
+        editorRole: 'manager',
+        leaderId,
+        reason: reason || 'Lançamento manual de ponto',
+        date,
+        employeeId,
+        createdRecord: !existingRecord,
+        oldValues,
+        newValues: { punch_1, punch_2, punch_3, punch_4 },
+      })
+    );
+
+    res.json({
+      success: true,
+      message: existingRecord ? 'Registro atualizado com sucesso' : 'Registro criado com sucesso',
+      record: {
+        id: recordId,
+        punch_1: punch_1 || null,
+        punch_2: punch_2 || null,
+        punch_3: punch_3 || null,
+        punch_4: punch_4 || null,
+        total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
+        difference_minutes: calcResult?.differenceMinutes ?? null,
+        classification: calcResult?.classification ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[records] Error fixing day record:', error);
+    res.status(500).json({ error: 'Failed to fix day record' });
+  }
+});
+
 /** GET /api/records/no-punch-decisions?start=YYYY-MM-DD&end=YYYY-MM-DD (Admin only) */
 router.get('/no-punch-decisions', async (req: Request, res: Response) => {
   try {

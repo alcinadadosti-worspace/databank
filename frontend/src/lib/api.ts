@@ -454,6 +454,15 @@ export async function editLeaderRecord(leaderId: number, recordId: number, data:
   });
 }
 
+// Creates the daily record when the employee has none for that day (e.g. forgot to punch)
+export async function fixLeaderDayRecord(leaderId: number, employeeId: number, date: string, data: EditRecordData) {
+  return apiFetch<EditRecordResult>(`/api/records/leader/${leaderId}/employee/${employeeId}/day/${date}`, {
+    method: 'PUT',
+    authType: 'manager',
+    body: JSON.stringify(data),
+  });
+}
+
 // ─── Types ─────────────────────────────────────────────────────
 
 export interface User {
