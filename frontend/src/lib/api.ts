@@ -859,6 +859,9 @@ export interface VacationSchedule {
   employee_id: number;
   period_1_date: string;
   period_2_date: string | null;
+  days_entitled?: number | null;
+  days_taken?: number | null;
+  days_remaining?: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -874,6 +877,9 @@ export async function createVacationSchedule(data: {
   employee_id: number;
   period_1_date: string;
   period_2_date?: string | null;
+  days_entitled?: number | null;
+  days_taken?: number | null;
+  days_remaining?: number | null;
   notes?: string;
 }) {
   return apiFetch<{ success: boolean; id: number; message: string }>('/api/vacation-schedules', {
@@ -885,6 +891,9 @@ export async function createVacationSchedule(data: {
 export async function updateVacationSchedule(id: number, data: {
   period_1_date: string;
   period_2_date?: string | null;
+  days_entitled?: number | null;
+  days_taken?: number | null;
+  days_remaining?: number | null;
   notes?: string;
 }) {
   return apiFetch<{ success: boolean; message: string }>(`/api/vacation-schedules/${id}`, {

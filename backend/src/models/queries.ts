@@ -2592,9 +2592,18 @@ export interface VacationSchedule {
   employee_id: number;
   period_1_date: string; // YYYY-MM-DD — data de vencimento do 1º período
   period_2_date: string | null; // YYYY-MM-DD — data de vencimento do 2º período (opcional)
+  days_entitled?: number | null; // Dias Dir. — dias de férias a que tem direito
+  days_taken?: number | null; // Dias Goz. — dias já gozados
+  days_remaining?: number | null; // Dias Rest. — saldo de dias disponível
   notes: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface VacationScheduleDays {
+  days_entitled?: number | null;
+  days_taken?: number | null;
+  days_remaining?: number | null;
 }
 
 export interface VacationScheduleWithEmployee extends VacationSchedule {
@@ -2632,7 +2641,8 @@ export async function insertVacationSchedule(
   employeeId: number,
   period1Date: string,
   period2Date: string | null,
-  notes?: string
+  notes?: string,
+  days?: VacationScheduleDays
 ): Promise<{ id: number }> {
   const id = await getNextId(COLLECTIONS.VACATION_SCHEDULES);
   const now = new Date().toISOString();
@@ -2641,6 +2651,9 @@ export async function insertVacationSchedule(
     employee_id: employeeId,
     period_1_date: period1Date,
     period_2_date: period2Date || null,
+    days_entitled: days?.days_entitled ?? null,
+    days_taken: days?.days_taken ?? null,
+    days_remaining: days?.days_remaining ?? null,
     notes: notes || null,
     created_at: now,
     updated_at: now,
@@ -2653,17 +2666,25 @@ export async function updateVacationSchedule(
   id: number,
   period1Date: string,
   period2Date: string | null,
-  notes?: string
+  notes?: string,
+  days?: VacationScheduleDays
 ): Promise<boolean> {
   const snap = await getDb().collection(COLLECTIONS.VACATION_SCHEDULES)
     .where('id', '==', id).limit(1).get();
   if (snap.empty) return false;
-  await snap.docs[0].ref.update({
+  const update: Record<string, unknown> = {
     period_1_date: period1Date,
     period_2_date: period2Date || null,
     notes: notes || null,
     updated_at: new Date().toISOString(),
-  });
+  };
+  // Só mexe nos campos de dias quando vierem no payload (mantém valores existentes)
+  if (days) {
+    if (days.days_entitled !== undefined) update.days_entitled = days.days_entitled;
+    if (days.days_taken !== undefined) update.days_taken = days.days_taken;
+    if (days.days_remaining !== undefined) update.days_remaining = days.days_remaining;
+  }
+  await snap.docs[0].ref.update(update);
   return true;
 }
 

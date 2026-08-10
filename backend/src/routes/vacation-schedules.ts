@@ -3,6 +3,21 @@ import * as queries from '../models/queries';
 
 const router = Router();
 
+/**
+ * Normaliza um campo de dias (Dias Dir./Goz./Rest.) vindo do body.
+ * Retorna: undefined = campo ausente (não mexer), null = limpar, number = valor.
+ * Aceita decimais (ex.: 27.5 dias); lança erro em valor negativo ou não numérico.
+ */
+function parseDaysField(value: unknown, field: string): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be a non-negative number`);
+  }
+  return n;
+}
+
 /** GET /api/vacation-schedules - Get all vacation schedules */
 router.get('/', async (_req: Request, res: Response) => {
   try {
@@ -40,6 +55,18 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    let days;
+    try {
+      days = {
+        days_entitled: parseDaysField(req.body.days_entitled, 'days_entitled'),
+        days_taken: parseDaysField(req.body.days_taken, 'days_taken'),
+        days_remaining: parseDaysField(req.body.days_remaining, 'days_remaining'),
+      };
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : 'Invalid days field' });
+      return;
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period_1_date)) {
       res.status(400).json({ error: 'Invalid date format for period_1_date. Use YYYY-MM-DD' });
       return;
@@ -67,7 +94,8 @@ router.post('/', async (req: Request, res: Response) => {
       employee_id,
       period_1_date,
       period_2_date || null,
-      notes
+      notes,
+      days
     );
 
     await queries.logAudit('VACATION_SCHEDULE_CREATED', 'vacation_schedule', result.id,
@@ -110,7 +138,19 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    const updated = await queries.updateVacationSchedule(id, period_1_date, period_2_date || null, notes);
+    let days;
+    try {
+      days = {
+        days_entitled: parseDaysField(req.body.days_entitled, 'days_entitled'),
+        days_taken: parseDaysField(req.body.days_taken, 'days_taken'),
+        days_remaining: parseDaysField(req.body.days_remaining, 'days_remaining'),
+      };
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : 'Invalid days field' });
+      return;
+    }
+
+    const updated = await queries.updateVacationSchedule(id, period_1_date, period_2_date || null, notes, days);
     if (!updated) {
       res.status(404).json({ error: 'Vacation schedule not found' });
       return;

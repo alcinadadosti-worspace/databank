@@ -96,6 +96,9 @@ export default function AdminFerias() {
     employee_id: 0,
     period_1_date: '',
     period_2_date: '',
+    days_entitled: '',
+    days_taken: '',
+    days_remaining: '',
     notes: '',
   });
 
@@ -232,7 +235,7 @@ export default function AdminFerias() {
   // ─── Schedule CRUD ────────────────────────────────────────────
 
   function resetScheduleForm() {
-    setScheduleForm({ employee_id: 0, period_1_date: '', period_2_date: '', notes: '' });
+    setScheduleForm({ employee_id: 0, period_1_date: '', period_2_date: '', days_entitled: '', days_taken: '', days_remaining: '', notes: '' });
     setEditingScheduleId(null);
     setShowScheduleForm(false);
     setError('');
@@ -243,6 +246,9 @@ export default function AdminFerias() {
       employee_id: schedule.employee_id,
       period_1_date: schedule.period_1_date,
       period_2_date: schedule.period_2_date || '',
+      days_entitled: schedule.days_entitled != null ? String(schedule.days_entitled) : '',
+      days_taken: schedule.days_taken != null ? String(schedule.days_taken) : '',
+      days_remaining: schedule.days_remaining != null ? String(schedule.days_remaining) : '',
       notes: schedule.notes || '',
     });
     setEditingScheduleId(schedule.id);
@@ -266,11 +272,17 @@ export default function AdminFerias() {
       return;
     }
 
+    // '' = campo vazio → null (limpa o valor no banco)
+    const toDays = (v: string) => (v === '' ? null : Number(v));
+
     try {
       if (editingScheduleId) {
         await updateVacationSchedule(editingScheduleId, {
           period_1_date: scheduleForm.period_1_date,
           period_2_date: scheduleForm.period_2_date || null,
+          days_entitled: toDays(scheduleForm.days_entitled),
+          days_taken: toDays(scheduleForm.days_taken),
+          days_remaining: toDays(scheduleForm.days_remaining),
           notes: scheduleForm.notes || undefined,
         });
       } else {
@@ -278,6 +290,9 @@ export default function AdminFerias() {
           employee_id: scheduleForm.employee_id,
           period_1_date: scheduleForm.period_1_date,
           period_2_date: scheduleForm.period_2_date || null,
+          days_entitled: toDays(scheduleForm.days_entitled),
+          days_taken: toDays(scheduleForm.days_taken),
+          days_remaining: toDays(scheduleForm.days_remaining),
           notes: scheduleForm.notes || undefined,
         });
       }
@@ -906,6 +921,47 @@ export default function AdminFerias() {
                       className="input w-full"
                     />
                   </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">Dias Dir.</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={scheduleForm.days_entitled}
+                        onChange={(e) => setScheduleForm(prev => ({ ...prev, days_entitled: e.target.value }))}
+                        placeholder="30"
+                        className="input w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">Dias Goz.</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={scheduleForm.days_taken}
+                        onChange={(e) => setScheduleForm(prev => ({ ...prev, days_taken: e.target.value }))}
+                        placeholder="0"
+                        className="input w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-text-secondary mb-1">Dias Rest.</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={scheduleForm.days_remaining}
+                        onChange={(e) => setScheduleForm(prev => ({ ...prev, days_remaining: e.target.value }))}
+                        placeholder="30"
+                        className="input w-full"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-text-muted -mt-2">
+                    Dias a que tem direito, ja gozados e saldo restante (opcional)
+                  </p>
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-1">
                       Observacoes <span className="text-text-muted font-normal">(opcional)</span>
@@ -976,6 +1032,12 @@ export default function AdminFerias() {
                           </div>
                         )}
                       </div>
+                      {(schedule.days_entitled != null || schedule.days_taken != null || schedule.days_remaining != null) && (
+                        <p className="text-xs text-text-secondary">
+                          Dias: {schedule.days_entitled ?? '—'} dir. · {schedule.days_taken ?? '—'} goz. ·{' '}
+                          <span className="font-medium text-text-primary">{schedule.days_remaining ?? '—'} rest.</span>
+                        </p>
+                      )}
                       <div className="flex items-center gap-3 pt-1">
                         <button onClick={() => handleEditSchedule(schedule)} className="text-text-muted hover:text-accent-primary transition-colors p-1" title="Editar">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1004,6 +1066,9 @@ export default function AdminFerias() {
                       <th className="px-4 py-3 font-medium">Gestor</th>
                       <th className="px-4 py-3 font-medium">1º Periodo</th>
                       <th className="px-4 py-3 font-medium">2º Periodo</th>
+                      <th className="px-4 py-3 font-medium text-center">Dias Dir.</th>
+                      <th className="px-4 py-3 font-medium text-center">Dias Goz.</th>
+                      <th className="px-4 py-3 font-medium text-center">Dias Rest.</th>
                       <th className="px-4 py-3 font-medium w-24">Acoes</th>
                     </tr>
                   </thead>
@@ -1045,6 +1110,25 @@ export default function AdminFerias() {
                               </div>
                             ) : (
                               <span className="text-xs text-text-muted">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-secondary text-center">
+                            {schedule.days_entitled ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-text-secondary text-center">
+                            {schedule.days_taken ?? '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {schedule.days_remaining != null ? (
+                              <span className={`text-xs px-2 py-1 rounded font-medium ${
+                                schedule.days_remaining === 0
+                                  ? 'bg-gray-500/20 text-gray-400'
+                                  : 'bg-blue-500/20 text-blue-400'
+                              }`}>
+                                {schedule.days_remaining}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-text-muted">—</span>
                             )}
                           </td>
                           <td className="px-4 py-3">
