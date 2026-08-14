@@ -1313,6 +1313,7 @@ const LOJA_PENEDO_EMPLOYEES = [
   'samyra anchieta bispo',
   'maria fernanda gomes vieira',
   'joanna queiroz',
+  'anny karoline andrade santos',
 ];
 
 // Maria Taciane's employees that came from Loja Teotonio Vilela (virtual unit)
