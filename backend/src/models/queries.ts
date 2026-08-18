@@ -21,11 +21,13 @@ const cache = new Map<string, CacheEntry<any>>();
 
 // Cache TTLs in milliseconds
 const CACHE_TTL = {
-  LEADERS: 10 * 60 * 1000,      // 10 minutes - rarely changes
-  EMPLOYEES: 10 * 60 * 1000,    // 10 minutes - rarely changes
+  LEADERS: 30 * 60 * 1000,      // 30 minutes - rarely changes; API writes invalidate immediately
+  EMPLOYEES: 30 * 60 * 1000,    // 30 minutes - rarely changes; API writes invalidate immediately.
+                                // Direct Firestore edits (scripts) take up to this long to show.
   RECORDS: 2 * 60 * 1000,       // 2 minutes - changes more often
   JUSTIFICATIONS: 2 * 60 * 1000, // 2 minutes
-  UNITS: 1 * 60 * 1000,         // 1 minute - for presence data
+  UNITS: 1 * 60 * 1000,         // 1 minute - for presence data (today)
+  UNITS_PAST: 10 * 60 * 1000,   // 10 minutes - past days only change via manual edits (which invalidate)
 };
 
 function getCached<T>(key: string): T | null {
@@ -660,6 +662,11 @@ export async function getAllRecordsRange(
 export async function getNoRecordDecisionsRange(
   startDate: string, endDate: string
 ): Promise<DailyRecordFull[]> {
+  // Cached per range; record writes invalidate via the 'records' pattern.
+  const cacheKey = `records_nopunch_${startDate}_${endDate}`;
+  const cached = getCached<DailyRecordFull[]>(cacheKey);
+  if (cached) return cached;
+
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('date', '>=', startDate)
     .where('date', '<=', endDate)
@@ -671,7 +678,7 @@ export async function getNoRecordDecisionsRange(
   const employees = await getAllEmployees();
   const empMap = new Map(employees.map(e => [e.id, e]));
 
-  return records.map(r => {
+  const result = records.map(r => {
     const emp = empMap.get(r.employee_id);
     return {
       ...r,
@@ -682,6 +689,7 @@ export async function getNoRecordDecisionsRange(
       leader_id: emp?.leader_id ?? 0,
     };
   }).sort((a, b) => b.date.localeCompare(a.date) || a.employee_name.localeCompare(b.employee_name));
+  return setCache(cacheKey, result, CACHE_TTL.RECORDS);
 }
 
 export async function upsertDailyRecord(
@@ -1112,6 +1120,23 @@ export async function getReviewedJustifications(
   const { limit, offset } = options || {};
   const isPaginated = limit !== undefined && offset !== undefined;
 
+  // Cache the joined list — the admin screen fetches this on every open and the
+  // collection grows forever. Key matches the 'records' and 'justifications'
+  // invalidation patterns, so reviews and punch edits refresh it immediately.
+  const cachedFull = getCached<JustificationFull[]>('records_justifications_reviewed_full');
+  if (cachedFull) {
+    if (isPaginated) {
+      return {
+        data: cachedFull.slice(offset, offset + limit),
+        total: cachedFull.length,
+        limit,
+        offset,
+        hasMore: offset + limit < cachedFull.length,
+      };
+    }
+    return cachedFull;
+  }
+
   const employees = await getAllEmployees();
   const empMap = new Map(employees.map(e => [e.id, e]));
 
@@ -1174,6 +1199,8 @@ export async function getReviewedJustifications(
       unit_name: UNIT_NAMES_MAP[emp?.leader_id ?? 0] ?? 'Outro',
     };
   }).sort((a: any, b: any) => b.reviewed_at?.localeCompare(a.reviewed_at ?? '') ?? 0);
+
+  setCache('records_justifications_reviewed_full', result, CACHE_TTL.JUSTIFICATIONS);
 
   if (isPaginated) {
     const sliced = result.slice(offset, offset + limit);
@@ -1423,6 +1450,12 @@ export interface UnitData {
 }
 
 export async function getUnitRecords(date: string): Promise<UnitData[]> {
+  // Unit views are hit repeatedly (dashboards, absence range view) — cache per
+  // date. Record/vacation/folga writes invalidate via the 'records_units' pattern.
+  const unitsCacheKey = `records_units_${date}`;
+  const cachedUnits = getCached<UnitData[]>(unitsCacheKey);
+  if (cachedUnits) return cachedUnits;
+
   const employees = await getAllEmployees();
   const leaders = await getAllLeaders();
 
@@ -1435,20 +1468,18 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const onVacation = await getEmployeesOnVacation(date);
   const onFolga = await getEmployeesOnFolga(date);
 
-  // Loja Sustentável rotation: determine who worked yesterday to mark the other as exempt today
+  // Loja Sustentável rotation: determine who worked yesterday to mark the other as
+  // exempt today. Only the rotation employees matter — fetch their docs directly
+  // instead of scanning the whole previous day.
   const yesterdayObj = new Date(date + 'T12:00:00Z');
   yesterdayObj.setUTCDate(yesterdayObj.getUTCDate() - 1);
   const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
-  const yesterdaySnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
-    .where('date', '==', yesterdayStr).get();
-  const yesterdayRecords = docsToArray<DailyRecord>(yesterdaySnap);
   const lojaSustentavelWorkedYesterday = new Set<number>();
-  for (const rec of yesterdayRecords) {
-    if (rec.punch_1 && LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(
-      (employees.find(e => e.id === rec.employee_id)?.name ?? '').toLowerCase()
-    )) {
-      lojaSustentavelWorkedYesterday.add(rec.employee_id);
-    }
+  const rotationEmps = employees.filter(e =>
+    LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(e.name.toLowerCase()));
+  for (const emp of rotationEmps) {
+    const rec = await getDailyRecord(emp.id, yesterdayStr);
+    if (rec?.punch_1) lojaSustentavelWorkedYesterday.add(emp.id);
   }
 
   // Separate employees who don't punch from regular employees
@@ -1782,7 +1813,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     return a.unit_name.localeCompare(b.unit_name);
   });
 
-  return units;
+  const todayStr = new Date().toISOString().split('T')[0];
+  return setCache(unitsCacheKey, units, date < todayStr ? CACHE_TTL.UNITS_PAST : CACHE_TTL.UNITS);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -2472,11 +2504,13 @@ export async function isEmployeeOnVacation(employeeId: number, date?: string): P
 export async function getEmployeesOnVacation(date?: string): Promise<Set<number>> {
   const checkDate = date || new Date().toISOString().split('T')[0];
 
+  // Filter on end_date in the query: past vacations (the part of the collection
+  // that grows forever) are excluded server-side instead of being read every call.
   const snap = await getDb().collection(COLLECTIONS.VACATIONS)
-    .where('start_date', '<=', checkDate)
+    .where('end_date', '>=', checkDate)
     .get();
 
-  const vacations = docsToArray<Vacation>(snap).filter(v => v.end_date >= checkDate);
+  const vacations = docsToArray<Vacation>(snap).filter(v => v.start_date <= checkDate);
   return new Set(vacations.map(v => v.employee_id));
 }
 
@@ -2501,6 +2535,7 @@ export async function insertVacation(
   };
   await getDb().collection(COLLECTIONS.VACATIONS).doc(String(id)).set(data);
   vacationsCache = null;
+  invalidateCache('records_units'); // vacations affect unit presence views
   return { id };
 }
 
@@ -2522,6 +2557,7 @@ export async function updateVacation(
     notes: notes || null,
   });
   vacationsCache = null;
+  invalidateCache('records_units'); // vacations affect unit presence views
   return true;
 }
 
@@ -2532,6 +2568,7 @@ export async function deleteVacation(id: number): Promise<boolean> {
 
   await snap.docs[0].ref.delete();
   vacationsCache = null;
+  invalidateCache('records_units'); // vacations affect unit presence views
   return true;
 }
 
@@ -2543,6 +2580,12 @@ export async function getVacationById(id: number): Promise<Vacation | undefined>
 }
 
 export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull[]> {
+  // Cache the joined list — the admin screen fetches this on every open and the
+  // collection grows forever. Key matches the 'records' and 'punch_adjustments'
+  // invalidation patterns, so reviews and punch edits refresh it immediately.
+  const cached = getCached<PunchAdjustmentFull[]>('records_punch_adjustments_reviewed');
+  if (cached) return cached;
+
   // Query approved and rejected separately to avoid needing composite index
   const [approvedSnap, rejectedSnap] = await Promise.all([
     getDb().collection(COLLECTIONS.PUNCH_ADJUSTMENTS).where('status', '==', 'approved').get(),
@@ -2565,14 +2608,18 @@ export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull
 
   const recordIds = [...new Set(adjustments.map(a => a.daily_record_id))];
   const recordMap = new Map<number, DailyRecord>();
-  for (const chunk of chunkArray(recordIds, 10)) {
-    for (const recordId of chunk) {
-      const record = await getDailyRecordById(recordId);
-      if (record) recordMap.set(recordId, record);
+  // Batch with 'in' queries (same pattern as getReviewedJustifications) instead
+  // of one query per record.
+  for (const chunk of chunkArray(recordIds, 30)) {
+    const rSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+      .where('id', 'in', chunk).get();
+    for (const doc of rSnap.docs) {
+      const record = doc.data() as DailyRecord;
+      recordMap.set(record.id, record);
     }
   }
 
-  return adjustments.map(a => {
+  const result = adjustments.map(a => {
     const emp = empMap.get(a.employee_id);
     const record = recordMap.get(a.daily_record_id);
     return {
@@ -2587,6 +2634,7 @@ export async function getReviewedPunchAdjustments(): Promise<PunchAdjustmentFull
       leader_id: emp?.leader_id ?? 0,
     };
   });
+  return setCache('records_punch_adjustments_reviewed', result, CACHE_TTL.JUSTIFICATIONS);
 }
 
 // ─── Vacation Schedules (Vencimentos de Férias) ───────────────
@@ -2801,6 +2849,7 @@ export async function insertFolga(
     created_by: createdBy || null,
   };
   await getDb().collection(COLLECTIONS.FOLGAS).doc(String(id)).set(data);
+  invalidateCache('records_units'); // folgas affect unit presence views
   return { id };
 }
 
@@ -2816,6 +2865,7 @@ export async function updateFolga(
   if (snap.empty) return false;
 
   await snap.docs[0].ref.update({ date, type, hours_off: hoursOff, notes: notes || null });
+  invalidateCache('records_units'); // folgas affect unit presence views
   return true;
 }
 
@@ -2824,6 +2874,7 @@ export async function deleteFolga(id: number): Promise<boolean> {
     .where('id', '==', id).limit(1).get();
   if (snap.empty) return false;
   await snap.docs[0].ref.delete();
+  invalidateCache('records_units'); // folgas affect unit presence views
   return true;
 }
 

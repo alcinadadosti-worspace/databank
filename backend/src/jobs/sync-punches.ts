@@ -21,6 +21,43 @@ export interface SyncOptions {
   skipNotifications?: boolean;
 }
 
+type PrevRecord = {
+  punch_1: string | null; punch_2: string | null; punch_3: string | null; punch_4: string | null;
+  total_worked_minutes: number | null; difference_minutes: number | null; classification: string | null;
+};
+
+/**
+ * Calls upsertDailyRecord only when it would actually modify the stored record,
+ * mirroring its null-preserve semantics (a null never overwrites a stored value).
+ * The sync runs every 5 minutes and most records change only a few times a day,
+ * so skipping no-op upserts avoids one Firestore read + one write per employee/run.
+ * Returns true when a write happened.
+ */
+async function upsertIfChanged(
+  prev: PrevRecord | undefined,
+  employeeId: number,
+  date: string,
+  punch1: string | null, punch2: string | null, punch3: string | null, punch4: string | null,
+  totalWorkedMinutes: number | null, differenceMinutes: number | null, classification: string | null
+): Promise<boolean> {
+  if (prev) {
+    const unchanged =
+      (punch1 ?? prev.punch_1 ?? null) === (prev.punch_1 ?? null) &&
+      (punch2 ?? prev.punch_2 ?? null) === (prev.punch_2 ?? null) &&
+      (punch3 ?? prev.punch_3 ?? null) === (prev.punch_3 ?? null) &&
+      (punch4 ?? prev.punch_4 ?? null) === (prev.punch_4 ?? null) &&
+      (totalWorkedMinutes ?? prev.total_worked_minutes ?? null) === (prev.total_worked_minutes ?? null) &&
+      (differenceMinutes ?? prev.difference_minutes ?? null) === (prev.difference_minutes ?? null) &&
+      (classification ?? prev.classification ?? null) === (prev.classification ?? null);
+    if (unchanged) return false;
+  }
+  await queries.upsertDailyRecord(
+    employeeId, date, punch1, punch2, punch3, punch4,
+    totalWorkedMinutes, differenceMinutes, classification
+  );
+  return true;
+}
+
 /**
  * Sync clock punches from Sólides API (READ-ONLY).
  *
@@ -73,6 +110,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
     }
 
     let processed = 0;
+    let changed = 0;
 
     for (const [key, punches] of grouped) {
       const [solidesEmpId, date] = key.split('_');
@@ -117,6 +155,9 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       if (manualFields.has('punch_3')) punch3 = existing!.punch_3;
       if (manualFields.has('punch_4')) punch4 = existing!.punch_4;
 
+      // Stored record for this exact date, used to skip no-op writes below
+      const prevRecord = existing && existing.date === date ? existing : undefined;
+
       const isLojasSustentavel = isLojaSustentavelEmployee(employee.name);
       const isNoLunch = isNoLunchEmployee(employee.name);
       const isSundayDate = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
@@ -127,17 +168,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         : await queries.isWorkingDayAsync(date);
       if (!workingDay) {
         // Still save the punches but don't calculate/classify
-        await queries.upsertDailyRecord(
-          employee.id,
-          date,
-          punch1,
-          punch2,
-          punch3,
-          punch4,
-          null,
-          null,
-          null
-        );
+        if (await upsertIfChanged(prevRecord, employee.id, date, punch1, punch2, punch3, punch4, null, null, null)) changed++;
         processed++;
         continue;
       }
@@ -145,10 +176,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       // Skip integral folga — save punches but classify as folga, no alerts
       const folgaRecord = onFolga.get(employee.id);
       if (folgaRecord?.type === 'integral') {
-        await queries.upsertDailyRecord(
-          employee.id, date, punch1, punch2, punch3, punch4,
-          null, null, 'folga'
-        );
+        if (await upsertIfChanged(prevRecord, employee.id, date, punch1, punch2, punch3, punch4, null, null, 'folga')) changed++;
         processed++;
         continue;
       }
@@ -205,22 +233,17 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         }
       }
 
-      await queries.upsertDailyRecord(
-        employee.id,
-        date,
-        punch1,
-        punch2,
-        punch3,
-        punch4,
+      if (await upsertIfChanged(
+        prevRecord, employee.id, date, punch1, punch2, punch3, punch4,
         result?.totalWorkedMinutes ?? null,
         result?.differenceMinutes ?? null,
         result?.classification ?? null
-      );
+      )) changed++;
 
       // Send alert if threshold exceeded (skip if silent sync).
       // no_punch_required employees are off the punch radar: keep saving their
       // record for hours tracking, but never alert them even if Sólides has punches.
-      if (!skipNotifications && !employee.no_punch_required && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
+      if (!skipNotifications && !employee.no_punch_required && !prevRecord?.alert_sent && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
         const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
           // Only send if Slack is configured
@@ -245,9 +268,13 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       processed++;
     }
 
-    await queries.logAudit('SYNC_COMPLETED', 'system', undefined,
-      `Synced ${punchData.length} punches for ${processed} employees on ${today}`);
-    console.log(`[sync] Completed. ${punchData.length} punches, ${processed} employees`);
+    // Only write an audit entry when something actually changed — the sync runs
+    // every 5 minutes and no-op entries just grow the audit collection.
+    if (changed > 0) {
+      await queries.logAudit('SYNC_COMPLETED', 'system', undefined,
+        `Synced ${punchData.length} punches for ${processed} employees (${changed} updated) on ${today}`);
+    }
+    console.log(`[sync] Completed. ${punchData.length} punches, ${processed} employees, ${changed} updated`);
   } catch (error) {
     console.error('[sync] Error syncing punches:', error);
     await queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));
