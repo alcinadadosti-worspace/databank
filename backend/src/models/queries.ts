@@ -1559,7 +1559,10 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const folgaType = folgaRecord?.type ?? null;
     const isRotationExempt = LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
       && lojaSustentavelWorkedYesterday.has(emp.id);
-    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt;
+    // Employees with works_saturday=false (e.g. apprentices) are off on Saturdays —
+    // never list them as absent nor offer "Lançar Ponto" for a day they don't work.
+    const isSaturdayOff = dateDow === 6 && emp.works_saturday === false;
+    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff;
     const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isExemptToday || !!(record?.punch_1);
     return {
       id: emp.id,
