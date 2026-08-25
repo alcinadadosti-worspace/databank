@@ -1360,6 +1360,7 @@ const LOJA_CORURIPE_EMPLOYEES = [
   'bruna rayane oliveira dos santos',
   'evellyn vitória nunes santos',
   'caroline leite dos santos',
+  'rayanne maria dos santos moca',
 ];
 
 // Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
