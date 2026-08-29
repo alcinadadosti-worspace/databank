@@ -23,7 +23,8 @@ const newEmployees = [
   { id: 119, name: 'Crislaine Freire dos Santos',        slack_id: 'U0BFUPEQ6B1', leader_id: 3,  secondary_approver_id: null, solides_employee_id: '6697469', is_apprentice: false, expected_daily_minutes: 480, no_punch_required: false, works_saturday: true },
   { id: 120, name: 'Jayane da Silva Dias',               slack_id: 'U0BGC241S81', leader_id: 11, secondary_approver_id: null, solides_employee_id: '6709153', is_apprentice: false, expected_daily_minutes: 480, no_punch_required: false, works_saturday: true },
   { id: 121, name: 'Juliene Reis Ferreira',              slack_id: 'U0BGDSAR0VA', leader_id: 12, secondary_approver_id: null, solides_employee_id: '6707696', is_apprentice: false, expected_daily_minutes: 480, no_punch_required: false, works_saturday: true },
-  { id: 122, name: 'Sabrina Barbosa Machado Mariano',    slack_id: 'U0BFUP30DEK', leader_id: 15, secondary_approver_id: null, solides_employee_id: '6706014', is_apprentice: false, expected_daily_minutes: 480, no_punch_required: false, works_saturday: true },
+  // slack_id corrigido em 2026-07-25 (era U0BFUP30DEK) — ver fix-sabrina-slack-jul2026.ts
+  { id: 122, name: 'Sabrina Barbosa Machado Mariano',    slack_id: 'U0BGKC2GLMV', leader_id: 15, secondary_approver_id: null, solides_employee_id: '6706014', is_apprentice: false, expected_daily_minutes: 480, no_punch_required: false, works_saturday: true },
 ];
 
 const MAX_NEW_ID = Math.max(...newEmployees.map(e => e.id));

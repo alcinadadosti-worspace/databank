@@ -246,8 +246,11 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       if (!skipNotifications && !employee.no_punch_required && !prevRecord?.alert_sent && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
         const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
-          // Only send if Slack is configured
-          if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-')) {
+          // Only send if Slack is configured AND the employee has a Slack account.
+          // Without the slack_id check the DM is impossible, sendEmployeeAlert bails
+          // out and alert_sent stays 0 — so every sync (5 min) retried the same
+          // record forever. Treat "no slack_id" like "no Slack configured".
+          if (env.SLACK_BOT_TOKEN && env.SLACK_BOT_TOKEN.startsWith('xoxb-') && employee.slack_id) {
             await sendEmployeeAlert(
               employee.slack_id,
               employee.name,
