@@ -1112,6 +1112,7 @@ const UNIT_NAMES_MAP: Record<number, string> = {
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
   15: 'Marketing',
+  17: 'Financeiro/Administrativo',    // Tomás - sub-líder do Financeiro
 };
 
 export async function getReviewedJustifications(
@@ -1528,6 +1529,14 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     }
     grouped.set(15, [...best.values()]);
     grouped.delete(16);
+  }
+
+  // Merge Financeiro sub-leader (17, Tomás) into leader (13, Michaell): Tomás ajusta o
+  // ponto do time e o Michaell só o do Tomás, mas a unidade continua uma só
+  const financeiro17 = grouped.get(17);
+  if (financeiro17) {
+    grouped.set(13, [...(grouped.get(13) || []), ...financeiro17]);
+    grouped.delete(17);
   }
 
   // Move store leaders from Canal Loja (leader_id=6) to their respective stores

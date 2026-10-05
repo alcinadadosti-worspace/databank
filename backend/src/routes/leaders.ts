@@ -28,6 +28,7 @@ const MANAGER_EMAILS: Record<string, string> = {
   'claramatoschagas@gmail.com': 'Ana Clara de Matos Chagas',
   'jontahenrique@gmail.com': 'Jonathan Henrique da Conceição Silva',
   'michael@cpalcina.com': 'Michaell Jean Nunes De Carvalho',
+  'tomas.cpalcina@gmail.com': 'Tomás Azevedo Santos',
   'suzana@cpalcina.com': 'Suzana Martins Tavares',
 };
 
