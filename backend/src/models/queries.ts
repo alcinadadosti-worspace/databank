@@ -2802,13 +2802,20 @@ export async function getAllFolgas(): Promise<FolgaWithEmployee[]> {
 }
 
 export async function getFolgasByLeader(leaderId: number): Promise<FolgaWithEmployee[]> {
-  const snap = await getDb().collection(COLLECTIONS.FOLGAS)
-    .where('leader_id', '==', leaderId)
-    .get();
-  const folgas = docsToArray<Folga>(snap).sort((a, b) => b.date.localeCompare(a.date));
-
-  const employees = await getAllEmployees();
+  // Same membership rule as the team listing (direct reports + secondary approvals).
+  // The folga's own leader_id is whoever created it and goes stale when the
+  // employee changes teams, so it can't be used to scope the manager's view.
+  const employees = await getEmployeesByLeaderId(leaderId);
   const empMap = new Map(employees.map(e => [e.id, e]));
+
+  const folgas: Folga[] = [];
+  for (const chunk of chunkArray(employees.map(e => e.id), 10)) {
+    const snap = await getDb().collection(COLLECTIONS.FOLGAS)
+      .where('employee_id', 'in', chunk)
+      .get();
+    folgas.push(...docsToArray<Folga>(snap));
+  }
+  folgas.sort((a, b) => b.date.localeCompare(a.date));
 
   return folgas.map(f => {
     const emp = empMap.get(f.employee_id);
