@@ -134,7 +134,6 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   // Loja Penedo (under Maria Taciane, leader_id=11)
   'deise gislaine silva vitor',
   'maria fernanda gomes vieira',
-  'joanna queiroz',
   'anny karoline andrade santos',
 ]);
 
@@ -169,13 +168,10 @@ export function getLojaSustentavelExpectedMinutes(dateStr: string): number {
  * per weekday (entry and exit). Unlike Loja Sustentável, their expected minutes
  * come from the normal schedule (expected_daily_minutes / schedule_overrides),
  * so only the "1 pair, no lunch deduction" behavior is shared.
- *   Juliene Reis (id 121), Loja Digital:
- *   Mon-Fri 08:30–17:30 straight = 540 min, 2 punches, no Saturday.
+ * Currently empty (Juliene Reis, id 121, was dismissed in Oct/2026).
  * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
  */
-export const NO_LUNCH_EMPLOYEES = new Set([
-  'juliene reis ferreira',
-]);
+export const NO_LUNCH_EMPLOYEES = new Set<string>([]);
 
 export function isNoLunchEmployee(employeeName: string | null | undefined): boolean {
   return !!(employeeName && NO_LUNCH_EMPLOYEES.has(employeeName.toLowerCase()));

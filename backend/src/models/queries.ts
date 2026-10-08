@@ -1340,7 +1340,6 @@ const LOJA_PENEDO_EMPLOYEES = [
   'deise gislaine silva vitor',
   'samyra anchieta bispo',
   'maria fernanda gomes vieira',
-  'joanna queiroz',
   'anny karoline andrade santos',
 ];
 
