@@ -30,6 +30,7 @@ const MANAGER_EMAILS: Record<string, string> = {
   'michael@cpalcina.com': 'Michaell Jean Nunes De Carvalho',
   'tomas.cpalcina@gmail.com': 'Tomás Azevedo Santos',
   'suzana@cpalcina.com': 'Suzana Martins Tavares',
+  'cordeirokeliany@gmail.com': 'Keliany Cordeiro Da Silva',
 };
 
 /** POST /api/leaders/auth - Authenticate manager by email */

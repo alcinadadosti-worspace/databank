@@ -218,8 +218,9 @@ async function sendDailyManagerSummaries(date: string): Promise<void> {
       return;
     }
 
-    // Group records by leader
-    const byLeader = new Map<number, {
+    // Group records by leader + alert recipient (alert_cover_leader_id can send
+    // part of a team to a different slack_id)
+    const byLeader = new Map<string, {
       leaderName: string;
       leaderSlackId: string | null;
       records: typeof records;
@@ -229,14 +230,15 @@ async function sendDailyManagerSummaries(date: string): Promise<void> {
       const leaderId = (record as any).leader_id;
       if (!leaderId) continue;
 
-      if (!byLeader.has(leaderId)) {
-        byLeader.set(leaderId, {
+      const key = `${leaderId}|${(record as any).leader_slack_id}`;
+      if (!byLeader.has(key)) {
+        byLeader.set(key, {
           leaderName: (record as any).leader_name || 'Sem Nome',
           leaderSlackId: (record as any).leader_slack_id,
           records: [],
         });
       }
-      byLeader.get(leaderId)!.records.push(record);
+      byLeader.get(key)!.records.push(record);
     }
 
     // Send summary to each leader
@@ -311,23 +313,24 @@ export async function sendWeeklyManagerAlerts(): Promise<void> {
       return;
     }
 
-    // Group records by leader
-    const byLeader = new Map<number, {
+    // Group records by leader + alert recipient (alert_cover_leader_id can send
+    // part of a team to a different slack_id)
+    const byLeader = new Map<string, {
       leaderName: string;
       leaderSlackId: string | null;
       records: typeof allRecords;
     }>();
 
     for (const record of allRecords) {
-      const leaderId = (record as any).leader_id;
-      if (!byLeader.has(leaderId)) {
-        byLeader.set(leaderId, {
+      const key = `${(record as any).leader_id}|${(record as any).leader_slack_id}`;
+      if (!byLeader.has(key)) {
+        byLeader.set(key, {
           leaderName: (record as any).leader_name,
           leaderSlackId: (record as any).leader_slack_id,
           records: [],
         });
       }
-      byLeader.get(leaderId)!.records.push(record);
+      byLeader.get(key)!.records.push(record);
     }
 
     // Send weekly summary to each leader

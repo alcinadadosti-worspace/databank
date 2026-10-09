@@ -660,8 +660,9 @@ router.post('/debug-manager-summary', async (req: Request, res: Response) => {
       return;
     }
 
-    // Group by leader
-    const byLeader = new Map<number, {
+    // Group by leader + alert recipient (alert_cover_leader_id can send part of a team elsewhere)
+    const byLeader = new Map<string, {
+      leaderId: number;
       leaderName: string;
       leaderSlackId: string | null;
       records: typeof records;
@@ -676,20 +677,22 @@ router.post('/debug-manager-summary', async (req: Request, res: Response) => {
         continue;
       }
 
-      if (!byLeader.has(leaderId)) {
-        byLeader.set(leaderId, {
+      const key = `${leaderId}|${(record as any).leader_slack_id}`;
+      if (!byLeader.has(key)) {
+        byLeader.set(key, {
+          leaderId,
           leaderName: (record as any).leader_name || 'Sem Nome',
           leaderSlackId: (record as any).leader_slack_id,
           records: [],
         });
       }
-      byLeader.get(leaderId)!.records.push(record);
+      byLeader.get(key)!.records.push(record);
     }
 
     // Check what would be sent to each leader
     const leaderSummaries: any[] = [];
 
-    for (const [leaderId, data] of byLeader) {
+    for (const { leaderId, ...data } of byLeader.values()) {
       const alertRecords = data.records.filter(
         r => r.classification !== 'normal' && Math.abs(r.difference_minutes || 0) >= 11
       );
@@ -746,8 +749,9 @@ router.post('/send-manager-summary', async (req: Request, res: Response) => {
       return;
     }
 
-    // Group by leader
-    const byLeader = new Map<number, {
+    // Group by leader + alert recipient (alert_cover_leader_id can send part of a team elsewhere)
+    const byLeader = new Map<string, {
+      leaderId: number;
       leaderName: string;
       leaderSlackId: string | null;
       records: typeof records;
@@ -757,20 +761,22 @@ router.post('/send-manager-summary', async (req: Request, res: Response) => {
       const leaderId = (record as any).leader_id;
       if (!leaderId) continue;
 
-      if (!byLeader.has(leaderId)) {
-        byLeader.set(leaderId, {
+      const key = `${leaderId}|${(record as any).leader_slack_id}`;
+      if (!byLeader.has(key)) {
+        byLeader.set(key, {
+          leaderId,
           leaderName: (record as any).leader_name || 'Sem Nome',
           leaderSlackId: (record as any).leader_slack_id,
           records: [],
         });
       }
-      byLeader.get(leaderId)!.records.push(record);
+      byLeader.get(key)!.records.push(record);
     }
 
     let sent = 0;
     const results: any[] = [];
 
-    for (const [leaderId, data] of byLeader) {
+    for (const { leaderId, ...data } of byLeader.values()) {
       try {
         await sendManagerDailySummary(
           data.leaderSlackId,

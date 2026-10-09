@@ -119,11 +119,13 @@ export async function getAllEmployees(): Promise<EmployeeWithLeader[]> {
   const result = employees.map(e => {
     const leader = leaderMap.get(e.leader_id);
     // If the leader has a cover_leader_id set (e.g. on vacation), route alerts
-    // to the covering leader's slack_id. Everything else (leader_id, leader_name,
-    // sector, web access) stays unchanged.
+    // to the covering leader's slack_id. An employee-level alert_cover_leader_id
+    // wins over it, so part of a team can alert someone else. Everything else
+    // (leader_id, leader_name, sector, web access) stays unchanged.
     let leaderSlackId = leader?.slack_id ?? null;
-    if (leader?.cover_leader_id) {
-      const cover = leaderMap.get(leader.cover_leader_id);
+    const coverId = e.alert_cover_leader_id ?? leader?.cover_leader_id;
+    if (coverId) {
+      const cover = leaderMap.get(coverId);
       if (cover?.slack_id) leaderSlackId = cover.slack_id;
     }
     return {
@@ -1106,13 +1108,14 @@ const UNIT_NAMES_MAP: Record<number, string> = {
   5: 'Dados TI',
   7: 'Supervisoras Penedo',           // Erick Café - VD team
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
-  10: 'Loja Palmeira dos Indios',     // Kemilly
+  10: 'Loja Sao Sebastiao',           // Kemilly
   11: 'Loja Coruripe',                // Maria Taciane
   12: 'Loja Digital',
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
   15: 'Marketing',
   17: 'Financeiro/Administrativo',    // Tomás - sub-líder do Financeiro
+  18: 'Loja Palmeira dos Indios',     // Keliany (também Loja Sustentável Palmeira)
 };
 
 export async function getReviewedJustifications(
@@ -1318,7 +1321,7 @@ const UNIT_NAMES: Record<number, string> = {
   // 6: 'Canal Loja' - removed, leaders moved to their respective stores
   7: 'Supervisoras Penedo',           // Erick Café - VD team
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
-  // 10, 11: Kemilly and Maria Taciane have multiple virtual units (handled separately)
+  // 10, 11, 18: Kemilly, Maria Taciane and Keliany have virtual units (handled separately)
   12: 'Loja Digital',
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
@@ -1363,8 +1366,8 @@ const LOJA_CORURIPE_EMPLOYEES = [
   'rayanne maria dos santos moca',
 ];
 
-// Kemilly's employees for Loja Palmeira dos Indios (transferred from Leidiane)
-const LOJA_PALMEIRA_KEMILLY_EMPLOYEES = [
+// Keliany's employees for Loja Palmeira dos Indios (transferred from Leidiane, then from Kemilly in Oct/2026)
+const LOJA_PALMEIRA_EMPLOYEES = [
   'yasmin abilia ferro da silva',
   'maria cicília brito veiga',
   'bruna soares siqueira',
@@ -1379,7 +1382,7 @@ const LOJA_SAO_SEBASTIAO_EMPLOYEES = [
   'nayara soares kimura',
 ];
 
-// Kemilly's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
+// Keliany's employees for Loja Sustentável Palmeira (rotation: 1 per day, 09:00-21:00/20:00 Sun)
 const LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES = [
   'eduarda pereira costa silva',
   'luciene tayná félix da silva',
@@ -1665,25 +1668,29 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
-  // Split Kemilly's employees into virtual units (Loja Palmeira dos Indios and Loja Sao Sebastiao)
+  // Kemilly's employees → Loja Sao Sebastiao (Palmeira dos Indios and Sustentável went to Keliany in Oct/2026)
   const kemillyLeader = leaderMap.get(10); // Kemilly ID
   const kemillyEmps = grouped.get(10) || [];
 
-  // Loja Palmeira dos Indios (Kemilly's employees - transferred from Leidiane)
-  const lojaPalmeiraKemillyEmps = kemillyEmps.filter(emp =>
-    LOJA_PALMEIRA_KEMILLY_EMPLOYEES.includes(emp.name.toLowerCase())
+  // Split Keliany's employees into virtual units (Loja Palmeira dos Indios and Loja Sustentável Palmeira)
+  const kelianyLeader = leaderMap.get(18); // Keliany ID
+  const kelianyEmps = grouped.get(18) || [];
+
+  // Loja Palmeira dos Indios (Keliany's employees - transferred from Kemilly)
+  const lojaPalmeiraEmps = kelianyEmps.filter(emp =>
+    LOJA_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
   );
-  if (lojaPalmeiraKemillyEmps.length > 0) {
-    const unitEmployees = lojaPalmeiraKemillyEmps.map(toUnitEmployee);
+  if (lojaPalmeiraEmps.length > 0) {
+    const unitEmployees = lojaPalmeiraEmps.map(toUnitEmployee);
     unitEmployees.sort((a, b) => {
       if (a.present !== b.present) return a.present ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
 
     units.push({
-      leader_id: 10,
+      leader_id: 18,
       unit_name: 'Loja Palmeira dos Indios',
-      leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
+      leader_name: kelianyLeader?.name ?? 'Keliany Cordeiro Da Silva',
       employees: unitEmployees,
       present_count: unitEmployees.filter(e => e.present).length,
       total_count: unitEmployees.length,
@@ -1711,8 +1718,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
-  // Loja Sustentável Palmeira (Kemilly's new unit)
-  const lojaSustentavelEmps = kemillyEmps.filter(emp =>
+  // Loja Sustentável Palmeira (Keliany's employees - transferred from Kemilly)
+  const lojaSustentavelEmps = kelianyEmps.filter(emp =>
     LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
   );
   if (lojaSustentavelEmps.length > 0) {
@@ -1723,9 +1730,9 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
 
     units.push({
-      leader_id: 10,
+      leader_id: 18,
       unit_name: 'Loja Sustentável Palmeira',
-      leader_name: kemillyLeader?.name ?? 'Kemilly Rafaelly Souza Silva',
+      leader_name: kelianyLeader?.name ?? 'Keliany Cordeiro Da Silva',
       employees: unitEmployees,
       present_count: unitEmployees.filter(e => e.present).length,
       total_count: unitEmployees.length,
@@ -1896,6 +1903,10 @@ export interface Employee {
   exemption_days?: number[]; // Days of week exempt from punching: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
   exemption_reason?: string; // Human-readable reason (e.g., "Curso às terças-feiras")
   schedule_overrides?: Record<string, number>; // Per-day expected minutes override: key = JS day-of-week ('0'=Sun...'6'=Sat)
+  // When set, this employee's Slack alerts go to this leader's slack_id instead of
+  // their own leader's (wins over the leader-wide cover_leader_id). leader_id,
+  // team membership and approvals stay unchanged — only alert routing moves.
+  alert_cover_leader_id?: number | null;
   created_at: string;
 }
 

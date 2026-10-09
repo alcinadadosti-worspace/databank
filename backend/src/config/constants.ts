@@ -126,7 +126,7 @@ export function isSaturday(dateStr: string): boolean {
  * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
  */
 export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
-  // Loja Palmeira dos Indios (under Kemilly, leader_id=10)
+  // Loja Palmeira dos Indios (under Keliany, leader_id=18)
   'yasmin abilia ferro da silva',
   'maria cicília brito veiga',
   'bruna soares siqueira',
