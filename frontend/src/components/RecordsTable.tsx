@@ -1,6 +1,6 @@
 'use client';
 
-import { formatMinutes, formatDate, classificationBadge, classificationLabel } from '@/lib/utils';
+import { formatMinutes, formatDate, formatDateTime, classificationBadge, classificationLabel } from '@/lib/utils';
 import type { DailyRecord } from '@/lib/api';
 
 interface RecordsTableProps {
@@ -85,6 +85,11 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                 <span className="truncate">{record.justification_reason}</span>
               </div>
             )}
+            {record.edited_by && (
+              <div className="text-xs text-text-secondary">
+                <ManualEditNote record={record} />
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -148,8 +153,9 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                     {classificationLabel(record.classification)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-text-secondary text-xs max-w-[180px]">
-                  {record.justification_reason ? (
+                <td className="px-4 py-3 text-text-secondary text-xs max-w-[220px] space-y-1">
+                  {!record.justification_reason && !record.edited_by && '—'}
+                  {record.justification_reason && (
                     <span className="flex items-center gap-1.5">
                       {record.justification_status === 'approved' && (
                         <span className="text-green-500 flex-shrink-0" title="Aprovada">✓</span>
@@ -165,7 +171,8 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                       )}
                       <span className="truncate">{record.justification_reason}</span>
                     </span>
-                  ) : '—'}
+                  )}
+                  <ManualEditNote record={record} />
                 </td>
               </tr>
             ))}
@@ -174,5 +181,24 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
         </div>
       </div>
     </>
+  );
+}
+
+// Reason typed by the gestor/RH when correcting punches via the pencil — RH needs to see why it changed
+function ManualEditNote({ record }: { record: DailyRecord }) {
+  if (!record.edited_by) return null;
+  const when = record.edited_at ? ` em ${formatDateTime(record.edited_at)}` : '';
+  const noteBy = record.edit_note_by || record.edited_by;
+  const title = record.edit_note
+    ? `Motivo (${noteBy}): ${record.edit_note}\nÚltimo ajuste por ${record.edited_by}${when}`
+    : `Ajustado por ${record.edited_by}${when}, sem motivo informado`;
+  return (
+    <span className="flex items-start gap-1.5" title={title}>
+      <span className="text-accent flex-shrink-0" aria-label="Ajuste manual">✎</span>
+      <span className="line-clamp-2 break-words">
+        {record.edit_note || <span className="italic text-text-muted">Sem motivo informado</span>}
+        <span className="text-text-muted"> — {record.edit_note ? noteBy : record.edited_by}</span>
+      </span>
+    </span>
   );
 }

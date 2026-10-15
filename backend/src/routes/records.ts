@@ -160,6 +160,8 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
       punch_4: existingRecord.punch_4,
     };
 
+    const edit = queries.buildManualEdit(reason, editedBy || req.user!.name || 'gestor', existingRecord);
+
     const updated = await queries.updateDailyRecordPunches(
       recordId,
       punch_1 || null,
@@ -168,7 +170,8 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
       punch_4 || null,
       calcResult?.totalWorkedMinutes ?? null,
       calcResult?.differenceMinutes ?? null,
-      calcResult?.classification ?? null
+      calcResult?.classification ?? null,
+      edit
     );
 
     if (!updated) {
@@ -178,10 +181,10 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
 
     await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
       JSON.stringify({
-        editedBy: editedBy || req.user!.name || 'gestor',
+        editedBy: edit.editedBy,
         editorRole: 'manager',
         leaderId,
-        reason: reason || 'Correção manual',
+        reason: edit.note || 'Correção manual',
         date: existingRecord.date,
         employeeId: existingRecord.employee_id,
         oldValues,
@@ -201,6 +204,10 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
         total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
         difference_minutes: calcResult?.differenceMinutes ?? null,
         classification: calcResult?.classification ?? null,
+        edit_note: edit.note,
+        edit_note_by: edit.noteBy,
+        edited_by: edit.editedBy,
+        edited_at: edit.editedAt,
       },
     });
   } catch (error) {
@@ -274,6 +281,8 @@ router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, asyn
       punch_4: existingRecord?.punch_4 ?? null,
     };
 
+    const edit = queries.buildManualEdit(reason, editedBy || req.user!.name || 'gestor', existingRecord);
+
     const recordId = await queries.upsertManualDailyRecord(
       employeeId,
       date,
@@ -283,15 +292,16 @@ router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, asyn
       punch_4 || null,
       calcResult?.totalWorkedMinutes ?? null,
       calcResult?.differenceMinutes ?? null,
-      calcResult?.classification ?? null
+      calcResult?.classification ?? null,
+      edit
     );
 
     await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
       JSON.stringify({
-        editedBy: editedBy || req.user!.name || 'gestor',
+        editedBy: edit.editedBy,
         editorRole: 'manager',
         leaderId,
-        reason: reason || 'Lançamento manual de ponto',
+        reason: edit.note || 'Lançamento manual de ponto',
         date,
         employeeId,
         createdRecord: !existingRecord,
@@ -312,6 +322,10 @@ router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, asyn
         total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
         difference_minutes: calcResult?.differenceMinutes ?? null,
         classification: calcResult?.classification ?? null,
+        edit_note: edit.note,
+        edit_note_by: edit.noteBy,
+        edited_by: edit.editedBy,
+        edited_at: edit.editedAt,
       },
     });
   } catch (error) {

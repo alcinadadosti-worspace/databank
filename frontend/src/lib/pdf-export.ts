@@ -14,6 +14,9 @@ interface RecordForPDF {
   classification: string | null;
   difference_minutes: number | null;
   justification_reason?: string | null;
+  edit_note?: string | null;
+  edit_note_by?: string | null;
+  edited_by?: string | null;
   leader_name?: string;
 }
 
@@ -158,6 +161,12 @@ export function exportRecordsToPDF(
 
   const rows = records.map(r => {
     const saturday = isSaturday(r.date);
+    const manualEdit = r.edited_by
+      ? (r.edit_note
+          ? `Ajuste (${r.edit_note_by || r.edited_by}): ${r.edit_note}`
+          : `Ajuste (${r.edited_by}): sem motivo informado`)
+      : null;
+    const justification = [r.justification_reason, manualEdit].filter(Boolean).join('\n') || '-';
     const baseRow = [
       r.employee_name || '-',
       ...(showLeader ? [r.leader_name || '-'] : []),
@@ -168,7 +177,7 @@ export function exportRecordsToPDF(
       saturday ? (r.punch_2 || '-') : (r.punch_4 || '-'),
       classificationLabel(r.classification),
       formatMinutes(r.difference_minutes),
-      r.justification_reason || '-',
+      justification,
     ];
     return baseRow;
   });

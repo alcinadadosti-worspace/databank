@@ -114,6 +114,9 @@ export default function AdminRecords() {
         'Classificacao': classificationLabel(r.classification),
         'Diferenca (min)': r.difference_minutes ?? '-',
         'Diferenca': formatMinutes(r.difference_minutes),
+        'Ajuste manual': r.edited_by
+          ? (r.edit_note ? `${r.edit_note} (por ${r.edit_note_by || r.edited_by})` : `Sem motivo informado (por ${r.edited_by})`)
+          : '-',
       };
     });
 
@@ -133,6 +136,7 @@ export default function AdminRecords() {
       { wch: 14 },  // Classificacao
       { wch: 14 },  // Diferenca (min)
       { wch: 12 },  // Diferenca
+      { wch: 45 },  // Ajuste manual
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, 'Registros');
@@ -161,7 +165,7 @@ export default function AdminRecords() {
       punch_2: record.punch_2 || '',
       punch_3: record.punch_3 || '',
       punch_4: record.punch_4 || '',
-      reason: '',
+      reason: record.edit_note || '',
     });
     setError('');
   }
@@ -183,7 +187,7 @@ export default function AdminRecords() {
         punch_2: editForm.punch_2 || null,
         punch_3: editForm.punch_3 || null,
         punch_4: editForm.punch_4 || null,
-        reason: editForm.reason || 'Correção manual',
+        reason: editForm.reason.trim(),
       });
 
       // Update the record in the list
@@ -198,6 +202,10 @@ export default function AdminRecords() {
               total_worked_minutes: result.record.total_worked_minutes,
               difference_minutes: result.record.difference_minutes,
               classification: result.record.classification as DailyRecord['classification'],
+              edit_note: result.record.edit_note ?? null,
+              edit_note_by: result.record.edit_note_by ?? null,
+              edited_by: result.record.edited_by ?? null,
+              edited_at: result.record.edited_at ?? null,
             }
           : r
       ));
@@ -381,6 +389,7 @@ export default function AdminRecords() {
                   onChange={(e) => setEditForm(prev => ({ ...prev, reason: e.target.value }))}
                   placeholder="Ex: Correção de ponto esquecido"
                   rows={2}
+                  maxLength={500}
                   className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>

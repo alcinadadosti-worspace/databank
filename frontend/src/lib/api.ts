@@ -436,6 +436,10 @@ export interface EditRecordResult {
     total_worked_minutes: number | null;
     difference_minutes: number | null;
     classification: string | null;
+    edit_note?: string | null;
+    edit_note_by?: string | null;
+    edited_by?: string | null;
+    edited_at?: string | null;
   };
 }
 
@@ -506,6 +510,11 @@ export interface DailyRecord {
   difference_minutes: number | null;
   classification: 'normal' | 'late' | 'overtime' | 'ajuste' | 'ferias' | 'folga' | 'falta' | 'aparelho_danificado' | 'atestado_medico' | 'outros' | 'sem_registro' | null;
   manager_note?: string | null;
+  // Latest manual edit (gestor/RH): reason typed in the modal (null = none given)
+  edit_note?: string | null;
+  edit_note_by?: string | null;
+  edited_by?: string | null;
+  edited_at?: string | null;
   employee_name?: string;
   employee_slack_id?: string | null;
   leader_name?: string;

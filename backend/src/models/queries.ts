@@ -341,6 +341,39 @@ export async function getDailyRecordById(recordId: number): Promise<DailyRecord 
   return snap.docs[0].data() as DailyRecord;
 }
 
+/** Who manually edited a record and why — stored on the record so RH sees it in Registros. */
+export interface ManualEditInfo {
+  note: string | null;
+  noteBy: string | null; // who wrote the note (kept when a later edit re-saves it unchanged)
+  editedBy: string;
+  editedAt: string;
+}
+
+/**
+ * Builds the edit info for a manual edit. The edit modal pre-fills the previous
+ * reason, so re-saving it unchanged must keep crediting whoever originally wrote it.
+ */
+export function buildManualEdit(
+  reason: unknown,
+  editedBy: string,
+  existing?: Pick<DailyRecord, 'edit_note' | 'edit_note_by' | 'edited_by'> | null
+): ManualEditInfo {
+  const trimmed = typeof reason === 'string' ? reason.trim() : '';
+  const note = trimmed ? trimmed.slice(0, 500) : null;
+  const unchanged = note !== null && note === (existing?.edit_note ?? null);
+  return {
+    note,
+    noteBy: note === null ? null : unchanged ? (existing?.edit_note_by ?? existing?.edited_by ?? editedBy) : editedBy,
+    editedBy,
+    editedAt: new Date().toISOString(),
+  };
+}
+
+function manualEditFields(edit?: ManualEditInfo) {
+  if (!edit) return {};
+  return { edit_note: edit.note, edit_note_by: edit.noteBy, edited_by: edit.editedBy, edited_at: edit.editedAt };
+}
+
 export async function updateDailyRecordPunches(
   recordId: number,
   punch1: string | null,
@@ -349,7 +382,8 @@ export async function updateDailyRecordPunches(
   punch4: string | null,
   totalWorkedMinutes: number | null,
   differenceMinutes: number | null,
-  classification: string | null
+  classification: string | null,
+  edit?: ManualEditInfo
 ) {
   const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
     .where('id', '==', recordId).limit(1).get();
@@ -373,6 +407,7 @@ export async function updateDailyRecordPunches(
     difference_minutes: differenceMinutes,
     classification,
     manual_punches: Array.from(manualPunches),
+    ...manualEditFields(edit),
     updated_at: new Date().toISOString(),
   });
   invalidateCache('records_');
@@ -394,7 +429,8 @@ export async function upsertManualDailyRecord(
   punch4: string | null,
   totalWorkedMinutes: number | null,
   differenceMinutes: number | null,
-  classification: string | null
+  classification: string | null,
+  edit?: ManualEditInfo
 ): Promise<number> {
   const docId = dailyRecordDocId(employeeId, date);
   const ref = getDb().collection(COLLECTIONS.DAILY_RECORDS).doc(docId);
@@ -418,6 +454,7 @@ export async function upsertManualDailyRecord(
       difference_minutes: differenceMinutes,
       classification,
       manual_punches: Array.from(manualPunches),
+      ...manualEditFields(edit),
       updated_at: now,
     });
     invalidateCache('records_');
@@ -443,6 +480,7 @@ export async function upsertManualDailyRecord(
     difference_minutes: differenceMinutes,
     classification,
     manual_punches: manualPunches,
+    ...manualEditFields(edit),
     alert_sent: 0,
     manager_alert_sent: 0,
     created_at: now,
@@ -1929,6 +1967,10 @@ export interface DailyRecord {
   classification: string | null;
   manager_note?: string | null;
   manual_punches?: string[]; // Punch fields manually corrected (admin/manager edit); sync must not overwrite them
+  edit_note?: string | null; // Reason typed in the latest manual edit (null = no reason given)
+  edit_note_by?: string | null; // Who wrote edit_note (may differ from edited_by)
+  edited_by?: string | null; // Who made the latest manual edit
+  edited_at?: string | null;
   alert_sent: number;
   manager_alert_sent: number;
   created_at: string;

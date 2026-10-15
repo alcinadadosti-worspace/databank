@@ -32,9 +32,14 @@ router.get('/export', async (req: Request, res: Response) => {
     // Without pagination options, getAllRecordsRange returns an array
     const records = Array.isArray(result) ? result : result.data;
 
-    const csvHeader = 'Data,Colaborador,Líder,Entrada,Saída Almoço,Retorno Almoço,Saída,Total(min),Diferença(min),Classificação,Justificativa\n';
-    const csvRows = records.map((r: any) =>
-      [
+    const csvHeader = 'Data,Colaborador,Líder,Entrada,Saída Almoço,Retorno Almoço,Saída,Total(min),Diferença(min),Classificação,Justificativa,Ajuste manual\n';
+    const csvRows = records.map((r: any) => {
+      const manualEdit = !r.edited_by
+        ? ''
+        : r.edit_note
+          ? `${r.edit_note} (por ${r.edit_note_by || r.edited_by})`
+          : `Sem motivo informado (por ${r.edited_by})`;
+      return [
         r.date,
         `"${r.employee_name}"`,
         `"${r.leader_name}"`,
@@ -46,8 +51,9 @@ router.get('/export', async (req: Request, res: Response) => {
         r.difference_minutes ?? '',
         r.classification || '',
         `"${r.justification_reason || ''}"`,
-      ].join(',')
-    ).join('\n');
+        `"${manualEdit.replace(/"/g, '""')}"`,
+      ].join(',');
+    }).join('\n');
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=banco-horas-${start}-${end}.csv`);
@@ -363,6 +369,8 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       punch_4: existingRecord.punch_4,
     };
 
+    const edit = queries.buildManualEdit(reason, editedBy || 'RH', existingRecord);
+
     // Update the record
     const updated = await queries.updateDailyRecordPunches(
       recordId,
@@ -372,7 +380,8 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       punch_4 || null,
       calcResult?.totalWorkedMinutes ?? null,
       calcResult?.differenceMinutes ?? null,
-      calcResult?.classification ?? null
+      calcResult?.classification ?? null,
+      edit
     );
 
     if (!updated) {
@@ -383,8 +392,8 @@ router.put('/record/:id', async (req: Request, res: Response) => {
     // Log the manual edit with details
     await queries.logAudit('MANUAL_PUNCH_EDIT', 'daily_record', recordId,
       JSON.stringify({
-        editedBy: editedBy || 'admin',
-        reason: reason || 'Correção manual',
+        editedBy: edit.editedBy,
+        reason: edit.note || 'Correção manual',
         date: existingRecord.date,
         employeeId: existingRecord.employee_id,
         oldValues,
@@ -404,6 +413,10 @@ router.put('/record/:id', async (req: Request, res: Response) => {
         total_worked_minutes: calcResult?.totalWorkedMinutes ?? null,
         difference_minutes: calcResult?.differenceMinutes ?? null,
         classification: calcResult?.classification ?? null,
+        edit_note: edit.note,
+        edit_note_by: edit.noteBy,
+        edited_by: edit.editedBy,
+        edited_at: edit.editedAt,
       },
     });
   } catch (error) {

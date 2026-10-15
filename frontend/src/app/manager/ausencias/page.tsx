@@ -145,7 +145,7 @@ export default function ManagerAbsences() {
         punch_3: fixForm.punch_3 || null,
         punch_4: fixForm.punch_4 || null,
         editedBy: manager.name,
-        reason: fixForm.reason || 'Lançamento manual de ponto',
+        reason: fixForm.reason.trim(),
       });
 
       closeFixModal();
@@ -378,6 +378,7 @@ export default function ManagerAbsences() {
                   onChange={(e) => setFixForm(prev => ({ ...prev, reason: e.target.value }))}
                   placeholder="Ex: Aparelho de ponto indisponível"
                   rows={2}
+                  maxLength={500}
                   className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
