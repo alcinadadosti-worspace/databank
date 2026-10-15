@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
 import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
-import { calculateDailyHours, calculateDailyHoursForEmployee } from '../services/hours-calculator';
+import { calculateDailyHours } from '../services/hours-calculator';
+import { recalculateDay } from '../services/day-recalc';
 
 const router = Router();
 
@@ -33,6 +34,8 @@ router.get('/export', async (req: Request, res: Response) => {
     const records = Array.isArray(result) ? result : result.data;
 
     const csvHeader = 'Data,Colaborador,Líder,Entrada,Saída Almoço,Retorno Almoço,Saída,Total(min),Diferença(min),Classificação,Justificativa,Ajuste manual\n';
+    // Free text (justifications, edit notes) may contain quotes/commas/newlines
+    const csvText = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csvRows = records.map((r: any) => {
       const manualEdit = !r.edited_by
         ? ''
@@ -41,8 +44,8 @@ router.get('/export', async (req: Request, res: Response) => {
           : `Sem motivo informado (por ${r.edited_by})`;
       return [
         r.date,
-        `"${r.employee_name}"`,
-        `"${r.leader_name}"`,
+        csvText(r.employee_name),
+        csvText(r.leader_name),
         r.punch_1 || '',
         r.punch_2 || '',
         r.punch_3 || '',
@@ -50,8 +53,8 @@ router.get('/export', async (req: Request, res: Response) => {
         r.total_worked_minutes ?? '',
         r.difference_minutes ?? '',
         r.classification || '',
-        `"${r.justification_reason || ''}"`,
-        `"${manualEdit.replace(/"/g, '""')}"`,
+        csvText(r.justification_reason),
+        csvText(manualEdit),
       ].join(',');
     }).join('\n');
 
@@ -202,7 +205,8 @@ router.post('/sync-range', async (req: Request, res: Response) => {
         current.setDate(current.getDate() + 1);
       }
 
-      status.status = 'completed';
+      // Any failed day (e.g. Sólides API down) must show as an error, not "concluída"
+      status.status = status.errors > 0 ? 'error' : 'completed';
       status.completedAt = new Date().toISOString();
 
       await queries.logAudit('SYNC_RANGE', 'admin', undefined,
@@ -348,8 +352,9 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    // Get employee info for recalculation
-    const employee = await queries.getEmployeeById(existingRecord.employee_id);
+    // Get employee info for recalculation (RH may fix records of dismissed
+    // employees, who are no longer registered — recalc with the default schedule)
+    const employee = (await queries.getEmployeeById(existingRecord.employee_id)) ?? { id: existingRecord.employee_id };
 
     // Recalculate hours with new punches
     const punchSet = {
@@ -359,7 +364,7 @@ router.put('/record/:id', async (req: Request, res: Response) => {
       punch4: punch_4 || null,
     };
 
-    const calcResult = calculateDailyHoursForEmployee(punchSet, existingRecord.date, employee);
+    const calcResult = await recalculateDay(punchSet, existingRecord.date, employee);
 
     // Build old values for audit
     const oldValues = {
@@ -660,7 +665,7 @@ router.post('/debug-manager-summary', async (req: Request, res: Response) => {
     console.log(`[debug] Checking manager summary for date: ${targetDate}`);
 
     // Get all records for the date
-    const records = await queries.getDailyRecordsByDate(targetDate);
+    const records = await queries.attachJustifications(await queries.getDailyRecordsByDate(targetDate));
     console.log(`[debug] Found ${records.length} records`);
 
     if (records.length === 0) {
@@ -755,7 +760,7 @@ router.post('/send-manager-summary', async (req: Request, res: Response) => {
 
     console.log(`[admin] Force sending manager summary for: ${date}`);
 
-    const records = await queries.getDailyRecordsByDate(date);
+    const records = await queries.attachJustifications(await queries.getDailyRecordsByDate(date));
 
     if (records.length === 0) {
       res.json({ success: false, message: 'Nenhum registro encontrado para esta data' });

@@ -191,11 +191,24 @@ interface ManagerSyncStatus {
 const managerSyncJobs = new Map<string, ManagerSyncStatus>();
 
 /** POST /api/leaders/:id/sync - Sync punches for a leader's team (no notifications) */
-router.post('/:id/sync', async (req: Request, res: Response) => {
+router.post('/:id/sync', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const leaderId = parseInt(req.params.id as string, 10);
     if (isNaN(leaderId)) {
       res.status(400).json({ error: 'Invalid leader ID' });
+      return;
+    }
+    if (req.user!.role !== 'admin' && req.user!.id !== leaderId) {
+      res.status(403).json({ error: 'Acesso negado. Você só pode sincronizar a sua equipe' });
+      return;
+    }
+
+    // Only this gestor's team (direct reports + secondary approvals) — this used to
+    // re-sync every employee in the company
+    const team = await queries.getEmployeesByLeaderId(leaderId);
+    const teamIds = new Set(team.map(e => e.id));
+    if (teamIds.size === 0) {
+      res.status(400).json({ error: 'Nenhum colaborador na sua equipe' });
       return;
     }
 
@@ -262,7 +275,7 @@ router.post('/:id/sync', async (req: Request, res: Response) => {
         status.currentDate = dateStr;
 
         try {
-          await syncPunches(dateStr, { skipNotifications: true });
+          await syncPunches(dateStr, { skipNotifications: true, employeeIds: teamIds });
           status.synced++;
           console.log(`[leaders] Manager sync: ${dateStr} (${status.synced}/${diffDays})`);
         } catch (err) {
@@ -273,7 +286,8 @@ router.post('/:id/sync', async (req: Request, res: Response) => {
         current.setDate(current.getDate() + 1);
       }
 
-      status.status = 'completed';
+      // Any failed day (e.g. Sólides API down) must show as an error, not "concluída"
+      status.status = status.errors > 0 ? 'error' : 'completed';
       status.completedAt = new Date().toISOString();
 
       await queries.logAudit('MANAGER_SYNC', 'leader', leaderId,

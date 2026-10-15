@@ -19,7 +19,19 @@ function millisToTime(millis: number): string {
 
 export interface SyncOptions {
   skipNotifications?: boolean;
+  /** Only touch these employees (e.g. a gestor syncing just their own team) */
+  employeeIds?: ReadonlySet<number>;
 }
+
+/**
+ * Classifications that record a decision (gestor via Slack, the 10:00 check's
+ * "ajuste", vacation/folga). A re-sync with the same punches must not replace
+ * them with the computed late/overtime/normal; new punches from Sólides (e.g. RH
+ * fixed the missing one) do get recalculated.
+ */
+const DECISION_CLASSIFICATIONS = new Set([
+  'ajuste', 'folga', 'falta', 'aparelho_danificado', 'atestado_medico', 'outros', 'ferias',
+]);
 
 type PrevRecord = {
   punch_1: string | null; punch_2: string | null; punch_3: string | null; punch_4: string | null;
@@ -122,6 +134,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         employee = employeeByName.get(firstPunch.employeeName.toLowerCase().trim());
       }
       if (!employee) continue;
+      if (options?.employeeIds && !options.employeeIds.has(employee.id)) continue;
 
       // Link Sólides ID if not yet linked
       if (!employee.solides_employee_id) {
@@ -209,7 +222,8 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         result = calculateDailyHoursForEmployee(
           { punch1, punch2, punch3, punch4 },
           date,
-          employee
+          employee,
+          { minutesOff: folgaRecord?.type === 'partial' ? folgaRecord.hours_off * 60 : 0 }
         );
       } else {
         const completePairs = punches.filter(p => p.dateIn && p.dateOut);
@@ -233,17 +247,26 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         }
       }
 
+      // null keeps the stored value (upsertDailyRecord never overwrites with null,
+      // so a punch that comes back null also counts as unchanged)
+      const punchesUnchanged = !!prevRecord
+        && (punch1 ?? prevRecord.punch_1 ?? null) === (prevRecord.punch_1 ?? null)
+        && (punch2 ?? prevRecord.punch_2 ?? null) === (prevRecord.punch_2 ?? null)
+        && (punch3 ?? prevRecord.punch_3 ?? null) === (prevRecord.punch_3 ?? null)
+        && (punch4 ?? prevRecord.punch_4 ?? null) === (prevRecord.punch_4 ?? null);
+      const keepDecision = punchesUnchanged
+        && !!prevRecord?.classification && DECISION_CLASSIFICATIONS.has(prevRecord.classification);
       if (await upsertIfChanged(
         prevRecord, employee.id, date, punch1, punch2, punch3, punch4,
         result?.totalWorkedMinutes ?? null,
         result?.differenceMinutes ?? null,
-        result?.classification ?? null
+        keepDecision ? null : (result?.classification ?? null)
       )) changed++;
 
       // Send alert if threshold exceeded (skip if silent sync).
       // no_punch_required employees are off the punch radar: keep saving their
       // record for hours tracking, but never alert them even if Sólides has punches.
-      if (!skipNotifications && !employee.no_punch_required && !prevRecord?.alert_sent && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
+      if (!skipNotifications && !keepDecision && !employee.no_punch_required && !prevRecord?.alert_sent && result && shouldAlert(result.differenceMinutes) && result.classification !== 'normal') {
         const record = await queries.getDailyRecord(employee.id, date);
         if (record && !record.alert_sent) {
           // Only send if Slack is configured AND the employee has a Slack account.
@@ -281,5 +304,8 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
   } catch (error) {
     console.error('[sync] Error syncing punches:', error);
     await queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));
+    // Re-throw so manual syncs report the failure instead of "concluída com 0 erros"
+    // (every caller — scheduler, admin and gestor sync — already catches it)
+    throw error;
   }
 }

@@ -666,6 +666,66 @@ export async function sendJustificationReviewNotification(
   }
 }
 
+// ─── Send Punch Adjustment Review Notification ─────────────────
+
+/** Tells the employee how the gestor ruled on their punch-adjustment request (Slack said "Aguarde a revisão"). */
+export async function sendPunchAdjustmentReviewNotification(
+  employeeSlackId: string | null,
+  employeeName: string,
+  date: string,
+  status: 'approved' | 'rejected',
+  managerName: string,
+  managerComment: string | null,
+  correctedPunches?: { punch_1: string | null; punch_2: string | null; punch_3: string | null; punch_4: string | null },
+  opts: { requestedByEmployee?: boolean } = {}
+): Promise<void> {
+  const app = getSlackApp();
+  if (!app) return;
+  const targetUser = getTargetUserId(employeeSlackId);
+  if (!targetUser) {
+    console.log(`[slack] Skipping punch adjustment review notification for ${employeeName} — no slack_id`);
+    return;
+  }
+
+  const requested = opts.requestedByEmployee !== false;
+  const isApproved = status === 'approved';
+  const emoji = isApproved ? ':white_check_mark:' : ':x:';
+  const statusLabel = isApproved ? 'APROVADO' : 'REJEITADO';
+  const header = requested ? `${emoji} Ajuste de ponto ${statusLabel}` : `${emoji} Ponto ajustado pelo gestor`;
+  const summary = requested
+    ? `Seu pedido de ajuste de ponto foi ${statusLabel.toLowerCase()}`
+    : `Seu gestor ajustou o seu ponto de ${formatDateBR(date)}`;
+
+  const lines = [
+    `*Colaborador:* ${employeeName}`,
+    `*Data:* ${formatDateBR(date)}`,
+    ...(requested ? [`*Status:* ${statusLabel}`] : []),
+    `*Revisado por:* ${managerName}`,
+  ];
+  if (isApproved && correctedPunches) {
+    const labels: [keyof typeof correctedPunches, string][] = [
+      ['punch_1', 'Entrada'], ['punch_2', 'Intervalo'], ['punch_3', 'Retorno'], ['punch_4', 'Saída'],
+    ];
+    const set = labels.filter(([k]) => correctedPunches[k]).map(([k, label]) => `${label} ${correctedPunches[k]}`);
+    if (set.length > 0) lines.push(`*Horários registrados:* ${set.join(' · ')}`);
+  }
+  if (managerComment) lines.push('', '*Comentário do gestor:*', `> ${managerComment}`);
+
+  try {
+    await rateLimitedPostMessage(app, {
+      channel: targetUser,
+      text: summary,
+      blocks: [
+        { type: 'header' as const, text: { type: 'plain_text' as const, text: header, emoji: true } },
+        { type: 'section' as const, text: { type: 'mrkdwn' as const, text: lines.join('\n') } },
+      ],
+    });
+    console.log(`[slack] Punch adjustment review notification sent to ${employeeName} (${status})`);
+  } catch (error) {
+    console.error(`[slack] Failed to send punch adjustment review notification:`, error);
+  }
+}
+
 // ─── Send No Record Notification (to Manager) ─────────────────
 
 export async function sendNoRecordNotification(
@@ -1279,6 +1339,20 @@ function registerInteractions(app: App): void {
         await queries.upsertDailyRecord(employee_id, date, null, null, null, null, null, null, 'folga');
         await queries.logAudit('MANAGER_SET_FOLGA', 'employee', employee_id,
           `${employee_name} on ${date} marked as folga (no prior record)`);
+      }
+
+      // Also register it as a real integral folga, so it shows in the Folgas tabs
+      // and in presence (before, it only changed the record's label)
+      const employee = await queries.getEmployeeById(employee_id);
+      const alreadyHasFolga = (await queries.getEmployeesOnFolga(date)).has(employee_id);
+      if (employee && !alreadyHasFolga) {
+        const clicker = await queries.getLeaderBySlackId((body as any).user?.id ?? '');
+        const isSaturday = new Date(date + 'T12:00:00Z').getUTCDay() === 6;
+        await queries.insertFolga(
+          employee_id, employee.leader_id, date, 'integral', isSaturday ? 4 : 8,
+          'Registrada pelo gestor no Slack (dia sem registro de ponto)',
+          clicker?.name ?? 'Gestor (Slack)'
+        );
       }
 
       // Update the message to confirm

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { getUnitRecords, resyncPunches, type UnitData } from '@/lib/api';
-import { todayISO } from '@/lib/utils';
+import { todayISO, classificationBadge, classificationLabel } from '@/lib/utils';
 
 export default function FuncionamentoUnidade() {
   const [units, setUnits] = useState<UnitData[]>([]);
@@ -35,6 +35,7 @@ export default function FuncionamentoUnidade() {
       await loadData();
     } catch (error) {
       console.error('Failed to resync:', error);
+      alert('Nao foi possivel atualizar os pontos agora (falha na comunicacao com a Solides). Tente novamente em alguns minutos.');
     } finally {
       setSyncing(false);
     }
@@ -95,7 +96,7 @@ export default function FuncionamentoUnidade() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {units.map((unit) => (
-            <div key={unit.leader_id} className="card p-0 overflow-hidden">
+            <div key={unit.leader_id + '_' + unit.unit_name} className="card p-0 overflow-hidden">
               {/* Unit header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
@@ -148,7 +149,9 @@ export default function FuncionamentoUnidade() {
                             {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
                             {!emp.punch_1 && (isHoliday
                               ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
-                              : <span className="text-status-danger">Sem registro</span>
+                              : emp.absence_decision
+                                ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>
+                                : <span className="text-status-danger">Sem registro</span>
                             )}
                           </>
                         ) : (
@@ -159,7 +162,9 @@ export default function FuncionamentoUnidade() {
                             {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
                             {!emp.punch_1 && (isHoliday
                               ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
-                              : <span className="text-status-danger">Sem registro</span>
+                              : emp.absence_decision
+                                ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>
+                                : <span className="text-status-danger">Sem registro</span>
                             )}
                           </>
                         )}

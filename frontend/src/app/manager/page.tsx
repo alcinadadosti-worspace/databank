@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import RecordsTable from '@/components/RecordsTable';
 import { getLeaderRecords, getUnitRecords, type DailyRecord, type UnitData } from '@/lib/api';
-import { daysAgo, todayISO } from '@/lib/utils';
+import { daysAgo, todayISO, classificationBadge, classificationLabel } from '@/lib/utils';
 import { useManagerAuth } from './ManagerAuthContext';
 import { useDebounce } from '@/lib/hooks';
 import { exportRecordsToPDF, exportWeeklySummaryToPDF } from '@/lib/pdf-export';
@@ -138,7 +138,9 @@ export default function ManagerDashboard() {
                             <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title="Jovem Aprendiz - 4h/dia">JA</span>
                             {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
                             {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
-                            {!emp.punch_1 && <span className="text-status-danger">Sem registro</span>}
+                            {!emp.punch_1 && (emp.absence_decision
+                              ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>
+                              : <span className="text-status-danger">Sem registro</span>)}
                           </>
                         ) : (
                           <>
@@ -146,8 +148,9 @@ export default function ManagerDashboard() {
                             {emp.punch_2 && <span title="Saida almoco">{emp.punch_2}</span>}
                             {emp.punch_3 && <span title="Retorno almoco">{emp.punch_3}</span>}
                             {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
-                            {!emp.punch_1 && (
-                              <span className="text-status-danger">Sem registro</span>
+                            {!emp.punch_1 && (emp.absence_decision
+                              ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>
+                              : <span className="text-status-danger">Sem registro</span>
                             )}
                           </>
                         )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getUnitRecords, getEmployeesByLeader, fixLeaderDayRecord, type UnitData, type UnitEmployee } from '@/lib/api';
-import { todayISO, daysAgo, formatDate } from '@/lib/utils';
+import { todayISO, daysAgo, formatDate, classificationBadge, classificationLabel } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
 
 interface AbsentRow {
@@ -242,7 +242,9 @@ export default function ManagerAbsences() {
                         {weekdayLabel(day.date)}, {formatDate(day.date)}
                       </h3>
                       <span className="text-xs text-text-muted">
-                        {day.rows.length} de {day.totalEmployees} sem registro
+                        {day.rows.filter(r => !r.employee.absence_decision).length} de {day.totalEmployees} sem registro
+                        {day.rows.some(r => r.employee.absence_decision) &&
+                          ` · ${day.rows.filter(r => r.employee.absence_decision).length} com decisão no Slack`}
                       </span>
                       {day.isHoliday && (
                         <span className="text-2xs font-medium text-status-warning bg-status-warning/10 px-1.5 py-0.5 rounded">
@@ -264,8 +266,16 @@ export default function ManagerAbsences() {
                         <div className="divide-y divide-border-subtle">
                           {day.rows.filter(r => r.unitName === unitName).map(({ employee, canFix }) => (
                             <div key={employee.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-hover transition-colors">
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-status-danger" title="Sem registro" />
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${employee.absence_decision ? 'bg-status-warning' : 'bg-status-danger'}`}
+                                title={employee.absence_decision ? 'Decisão registrada no Slack' : 'Sem registro'}
+                              />
                               <span className="text-sm flex-1 min-w-0 truncate text-text-primary">{employee.name}</span>
+                              {employee.absence_decision && (
+                                <span className={`${classificationBadge(employee.absence_decision)} flex-shrink-0`} title="Decisão registrada pelo gestor no Slack">
+                                  {classificationLabel(employee.absence_decision)}
+                                </span>
+                              )}
                               {employee.is_on_folga && employee.folga_type === 'partial' && (
                                 <span className="text-2xs font-medium text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded flex-shrink-0">
                                   Folga parcial

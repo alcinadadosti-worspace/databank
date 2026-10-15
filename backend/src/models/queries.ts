@@ -512,6 +512,20 @@ export async function getDailyRecordsByDate(date: string): Promise<DailyRecordFu
   }).sort((a, b) => a.employee_name.localeCompare(b.employee_name));
 }
 
+/**
+ * An employee's records in [startDate, endDate], filtered in memory: equality on
+ * employee_id only, so it needs no composite index (unlike the range query below).
+ */
+export async function getEmployeeRecordsInRange(
+  employeeId: number, startDate: string, endDate: string
+): Promise<DailyRecord[]> {
+  const snap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
+    .where('employee_id', '==', employeeId).get();
+  return docsToArray<DailyRecord>(snap)
+    .filter(r => r.date >= startDate && r.date <= endDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export async function getDailyRecordsByEmployeeRange(
   employeeId: number, startDate: string, endDate: string
 ): Promise<DailyRecordWithJustification[]> {
@@ -529,7 +543,7 @@ export async function getDailyRecordsByEmployeeRange(
   const justMap = new Map<number, { reason: string; type: string; status: string | null }>();
   for (const doc of justSnap.docs) {
     const j = doc.data();
-    justMap.set(j.daily_record_id, { reason: j.reason, type: j.type, status: j.status || null });
+    justMap.set(j.daily_record_id, { reason: justificationDisplayText(j as { reason: string; custom_note?: string | null }), type: j.type, status: j.status || null });
   }
 
   return records.map(r => ({
@@ -1085,7 +1099,8 @@ export async function getUnjustifiedRecordsByLeader(
   leaderId: number,
   days: number = 30
 ): Promise<UnjustifiedRecord[]> {
-  const employees = await getEmployeesByLeaderId(leaderId);
+  // Employees who don't punch are never alerted, so they can't owe a justification
+  const employees = (await getEmployeesByLeaderId(leaderId)).filter(e => !e.no_punch_required);
   if (employees.length === 0) return [];
 
   const empIds = employees.map(e => e.id);
@@ -1361,9 +1376,10 @@ const UNIT_NAMES: Record<number, string> = {
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
   // 10, 11, 18: Kemilly, Maria Taciane and Keliany have virtual units (handled separately)
   12: 'Loja Digital',
-  13: 'Financeiro/Administrativo',
+  13: 'Financeiro/Administrativo',    // Michaell — only Tomás
   14: 'Gente e Cultura',
   15: 'Marketing',
+  17: 'Financeiro/Administrativo',    // Tomás — the Financeiro team
 };
 
 // Employees that belong to Logistica Palmeira dos Indios (split from leader_id=2)
@@ -1480,6 +1496,8 @@ export interface UnitEmployee {
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
   is_exempt_today: boolean;
+  /** Gestor's Slack decision for a day without punches (falta, atestado_medico…), if any */
+  absence_decision: string | null;
 }
 
 export interface UnitData {
@@ -1490,6 +1508,8 @@ export interface UnitData {
   present_count: number;
   total_count: number;
 }
+
+const SLACK_ABSENCE_DECISIONS = new Set(['folga', 'falta', 'aparelho_danificado', 'atestado_medico', 'outros']);
 
 export async function getUnitRecords(date: string): Promise<UnitData[]> {
   // Unit views are hit repeatedly (dashboards, absence range view) — cache per
@@ -1571,13 +1591,9 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     grouped.delete(16);
   }
 
-  // Merge Financeiro sub-leader (17, Tomás) into leader (13, Michaell): Tomás ajusta o
-  // ponto do time e o Michaell só o do Tomás, mas a unidade continua uma só
-  const financeiro17 = grouped.get(17);
-  if (financeiro17) {
-    grouped.set(13, [...(grouped.get(13) || []), ...financeiro17]);
-    grouped.delete(17);
-  }
+  // Financeiro stays as two units: Tomás (17) leads the team and Michaell (13) only
+  // Tomás. Merging 17 into 13 left Tomás with "Nenhuma unidade" / empty Ausências and
+  // showed Michaell a team he can't adjust.
 
   // Move store leaders from Canal Loja (leader_id=6) to their respective stores
   const canalLoja = grouped.get(6) || [];
@@ -1645,6 +1661,11 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const isSaturdayOff = dateDow === 6 && emp.works_saturday === false;
     const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff;
     const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isExemptToday || !!(record?.punch_1);
+    // Without this, a day the gestor already decided in Slack still showed as a
+    // plain "Sem registro" absence
+    const absenceDecision = !record?.punch_1 && record?.classification && SLACK_ABSENCE_DECISIONS.has(record.classification)
+      ? record.classification
+      : null;
     return {
       id: emp.id,
       name: emp.name,
@@ -1660,6 +1681,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       is_on_folga: isOnFolga,
       folga_type: folgaType,
       is_exempt_today: isExemptToday,
+      absence_decision: absenceDecision,
     };
   }
 
@@ -1873,7 +1895,27 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string; status: string | null }>> {
+/**
+ * What a justification says, for tables/exports/Slack. "Outros" stores the
+ * employee's own text in custom_note — showing only `reason` hid it ("Outros").
+ */
+export function justificationDisplayText(j: { reason: string; custom_note?: string | null }): string {
+  return j.custom_note ? `${j.reason}: ${j.custom_note}` : j.reason;
+}
+
+/** Adds justification_reason/status to records (getDailyRecordsByDate doesn't join them). */
+export async function attachJustifications<T extends { id: number }>(
+  records: T[]
+): Promise<(T & { justification_reason: string | null; justification_status: string | null })[]> {
+  const map = await getJustificationsMap(records.map(r => r.id));
+  return records.map(r => ({
+    ...r,
+    justification_reason: map.get(r.id)?.reason ?? null,
+    justification_status: map.get(r.id)?.status ?? null,
+  }));
+}
+
+export async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { reason: string; type: string; status: string | null }>> {
   const map = new Map<number, { reason: string; type: string; status: string | null }>();
   if (recordIds.length === 0) return map;
 
@@ -1893,7 +1935,7 @@ async function getJustificationsMap(recordIds: number[]): Promise<Map<number, { 
       .where('daily_record_id', 'in', chunk).get();
     for (const doc of snap.docs) {
       const data = doc.data();
-      map.set(data.daily_record_id, { reason: data.reason, type: data.type, status: data.status || null });
+      map.set(data.daily_record_id, { reason: justificationDisplayText(data as { reason: string; custom_note?: string | null }), type: data.type, status: data.status || null });
     }
   }
 
@@ -2372,8 +2414,6 @@ export async function approvePunchAdjustment(
     .where('id', '==', adjustmentId).limit(1).get();
   if (snap.empty) return false;
 
-  const adjustment = snap.docs[0].data() as PunchAdjustmentRequest;
-
   // Update the adjustment
   await snap.docs[0].ref.update({
     status: 'approved',
@@ -2386,19 +2426,9 @@ export async function approvePunchAdjustment(
     corrected_punch_4: correctedTimes.punch_4 ?? null,
   });
 
-  // Update the daily record with corrected times
-  const recordSnap = await getDb().collection(COLLECTIONS.DAILY_RECORDS)
-    .where('id', '==', adjustment.daily_record_id).limit(1).get();
-  if (!recordSnap.empty) {
-    const updateData: Record<string, any> = {};
-    if (correctedTimes.punch_1 !== undefined) updateData.punch_1 = correctedTimes.punch_1;
-    if (correctedTimes.punch_2 !== undefined) updateData.punch_2 = correctedTimes.punch_2;
-    if (correctedTimes.punch_3 !== undefined) updateData.punch_3 = correctedTimes.punch_3;
-    if (correctedTimes.punch_4 !== undefined) updateData.punch_4 = correctedTimes.punch_4;
-    updateData.updated_at = new Date().toISOString();
-    // After approval, recalculate classification (will be done by caller)
-    await recordSnap.docs[0].ref.update(updateData);
-  }
+  // The caller applies the corrected punches via updateDailyRecordPunches, which
+  // flags them in manual_punches. Writing them here first made that comparison
+  // see "no change", so nothing was flagged and a re-sync reverted the approval.
 
   invalidateCache('punch_adjustments');
   invalidateCache('records');

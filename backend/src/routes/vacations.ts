@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { refreshStoredDaysSafe } from '../services/day-recalc';
 
 const router = Router();
 
@@ -97,6 +98,8 @@ router.post('/', async (req: Request, res: Response) => {
     const result = await queries.insertVacation(employee_id, start_date, end_date, days, notes);
     await queries.logAudit('VACATION_CREATED', 'vacation', result.id,
       `${employee.name}: ${start_date} a ${end_date} (${days} dias)`);
+    // Days already in the past keep showing Atraso/Sem registro unless re-evaluated
+    await refreshStoredDaysSafe(employee_id, start_date, end_date);
 
     res.status(201).json({
       success: true,
@@ -135,6 +138,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
+    const before = await queries.getVacationById(id);
     const updated = await queries.updateVacation(id, start_date, end_date, days, notes);
     if (!updated) {
       res.status(404).json({ error: 'Vacation not found' });
@@ -142,6 +146,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     await queries.logAudit('VACATION_UPDATED', 'vacation', id, `${start_date} a ${end_date}`);
+    if (before) {
+      await refreshStoredDaysSafe(before.employee_id, before.start_date, before.end_date);
+      await refreshStoredDaysSafe(before.employee_id, start_date, end_date);
+    }
 
     res.json({ success: true, message: 'Ferias atualizadas com sucesso' });
   } catch (error) {
@@ -171,6 +179,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const employee = vacation ? await queries.getEmployeeById(vacation.employee_id) : null;
     await queries.logAudit('VACATION_DELETED', 'vacation', id,
       employee ? `${employee.name}: ${vacation?.start_date} a ${vacation?.end_date}` : '');
+    if (vacation) await refreshStoredDaysSafe(vacation.employee_id, vacation.start_date, vacation.end_date);
 
     res.json({ success: true, message: 'Ferias removidas com sucesso' });
   } catch (error) {

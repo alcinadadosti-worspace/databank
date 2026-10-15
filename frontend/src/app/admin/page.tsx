@@ -89,10 +89,8 @@ export default function AdminDashboard() {
             syncPollingRef.current = null;
           }
           setSyncing(false);
-          // Reload records after sync completes
-          if (data.status === 'completed') {
-            loadRecords(startDate, endDate);
-          }
+          // Reload records after sync ends — on 'error' some days may still have synced
+          loadRecords(startDate, endDate);
         }
       } catch (err) {
         console.error('Failed to get sync status:', err);
@@ -293,7 +291,9 @@ export default function AdminDashboard() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
-                  <span className="text-sm font-medium">Erro na sincronizacao</span>
+                  <span className="text-sm font-medium">
+                    Erro na sincronizacao: {syncStatus.errors} dia(s) nao atualizado(s). Tente novamente.
+                  </span>
                 </div>
               )}
             </div>

@@ -20,6 +20,7 @@ export interface CalculationOptions {
   expectedMinutes?: number;  // Override expected minutes
   employeeName?: string | null; // Employee name for per-employee Saturday schedule
   scheduleOverrides?: Record<string, number>; // Per-day expected minutes override: key = JS day-of-week ('0'=Sun...'6'=Sat)
+  minutesOff?: number;       // Partial folga: subtracted from the resolved expected minutes
 }
 
 /**
@@ -64,11 +65,13 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   }
 
   // Loja Sustentável Palmeira: 2-punch schedule (09:00-21:00 Mon-Sat, 09:00-20:00 Sun)
+  const minutesOff = options?.minutesOff ?? 0;
+
   if (isLojasSustentavel) {
     if (!punches.punch1 || !punches.punch2) return null;
-    const expectedMins = options?.expectedMinutes !== undefined
+    const expectedMins = Math.max(0, (options?.expectedMinutes !== undefined
       ? options.expectedMinutes
-      : (date ? getLojaSustentavelExpectedMinutes(date) : 720);
+      : (date ? getLojaSustentavelExpectedMinutes(date) : 720)) - minutesOff);
     const p1 = timeToMinutes(punches.punch1);
     const p2 = timeToMinutes(punches.punch2);
     const totalWorkedMinutes = p2 - p1;
@@ -95,6 +98,7 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   } else {
     expectedMinutes = WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
   }
+  expectedMinutes = Math.max(0, expectedMinutes - minutesOff);
 
   // Saturday, Apprentice, or no-lunch employee: only need 2 punches (entry and exit)
   if (isSat || isApprentice || isNoLunch) {
@@ -183,6 +187,7 @@ export function calculateDailyHoursForEmployee(
   punches: PunchSet,
   date: string,
   employee?: EmployeeScheduleInfo | null,
+  extra?: { minutesOff?: number },
 ): CalculationResult | null {
   const isApprentice = employee?.is_apprentice === true;
   const forceApprenticeMinutes = isApprentice && !employee?.schedule_overrides;
@@ -192,6 +197,7 @@ export function calculateDailyHoursForEmployee(
     ...(forceApprenticeMinutes ? { expectedMinutes: employee?.expected_daily_minutes || 240 } : {}),
     employeeName: employee?.name,
     scheduleOverrides: employee?.schedule_overrides,
+    minutesOff: extra?.minutesOff,
   });
 }
 

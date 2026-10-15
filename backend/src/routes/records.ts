@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
-import { calculateDailyHoursForEmployee } from '../services/hours-calculator';
+import { recalculateDay } from '../services/day-recalc';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
@@ -150,7 +150,7 @@ router.put('/leader/:leaderId/record/:recordId', requireAuth, async (req: Authen
       punch4: punch_4 || null,
     };
 
-    const calcResult = calculateDailyHoursForEmployee(punchSet, existingRecord.date, employee);
+    const calcResult = await recalculateDay(punchSet, existingRecord.date, employee);
 
     // Build old values for audit
     const oldValues = {
@@ -270,7 +270,7 @@ router.put('/leader/:leaderId/employee/:employeeId/day/:date', requireAuth, asyn
       punch4: punch_4 || null,
     };
 
-    const calcResult = calculateDailyHoursForEmployee(punchSet, date, employee);
+    const calcResult = await recalculateDay(punchSet, date, employee);
 
     // Existing record (if any) for the audit trail
     const existingRecord = await queries.getDailyRecord(employeeId, date);

@@ -432,6 +432,7 @@ export async function getSyncStatus(jobId: string) {
 export async function syncManagerPunches(leaderId: number, startDate: string, endDate: string) {
   return apiFetch<SyncStartResult>(`/api/leaders/${leaderId}/sync`, {
     method: 'POST',
+    authType: 'manager',
     body: JSON.stringify({ startDate, endDate }),
   });
 }
@@ -601,6 +602,7 @@ export interface UnitEmployee {
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
   is_exempt_today: boolean;
+  absence_decision?: string | null; // gestor's Slack decision (falta, atestado_medico…) for a day without punches
 }
 
 export interface UnitData {

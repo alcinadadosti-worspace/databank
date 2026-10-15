@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
+import { refreshStoredDaysSafe } from '../services/day-recalc';
 
 const router = Router();
 
@@ -136,6 +137,8 @@ router.post('/range', async (req: Request, res: Response) => {
 
     await queries.logAudit('FOLGA_RANGE_CREATED', 'employee', employee_id,
       `${employee.name}: ${start_date} a ${end_date} — ${created.length} dias criados`);
+    // Days already in the past keep showing Atraso/Sem registro unless re-evaluated
+    if (created.length > 0) await refreshStoredDaysSafe(employee_id, created[0], created[created.length - 1]);
 
     res.status(201).json({
       success: true,
@@ -210,6 +213,7 @@ router.post('/', async (req: Request, res: Response) => {
     );
     await queries.logAudit('FOLGA_CREATED', 'folga', result.id,
       `${employee.name}: ${date} — ${type === 'integral' ? 'Integral' : `Parcial (${resolvedHoursOff}h)`}`);
+    await refreshStoredDaysSafe(employee_id, date, date);
 
     res.status(201).json({ success: true, id: result.id, message: 'Folga registrada com sucesso' });
   } catch (error) {
@@ -256,6 +260,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       return;
     }
 
+    const before = await queries.getFolgaById(id);
     const updated = await queries.updateFolga(id, date, type, resolvedHoursOff, notes);
     if (!updated) {
       res.status(404).json({ error: 'Folga not found' });
@@ -264,6 +269,10 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     await queries.logAudit('FOLGA_UPDATED', 'folga', id,
       `${date} — ${type === 'integral' ? 'Integral' : `Parcial (${resolvedHoursOff}h)`}`);
+    if (before) {
+      if (before.date !== date) await refreshStoredDaysSafe(before.employee_id, before.date, before.date);
+      await refreshStoredDaysSafe(before.employee_id, date, date);
+    }
 
     res.json({ success: true, message: 'Folga atualizada com sucesso' });
   } catch (error) {
@@ -291,6 +300,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const employee = folga ? await queries.getEmployeeById(folga.employee_id) : null;
     await queries.logAudit('FOLGA_DELETED', 'folga', id,
       employee ? `${employee.name}: ${folga?.date}` : '');
+    if (folga) await refreshStoredDaysSafe(folga.employee_id, folga.date, folga.date);
 
     res.json({ success: true, message: 'Folga removida com sucesso' });
   } catch (error) {

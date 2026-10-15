@@ -5,7 +5,8 @@ import {
   punchAdjustmentApprovalSchema,
   punchAdjustmentRejectionSchema
 } from '../middleware/validation';
-import { sendReinforcePunchAdjustmentAlert } from '../slack/bot';
+import { sendReinforcePunchAdjustmentAlert, sendPunchAdjustmentReviewNotification } from '../slack/bot';
+import { recalculateDay } from '../services/day-recalc';
 
 const router = Router();
 
@@ -56,7 +57,35 @@ router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (
       return;
     }
 
-    // Approve the adjustment
+    // Apply the corrected times to the daily record first: if this fails, the
+    // adjustment is still pending and the gestor can simply approve again
+    const record = await queries.getDailyRecordById(adjustment.daily_record_id);
+    const employee = await queries.getEmployeeById(adjustment.employee_id);
+    const newPunches = {
+      punch_1: corrected_punch_1 || record?.punch_1 || null,
+      punch_2: corrected_punch_2 || record?.punch_2 || null,
+      punch_3: corrected_punch_3 || record?.punch_3 || null,
+      punch_4: corrected_punch_4 || record?.punch_4 || null,
+    };
+    if (record) {
+      const result = await recalculateDay(
+        { punch1: newPunches.punch_1, punch2: newPunches.punch_2, punch3: newPunches.punch_3, punch4: newPunches.punch_4 },
+        record.date,
+        employee ?? { id: adjustment.employee_id }
+      );
+      // ✎ in RH's Registros: why the punches differ from Sólides
+      const note = `Pedido do colaborador: ${adjustment.reason}${comment ? ` · Gestor: ${comment}` : ''}`;
+      await queries.updateDailyRecordPunches(
+        record.id,
+        newPunches.punch_1, newPunches.punch_2, newPunches.punch_3, newPunches.punch_4,
+        result.totalWorkedMinutes,
+        result.differenceMinutes,
+        result.classification,
+        queries.buildManualEdit(note, reviewedBy || 'gestor', record)
+      );
+    }
+
+    // Then record the decision on the adjustment itself
     await queries.approvePunchAdjustment(
       adjustmentId,
       reviewedBy || 'manager',
@@ -69,42 +98,14 @@ router.post('/:id/approve', validateBody(punchAdjustmentApprovalSchema), async (
       comment || ''
     );
 
-    // Update the daily record with corrected times if provided
-    const record = await queries.getDailyRecordById(adjustment.daily_record_id);
-    if (record) {
-      const newPunch1 = corrected_punch_1 || record.punch_1;
-      const newPunch2 = corrected_punch_2 || record.punch_2;
-      const newPunch3 = corrected_punch_3 || record.punch_3;
-      const newPunch4 = corrected_punch_4 || record.punch_4;
-
-      // Recalculate hours with new punches
-      const { calculateDailyHoursForEmployee } = await import('../services/hours-calculator');
-      const employee = await queries.getEmployeeById(record.employee_id);
-
-      const result = calculateDailyHoursForEmployee(
-        { punch1: newPunch1 ?? null, punch2: newPunch2 ?? null, punch3: newPunch3 ?? null, punch4: newPunch4 ?? null },
-        record.date,
-        employee
-      );
-
-      const totalWorkedMinutes = result?.totalWorkedMinutes ?? null;
-      const differenceMinutes = result?.differenceMinutes ?? null;
-      const classification = result?.classification ?? null;
-
-      await queries.updateDailyRecordPunches(
-        record.id,
-        newPunch1 || null,
-        newPunch2 || null,
-        newPunch3 || null,
-        newPunch4 || null,
-        totalWorkedMinutes,
-        differenceMinutes,
-        classification
-      );
-    }
-
     await queries.logAudit('PUNCH_ADJUSTMENT_APPROVED', 'punch_adjustment', adjustmentId,
       `Approved by ${reviewedBy || 'manager'}: ${comment || 'No comment'}`);
+
+    if (employee && record) {
+      await sendPunchAdjustmentReviewNotification(
+        employee.slack_id, employee.name, record.date, 'approved', reviewedBy || 'Gestor', comment || null, newPunches
+      );
+    }
 
     res.json({ success: true, message: 'Ajuste de ponto aprovado' });
   } catch (error) {
@@ -136,6 +137,16 @@ router.post('/:id/reject', validateBody(punchAdjustmentRejectionSchema), async (
 
     await queries.logAudit('PUNCH_ADJUSTMENT_REJECTED', 'punch_adjustment', adjustmentId,
       `Rejected by ${reviewedBy || 'manager'}: ${comment}`);
+
+    const [employee, record] = await Promise.all([
+      queries.getEmployeeById(adjustment.employee_id),
+      queries.getDailyRecordById(adjustment.daily_record_id),
+    ]);
+    if (employee && record) {
+      await sendPunchAdjustmentReviewNotification(
+        employee.slack_id, employee.name, record.date, 'rejected', reviewedBy || 'Gestor', comment || null
+      );
+    }
 
     res.json({ success: true, message: 'Ajuste de ponto rejeitado' });
   } catch (error) {
@@ -287,30 +298,28 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       } : undefined,
     });
 
+    const employee = await queries.getEmployeeById(gate.record.employee_id);
+    const newPunches = {
+      punch_1: corrected_punch_1 ?? gate.record.punch_1 ?? null,
+      punch_2: corrected_punch_2 ?? gate.record.punch_2 ?? null,
+      punch_3: corrected_punch_3 ?? gate.record.punch_3 ?? null,
+      punch_4: corrected_punch_4 ?? gate.record.punch_4 ?? null,
+    };
+
     if (action === 'approve') {
-      const newPunch1 = corrected_punch_1 ?? gate.record.punch_1 ?? null;
-      const newPunch2 = corrected_punch_2 ?? gate.record.punch_2 ?? null;
-      const newPunch3 = corrected_punch_3 ?? gate.record.punch_3 ?? null;
-      const newPunch4 = corrected_punch_4 ?? gate.record.punch_4 ?? null;
-
-      const { calculateDailyHoursForEmployee } = await import('../services/hours-calculator');
-      const employee = await queries.getEmployeeById(gate.record.employee_id);
-
-      const result = calculateDailyHoursForEmployee(
-        { punch1: newPunch1, punch2: newPunch2, punch3: newPunch3, punch4: newPunch4 },
+      const result = await recalculateDay(
+        { punch1: newPunches.punch_1, punch2: newPunches.punch_2, punch3: newPunches.punch_3, punch4: newPunches.punch_4 },
         gate.record.date,
-        employee
+        employee ?? { id: gate.record.employee_id }
       );
 
       await queries.updateDailyRecordPunches(
         gate.record.id,
-        newPunch1,
-        newPunch2,
-        newPunch3,
-        newPunch4,
-        result?.totalWorkedMinutes ?? null,
-        result?.differenceMinutes ?? null,
-        result?.classification ?? null
+        newPunches.punch_1, newPunches.punch_2, newPunches.punch_3, newPunches.punch_4,
+        result.totalWorkedMinutes,
+        result.differenceMinutes,
+        result.classification,
+        queries.buildManualEdit(`Revisado pelo gestor sem pedido do colaborador: ${comment}`, reviewedBy || 'gestor', gate.record)
       );
     }
 
@@ -320,6 +329,14 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       recordId,
       `${action} by ${reviewedBy || 'manager'} without employee submission: ${comment}`
     );
+
+    // The employee never asked for this review: only tell them when their punches changed
+    if (employee && action === 'approve') {
+      await sendPunchAdjustmentReviewNotification(
+        employee.slack_id, employee.name, gate.record.date,
+        'approved', reviewedBy || 'Gestor', comment, newPunches, { requestedByEmployee: false }
+      );
+    }
 
     res.json({ success: true, adjustmentId });
   } catch (error) {

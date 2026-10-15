@@ -131,7 +131,7 @@ export default function ManagerSync() {
               <p className="text-sm font-medium text-text-primary">
                 {status.status === 'running' && 'Sincronizando...'}
                 {status.status === 'completed' && 'Sincronizacao concluida!'}
-                {status.status === 'error' && 'Erro na sincronizacao'}
+                {status.status === 'error' && `Erro: ${status.errors} dia(s) nao atualizado(s). Tente novamente.`}
               </p>
             </div>
             <span className="text-sm text-text-secondary">{progress}%</span>
