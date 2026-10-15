@@ -80,6 +80,16 @@ export function classificationLabel(c: string | null): string {
   }
 }
 
+/** Label for a punch-adjustment request type (Slack sends 'late_punch' for "Ponto após 17:00"). */
+export function adjustmentTypeLabel(type: string, short = false): string {
+  switch (type) {
+    case 'missing_punch': return short ? 'Incompleto' : 'Ponto Incompleto';
+    case 'late_punch': return 'Ponto após 17:00';
+    case 'late_start': return 'Entrada Tardia';
+    default: return type;
+  }
+}
+
 export function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }

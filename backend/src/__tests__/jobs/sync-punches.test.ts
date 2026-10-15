@@ -82,6 +82,18 @@ it('without a decision the computed classification is written', async () => {
   expect(q.upsertDailyRecord.mock.calls[0][8]).toBe('late');
 });
 
+it('after 21:00 BRT the automatic sync still fetches TODAY (São Paulo), not tomorrow (UTC)', async () => {
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+  jest.setSystemTime(new Date('2026-10-16T00:30:00Z')); // 21:30 BRT on 10/15
+  try {
+    fetchMock.mockResolvedValue([]);
+    await syncPunches(undefined, { skipNotifications: true });
+    expect(fetchMock).toHaveBeenCalledWith('2026-10-15', '2026-10-15');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it('reports a Sólides failure instead of finishing as success', async () => {
   fetchMock.mockRejectedValue(new Error('Sólides API error 503'));
   await expect(syncPunches(DATE, { skipNotifications: true })).rejects.toThrow('503');

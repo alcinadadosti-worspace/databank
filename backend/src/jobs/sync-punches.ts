@@ -1,6 +1,6 @@
 import { fetchPunches, SolidesPunchRecord } from '../services/solides-api';
 import { shouldAlert, CalculationResult, calculateDailyHoursForEmployee } from '../services/hours-calculator';
-import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, getExpectedMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee, todayInSaoPaulo } from '../config/constants';
 import * as queries from '../models/queries';
 import { sendEmployeeAlert } from '../slack/bot';
 import { env } from '../config/env';
@@ -81,7 +81,10 @@ async function upsertIfChanged(
  */
 export async function syncPunches(targetDate?: string, options?: SyncOptions): Promise<void> {
   const skipNotifications = options?.skipNotifications ?? false;
-  const today = targetDate || new Date().toISOString().split('T')[0];
+  // São Paulo date: the cron runs until 23:55 BRT, and the UTC date made every run
+  // from 21:00 on sync the (empty) next day — Loja Sustentável's 21:00 exits only
+  // arrived via the next morning's silent catch-up, so no alert was ever sent
+  const today = targetDate || todayInSaoPaulo();
   console.log(`[sync] Starting punch sync for ${today}`);
 
   try {

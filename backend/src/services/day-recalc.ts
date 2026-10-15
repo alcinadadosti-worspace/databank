@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { calculateDailyHoursForEmployee, type PunchSet, type EmployeeScheduleInfo } from './hours-calculator';
-import { isLojaSustentavelEmployee } from '../config/constants';
+import { isLojaSustentavelEmployee, todayInSaoPaulo } from '../config/constants';
 
 export interface DayRecalcResult {
   totalWorkedMinutes: number | null;
@@ -45,10 +45,6 @@ export async function recalculateDay(punches: PunchSet, date: string, employee: 
 /** Classifications the hours calculation produces (as opposed to decisions). */
 const COMPUTED = new Set(['normal', 'late', 'overtime']);
 
-function todaySaoPaulo(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-}
-
 /**
  * Re-applies folga/férias to records that already exist in [startDate, endDate]
  * — called when a folga or vacation is created, changed or removed, so a day
@@ -61,7 +57,7 @@ export async function refreshStoredDays(employeeId: number, startDate: string, e
   const records = await queries.getEmployeeRecordsInRange(employeeId, startDate, endDate);
   if (records.length === 0) return 0;
   const employee: RecalcEmployee = (await queries.getEmployeeById(employeeId)) ?? { id: employeeId };
-  const today = todaySaoPaulo();
+  const today = todayInSaoPaulo();
 
   let changed = 0;
   for (const r of records) {

@@ -201,11 +201,8 @@ router.post('/reinforce-alert', async (req: Request, res: Response) => {
         skipped.push({ recordId, reason: 'no_slack_id' });
         continue;
       }
-      const missing: string[] = [];
-      if (!gate.record.punch_1) missing.push('Entrada');
-      if (!gate.record.punch_2) missing.push('Intervalo');
-      if (!gate.record.punch_3) missing.push('Retorno');
-      if (!gate.record.punch_4) missing.push('Saída');
+      // Same rule as the gestor's list (a Saturday has 2 punches, not 4)
+      const missing = queries.computeMissingPunchesForRecord(gate.record, employee);
 
       await sendReinforcePunchAdjustmentAlert(
         { id: employee.id, name: employee.name, slack_id: employee.slack_id },
@@ -277,11 +274,9 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       }
     }
 
-    const missing: string[] = [];
-    if (!gate.record.punch_1) missing.push('Entrada');
-    if (!gate.record.punch_2) missing.push('Intervalo');
-    if (!gate.record.punch_3) missing.push('Retorno');
-    if (!gate.record.punch_4) missing.push('Saída');
+    const employee = await queries.getEmployeeById(gate.record.employee_id);
+    // Same rule as the gestor's list (a Saturday has 2 punches, not 4)
+    const missing = queries.computeMissingPunchesForRecord(gate.record, employee ?? { name: '' });
 
     const { adjustmentId } = await queries.forcePunchAdjustment({
       recordId,
@@ -298,7 +293,6 @@ router.post('/record/:recordId/force-review', async (req: Request, res: Response
       } : undefined,
     });
 
-    const employee = await queries.getEmployeeById(gate.record.employee_id);
     const newPunches = {
       punch_1: corrected_punch_1 ?? gate.record.punch_1 ?? null,
       punch_2: corrected_punch_2 ?? gate.record.punch_2 ?? null,

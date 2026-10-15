@@ -676,7 +676,7 @@ export interface PunchAdjustmentFull {
   id: number;
   daily_record_id: number;
   employee_id: number;
-  type: 'missing_punch' | 'late_start';
+  type: 'missing_punch' | 'late_start' | 'late_punch';
   missing_punches: string[];
   reason: string;
   status: 'pending' | 'approved' | 'rejected';

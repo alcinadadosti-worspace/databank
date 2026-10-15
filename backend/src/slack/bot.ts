@@ -247,6 +247,18 @@ export async function sendReinforceAlert(
 
 // ─── Send Reinforce Punch Adjustment Alert to Employee ─────────
 
+/**
+ * "Batidas registradas: 08:00 · 14:00 · 18:00". Punches fill the slots in time
+ * order, so when the lunch-out is forgotten the slot names point at the wrong
+ * one — the times let the employee see which punch is really missing.
+ */
+function registeredPunchesLine(record: { punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null }): string {
+  const times = [record.punch_1, record.punch_2, record.punch_3, record.punch_4].filter(Boolean);
+  return times.length > 0
+    ? `*Batidas registradas:* ${times.join(' · ')}`
+    : '*Batidas registradas:* nenhuma';
+}
+
 export async function sendReinforcePunchAdjustmentAlert(
   employee: { id: number; name: string; slack_id?: string | null },
   record: { id: number; punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null },
@@ -262,7 +274,6 @@ export async function sendReinforcePunchAdjustmentAlert(
   }
 
   const missingCount = missingPunches.length;
-  const punchesText = missingPunches.map(p => `• ${p}`).join('\n');
 
   const blocks = [
     {
@@ -277,8 +288,8 @@ export async function sendReinforcePunchAdjustmentAlert(
           `*Colaborador:* ${employee.name}`,
           `*Data:* ${date}`,
           '',
-          `Você esqueceu de bater *${missingCount} ponto(s)* no dia ${date}:`,
-          punchesText,
+          `Você esqueceu de bater *${missingCount} ponto(s)* no dia ${date}.`,
+          registeredPunchesLine(record),
           '',
           ':loudspeaker: *Seu gestor solicita que você solicite o ajuste deste registro.*',
         ].join('\n'),
@@ -879,7 +890,6 @@ export async function sendMissingPunchNotification(
   }
 
   const missingCount = missingPunches.length;
-  const punchesText = missingPunches.map(p => `• ${p}`).join('\n');
 
   const blocks = [
     {
@@ -899,6 +909,7 @@ export async function sendMissingPunchNotification(
           `*Data:* ${date}`,
           '',
           `Você esqueceu de bater *${missingCount} ponto(s)* no dia ${date}.`,
+          registeredPunchesLine(record),
           '',
           'Por favor, solicite um ajuste explicando o motivo.',
         ].join('\n'),
@@ -1109,6 +1120,23 @@ export async function sendLatePunchNotification(
 }
 
 
+/**
+ * Reply when the employee clicks a justification button for a day they already
+ * justified. Only say "revisado" once the gestor actually reviewed it.
+ */
+function alreadyJustifiedMessage(existing: { status?: string | null } | null): { plain: string; mrkdwn: string } {
+  if (existing?.status === 'approved' || existing?.status === 'rejected') {
+    return {
+      plain: 'Este registro já foi revisado pelo seu gestor.',
+      mrkdwn: ':information_source: *Este registro já foi revisado pelo seu gestor. Nenhuma ação necessária.*',
+    };
+  }
+  return {
+    plain: 'Você já enviou uma justificativa para este dia.',
+    mrkdwn: ':information_source: *Você já enviou uma justificativa para este dia.* Ela está aguardando a revisão do seu gestor.',
+  };
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {
@@ -1130,12 +1158,12 @@ function registerInteractions(app: App): void {
           await client.chat.update({
             channel,
             ts,
-            text: 'Este registro já foi revisado pelo seu gestor.',
+            text: alreadyJustifiedMessage(existing).plain,
             blocks: [{
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: ':information_source: *Este registro já foi revisado pelo seu gestor. Nenhuma ação necessária.*',
+                text: alreadyJustifiedMessage(existing).mrkdwn,
               },
             }],
           });
@@ -1266,12 +1294,12 @@ function registerInteractions(app: App): void {
           await client.chat.update({
             channel: channel_id,
             ts: message_ts,
-            text: 'Este registro já foi revisado pelo seu gestor.',
+            text: alreadyJustifiedMessage(existingJustif).plain,
             blocks: [{
               type: 'section',
               text: {
                 type: 'mrkdwn',
-                text: ':information_source: *Este registro já foi revisado pelo seu gestor. Nenhuma ação necessária.*',
+                text: alreadyJustifiedMessage(existingJustif).mrkdwn,
               },
             }],
           });

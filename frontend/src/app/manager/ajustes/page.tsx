@@ -6,7 +6,7 @@ import {
   getRecordsWithoutAdjustment, reinforcePunchAdjustmentAlert, forceReviewPunchAdjustment,
   type PunchAdjustmentFull, type RecordWithoutAdjustment,
 } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatDate, adjustmentTypeLabel } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
 
 export default function ManagerAjustes() {
@@ -246,7 +246,7 @@ export default function ManagerAjustes() {
                       <div className="flex items-center gap-3">
                         <span className="text-text-primary font-medium">{adj.employee_name}</span>
                         <span className="badge bg-orange-500/10 text-orange-500">
-                          {adj.type === 'missing_punch' ? 'Ponto Incompleto' : 'Entrada Tardia'}
+                          {adjustmentTypeLabel(adj.type)}
                         </span>
                       </div>
                       <p className="text-xs text-text-muted mt-1">{formatDate(adj.date)}</p>

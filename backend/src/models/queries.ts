@@ -2307,7 +2307,7 @@ export interface PunchAdjustmentRequest {
   id: number;
   daily_record_id: number;
   employee_id: number;
-  type: 'missing_punch' | 'late_start';
+  type: 'missing_punch' | 'late_start' | 'late_punch';
   missing_punches: string[]; // ['entrada', 'saída', 'intervalo', 'retorno']
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
@@ -2334,7 +2334,7 @@ export interface PunchAdjustmentFull extends PunchAdjustmentRequest {
 export async function insertPunchAdjustmentRequest(data: {
   daily_record_id: number;
   employee_id: number;
-  type: 'missing_punch' | 'late_start';
+  type: 'missing_punch' | 'late_start' | 'late_punch';
   missing_punches: string[];
   reason: string;
 }): Promise<{ id: number }> {
@@ -3003,7 +3003,8 @@ function isDateSaturday(dateStr: string): boolean {
   return d.getUTCDay() === 6;
 }
 
-function computeMissingPunchesForRecord(
+/** Which punches a day is missing, by the employee's schedule (2 on Saturday/apprentice/intern/Loja Sustentável). */
+export function computeMissingPunchesForRecord(
   record: { punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null; date: string },
   employee: { name: string; is_apprentice?: boolean; is_intern?: boolean }
 ): string[] {

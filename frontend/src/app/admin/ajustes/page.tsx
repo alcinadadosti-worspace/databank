@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getReviewedJustifications, deleteJustification, deleteMultipleJustifications, getReviewedPunchAdjustments, deletePunchAdjustment, getNoPunchDecisions, type JustificationFull, type PunchAdjustmentFull, type DailyRecord } from '@/lib/api';
-import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
+import { formatDate, formatDateTime, daysAgo, todayISO, adjustmentTypeLabel } from '@/lib/utils';
 import { exportJustificationsToPDF, exportPunchAdjustmentsToPDF } from '@/lib/pdf-export';
 import * as XLSX from 'xlsx';
 
@@ -728,7 +728,7 @@ export default function AdminAjustes() {
                                     </span>
                                     <span className="text-xs font-mono text-text-secondary">{formatDate(a.date)}</span>
                                     <span className="text-xs text-orange-500">
-                                      {a.type === 'missing_punch' ? 'Incompleto' : 'Entrada Tardia'}
+                                      {adjustmentTypeLabel(a.type, true)}
                                     </span>
                                   </div>
                                   <button
@@ -784,7 +784,7 @@ export default function AdminAjustes() {
                                     {/* Type */}
                                     <td className="px-2 py-2">
                                       <span className="text-orange-500">
-                                        {a.type === 'missing_punch' ? 'Incompleto' : 'Entrada Tardia'}
+                                        {adjustmentTypeLabel(a.type, true)}
                                       </span>
                                     </td>
                                     {/* Punches */}

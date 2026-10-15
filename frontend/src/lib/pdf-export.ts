@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { formatDate } from './utils';
+import { formatDate, adjustmentTypeLabel } from './utils';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -331,7 +331,7 @@ export function exportPunchAdjustmentsToPDF(
   const rows = adjustments.map(a => [
     a.employee_name,
     formatDate(a.date),
-    a.type === 'missing_punch' ? 'Incompleto' : 'Entrada Tardia',
+    adjustmentTypeLabel(a.type, true),
     a.corrected_punch_1 || '-',
     a.corrected_punch_2 || '-',
     a.corrected_punch_3 || '-',

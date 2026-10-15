@@ -113,6 +113,14 @@ export function isWorkingDay(dateStr: string): boolean {
 // which has access to the database
 
 /**
+ * Today's date (YYYY-MM-DD) in São Paulo. new Date().toISOString() is UTC, which
+ * is already "tomorrow" from 21:00 BRT on.
+ */
+export function todayInSaoPaulo(now: Date = new Date()): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+/**
  * Check if a date is Saturday
  */
 export function isSaturday(dateStr: string): boolean {
