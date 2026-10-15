@@ -1,12 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { getExportUrl } from '@/lib/api';
+import { downloadExportCsv } from '@/lib/api';
 import { daysAgo, todayISO } from '@/lib/utils';
 
 export default function AdminExport() {
   const [start, setStart] = useState(daysAgo(30));
   const [end, setEnd] = useState(todayISO());
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleExport() {
+    setExporting(true);
+    setError('');
+    try {
+      await downloadExportCsv(start, end);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -34,13 +48,14 @@ export default function AdminExport() {
             className="input mt-1"
           />
         </div>
-        <a
-          href={getExportUrl(start, end)}
-          download
-          className="btn-primary w-full text-center"
+        {error && <p className="text-sm text-status-danger">{error}</p>}
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="btn-primary w-full text-center disabled:opacity-50"
         >
-          Exportar CSV
-        </a>
+          {exporting ? 'Exportando...' : 'Exportar CSV'}
+        </button>
       </div>
     </div>
   );

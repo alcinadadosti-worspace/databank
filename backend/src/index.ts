@@ -5,6 +5,7 @@ import { getDb } from './models/database';
 import { startScheduler, stopScheduler } from './jobs/scheduler';
 import { syncPunches } from './jobs/sync-punches';
 import { startSlackBot } from './slack/bot';
+import { authAdmin } from './middleware/auth';
 
 // Routes
 import employeesRouter from './routes/employees';
@@ -39,7 +40,8 @@ app.use('/api/leaders', leadersRouter);
 app.use('/api/records', recordsRouter);
 app.use('/api/justifications', justificationsRouter);
 app.use('/api/punch-adjustments', punchAdjustmentsRouter);
-app.use('/api/admin', adminRouter);
+// Admin routes edit/export/delete data — admin JWT (RH login) required
+app.use('/api/admin', authAdmin, adminRouter);
 app.use('/api/holidays', holidaysRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/vacations', vacationsRouter);

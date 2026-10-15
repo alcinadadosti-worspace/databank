@@ -33,3 +33,12 @@ export const env = envSchema.parse(process.env);
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';
+
+// The dev defaults are public (they're in this repo): with them anyone can forge an
+// admin token or log in with the dev password. Loud warning so it shows in Render logs.
+if (isProduction && env.JWT_SECRET === 'dev-secret-change-in-production-min-32-chars') {
+  console.error('[security] JWT_SECRET está com o valor padrão de desenvolvimento — configure no Render');
+}
+if (isProduction && !env.ADMIN_PASSWORD_HASH) {
+  console.error('[security] ADMIN_PASSWORD_HASH não configurado — login do RH usa a senha de desenvolvimento');
+}

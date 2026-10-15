@@ -25,6 +25,12 @@ export function removeAuthToken(type: 'admin' | 'manager'): void {
   localStorage.removeItem(key);
 }
 
+function handleExpiredSession(type: 'admin' | 'manager'): void {
+  if (typeof window === 'undefined' || !getAuthToken(type)) return;
+  removeAuthToken(type);
+  window.location.reload();
+}
+
 async function apiFetch<T>(endpoint: string, options?: RequestInit & { authType?: 'admin' | 'manager' }): Promise<T> {
   const { authType, ...fetchOptions } = options || {};
 
@@ -45,6 +51,12 @@ async function apiFetch<T>(endpoint: string, options?: RequestInit & { authType?
     ...fetchOptions,
     headers,
   });
+
+  // Session expired (JWT lasts 8h): drop the token and reload so the login form shows,
+  // instead of every screen failing with "Token invalido ou expirado"
+  if (res.status === 401 && authType) {
+    handleExpiredSession(authType);
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Request failed' }));
@@ -329,21 +341,39 @@ export async function reinforceAlert(recordIds: number[]) {
 
 // ─── Admin ─────────────────────────────────────────────────────
 
+// All /api/admin routes require the RH login token (authType: 'admin')
+
 export async function getDashboardStats() {
-  return apiFetch<DashboardStats>('/api/admin/dashboard');
+  return apiFetch<DashboardStats>('/api/admin/dashboard', { authType: 'admin' });
 }
 
 export async function getAuditLogs(limit = 100, offset = 0) {
-  return apiFetch<{ logs: AuditLog[] }>(`/api/admin/audit-logs?limit=${limit}&offset=${offset}`);
+  return apiFetch<{ logs: AuditLog[] }>(`/api/admin/audit-logs?limit=${limit}&offset=${offset}`, { authType: 'admin' });
 }
 
-export function getExportUrl(start: string, end: string) {
-  return `${API_BASE}/api/admin/export?start=${start}&end=${end}`;
+// The CSV needs the Authorization header, so it can't be a plain <a href> download
+export async function downloadExportCsv(start: string, end: string) {
+  const token = getAuthToken('admin');
+  const res = await fetch(`${API_BASE}/api/admin/export?start=${start}&end=${end}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401) handleExpiredSession('admin');
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `banco-horas-${start}-${end}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function resyncPunches(date: string) {
   return apiFetch<{ success: boolean; message: string }>('/api/admin/resync', {
     method: 'POST',
+    authType: 'admin',
     body: JSON.stringify({ date }),
   });
 }
@@ -351,6 +381,7 @@ export async function resyncPunches(date: string) {
 export async function testSlackMessage(type: 'employee' | 'manager') {
   return apiFetch<{ success: boolean; message: string }>('/api/admin/test-slack', {
     method: 'POST',
+    authType: 'admin',
     body: JSON.stringify({ type }),
   });
 }
@@ -358,6 +389,7 @@ export async function testSlackMessage(type: 'employee' | 'manager') {
 export async function testPunchReminder(type: 'entry' | 'lunch_return' | 'exit') {
   return apiFetch<{ success: boolean; message: string }>('/api/admin/test-reminder', {
     method: 'POST',
+    authType: 'admin',
     body: JSON.stringify({ type }),
   });
 }
@@ -386,12 +418,13 @@ export interface SyncStatus {
 export async function syncPunchesRange(startDate: string, endDate: string) {
   return apiFetch<SyncStartResult>('/api/admin/sync-range', {
     method: 'POST',
+    authType: 'admin',
     body: JSON.stringify({ startDate, endDate, skipNotifications: true }),
   });
 }
 
 export async function getSyncStatus(jobId: string) {
-  return apiFetch<SyncStatus>(`/api/admin/sync-status/${jobId}`);
+  return apiFetch<SyncStatus>(`/api/admin/sync-status/${jobId}`, { authType: 'admin' });
 }
 
 // ─── Manager Sync ───────────────────────────────────────────────
@@ -446,6 +479,7 @@ export interface EditRecordResult {
 export async function editRecord(recordId: number, data: EditRecordData) {
   return apiFetch<EditRecordResult>(`/api/admin/record/${recordId}`, {
     method: 'PUT',
+    authType: 'admin',
     body: JSON.stringify(data),
   });
 }
