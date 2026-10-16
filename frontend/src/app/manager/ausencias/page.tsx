@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getUnitRecords, getEmployeesByLeader, fixLeaderDayRecord, type UnitData, type UnitEmployee } from '@/lib/api';
-import { todayISO, daysAgo, formatDate, classificationBadge, classificationLabel } from '@/lib/utils';
+import { getUnitRecords, getEmployeesByLeader, fixLeaderDayRecord, type UnitEmployee } from '@/lib/api';
+import { todayISO, daysAgo, formatDate, classificationBadge, classificationLabel, unitsForManager } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
 
 interface AbsentRow {
@@ -84,7 +84,7 @@ export default function ManagerAbsences() {
         const chunk = dates.slice(i, i + FETCH_CHUNK_SIZE);
         const chunkData = await Promise.all(chunk.map(d => getUnitRecords(d)));
         chunkData.forEach((unitsData, idx) => {
-          const myUnits = unitsData.units.filter((u: UnitData) => u.leader_id === manager.id);
+          const myUnits = unitsForManager(unitsData.units, manager.id, teamData.employees);
           const rows: AbsentRow[] = [];
           let total = 0;
           for (const unit of myUnits) {

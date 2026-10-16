@@ -1,4 +1,5 @@
 import { clsx, type ClassValue } from 'clsx';
+import type { Employee, UnitData } from './api';
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
@@ -98,4 +99,31 @@ export function daysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toISOString().split('T')[0];
+}
+
+/**
+ * Unit cards for the manager panel: the manager's own units, plus the stores
+ * they cover as secondary approver (e.g. Kemilly on Teotônio/Coruripe while
+ * Taciane is away). A covered unit belongs to another leader, so it is narrowed
+ * to the covered employees and its counts recomputed. "Sem Ponto" people stay
+ * out, as they do from the manager's own store cards.
+ */
+export function unitsForManager(units: UnitData[], managerId: number, team: Employee[]): UnitData[] {
+  const coveredIds = new Set(team.filter(e => e.secondary_approver_id === managerId).map(e => e.id));
+  const result: UnitData[] = [];
+  for (const unit of units) {
+    if (unit.leader_id === managerId) {
+      result.push(unit);
+      continue;
+    }
+    const employees = unit.employees.filter(e => coveredIds.has(e.id) && !e.no_punch_required);
+    if (employees.length === 0) continue;
+    result.push({
+      ...unit,
+      employees,
+      present_count: employees.filter(e => e.present).length,
+      total_count: employees.length,
+    });
+  }
+  return result;
 }

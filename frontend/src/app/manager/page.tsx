@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import RecordsTable from '@/components/RecordsTable';
-import { getLeaderRecords, getUnitRecords, type DailyRecord, type UnitData } from '@/lib/api';
-import { daysAgo, todayISO, classificationBadge, classificationLabel } from '@/lib/utils';
+import { getLeaderRecords, getUnitRecords, getEmployeesByLeader, type DailyRecord, type UnitData } from '@/lib/api';
+import { daysAgo, todayISO, classificationBadge, classificationLabel, unitsForManager } from '@/lib/utils';
 import { useManagerAuth } from './ManagerAuthContext';
 import { useDebounce } from '@/lib/hooks';
 import { exportRecordsToPDF, exportWeeklySummaryToPDF } from '@/lib/pdf-export';
@@ -28,15 +28,15 @@ export default function ManagerDashboard() {
     async function loadData() {
       setLoading(true);
       try {
-        const [recData, unitsData] = await Promise.all([
+        const [recData, unitsData, teamData] = await Promise.all([
           getLeaderRecords(manager!.id, debouncedStartDate, debouncedEndDate),
           getUnitRecords(debouncedUnitDate),
+          getEmployeesByLeader(manager!.id),
         ]);
         setRecords(recData.records);
 
-        // Find ALL units that belong to this manager
-        const units = unitsData.units.filter(u => u.leader_id === manager!.id);
-        setMyUnits(units);
+        // Own units plus the stores this manager covers as secondary approver
+        setMyUnits(unitsForManager(unitsData.units, manager!.id, teamData.employees));
       } catch (error) {
         console.error('Failed to load:', error);
       } finally {

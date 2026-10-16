@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getFolgasByLeader,
-  getEmployees,
+  getEmployeesByLeader,
   getVacationSchedules,
   createFolga,
   createFolgaRange,
@@ -70,10 +70,11 @@ export default function ManagerFolgas() {
     try {
       const [folgaData, empData, scheduleData] = await Promise.all([
         getFolgasByLeader(manager.id),
-        getEmployees(),
+        // Same team as the folga list: direct reports + secondary approvals
+        getEmployeesByLeader(manager.id),
         getVacationSchedules(),
       ]);
-      const teamEmployees = empData.employees.filter(e => e.leader_id === manager.id);
+      const teamEmployees = empData.employees;
       setFolgas(folgaData.folgas);
       setEmployees(teamEmployees);
       const teamIds = new Set(teamEmployees.map(e => e.id));
