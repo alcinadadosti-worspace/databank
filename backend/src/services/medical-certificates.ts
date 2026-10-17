@@ -13,7 +13,10 @@ export const MAX_FILES_PER_DAY = 10;
 /** Offered in Slack's file picker — convenience only, the bytes are checked again on save. */
 export const SLACK_CERTIFICATE_FILETYPES = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'pdf'];
 
-export type CertificateFlow = 'late' | 'full_day' | 'test';
+/** Where it came from: late justification, gestor's no-punch decision, punch adjustment request, RH test */
+export type CertificateFlow = 'late' | 'full_day' | 'adjustment' | 'test';
+/** Who attached it on Slack: the employee, or the gestor (e.g. a photo received on WhatsApp) */
+export type CertificateUploader = 'employee' | 'manager';
 
 export interface MedicalCertificate {
   id: string;
@@ -28,6 +31,8 @@ export interface MedicalCertificate {
   mimetype: string;
   size: number;
   uploaded_at: string;
+  /** Missing on certificates saved before 2026-10-17's gestor upload: read as 'employee' */
+  uploaded_by?: CertificateUploader;
   uploaded_by_slack_id: string | null;
   slack_file_id: string | null;
   is_test: boolean;
@@ -89,6 +94,7 @@ export async function saveCertificate(input: {
   dailyRecordId: number | null;
   justificationId: number | null;
   flow: CertificateFlow;
+  uploadedBy: CertificateUploader;
   uploadedBySlackId: string | null;
   slackFileId: string | null;
 }): Promise<MedicalCertificate> {
@@ -121,6 +127,7 @@ export async function saveCertificate(input: {
     mimetype: type.mimetype,
     size: input.buffer.length,
     uploaded_at: new Date().toISOString(),
+    uploaded_by: input.uploadedBy,
     uploaded_by_slack_id: input.uploadedBySlackId,
     slack_file_id: input.slackFileId,
     is_test: isTest,

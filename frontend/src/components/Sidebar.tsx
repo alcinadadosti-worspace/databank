@@ -19,6 +19,7 @@ const managerNav: NavItem[] = [
   { label: 'Ausências', href: '/manager/ausencias', icon: <IconUser /> },
   { label: 'Justificativas', href: '/manager/justifications', icon: <IconFile /> },
   { label: 'Ajustes', href: '/manager/ajustes', icon: <IconCheckCircle /> },
+  { label: 'Atestados', href: '/manager/atestados', icon: <IconPaperclip /> },
   { label: 'Folgas / Férias', href: '/manager/folgas', icon: <IconUmbrella /> },
   { label: 'Atualizar Dados', href: '/manager/sync', icon: <IconRefresh /> },
   { label: 'Banco de Horas', href: 'https://relatoriodehours.onrender.com', icon: <IconChart /> },
@@ -30,7 +31,7 @@ const adminNav: NavItem[] = [
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },
-  { label: 'Atestados', href: '/admin/atestados', icon: <IconFile /> },
+  { label: 'Atestados', href: '/admin/atestados', icon: <IconPaperclip /> },
   { label: 'Ferias', href: '/admin/ferias', icon: <IconUmbrella /> },
   { label: 'Feriados', href: '/admin/holidays', icon: <IconCalendar /> },
   { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },
@@ -251,6 +252,14 @@ function IconClock() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
+function IconPaperclip() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
     </svg>
   );
 }

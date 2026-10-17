@@ -352,11 +352,13 @@ export interface MedicalCertificate {
   date: string;
   daily_record_id: number | null;
   justification_id: number | null;
-  flow: 'late' | 'full_day' | 'test';
+  flow: 'late' | 'full_day' | 'adjustment' | 'test';
   filename: string;
   mimetype: string;
   size: number;
   uploaded_at: string;
+  /** 'manager' = attached by the gestor on Slack (e.g. a photo received on WhatsApp) */
+  uploaded_by: 'employee' | 'manager';
   is_test: boolean;
 }
 

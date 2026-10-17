@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   getPendingPunchAdjustments, approvePunchAdjustment, rejectPunchAdjustment,
   getRecordsWithoutAdjustment, reinforcePunchAdjustmentAlert, forceReviewPunchAdjustment,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import { formatDate, adjustmentTypeLabel } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
+import { useMedicalCertificates, certificateKey, CertificateButton } from '@/components/MedicalCertificates';
 
 export default function ManagerAjustes() {
   const { manager } = useManagerAuth();
@@ -39,6 +40,10 @@ export default function ManagerAjustes() {
   }>>({});
   const [reinforcing, setReinforcing] = useState<Set<number>>(new Set());
   const [reinforced, setReinforced] = useState<Set<number>>(new Set());
+
+  // Atestados the employee attached to the adjustment request on Slack (📎 next to the reason)
+  const adjustmentDates = useMemo(() => adjustments.map(a => a.date).filter(Boolean), [adjustments]);
+  const { byDay: certificates } = useMedicalCertificates(manager ? 'manager' : undefined, adjustmentDates);
 
   const loadAll = useCallback(async () => {
     if (!manager) return;
@@ -263,9 +268,14 @@ export default function ManagerAjustes() {
                     {adj.missing_punches.length > 0 && (
                       <p className="text-sm text-orange-500">Pontos faltando: {adj.missing_punches.join(', ')}</p>
                     )}
-                    <p className="text-sm text-text-secondary">
-                      <span className="text-text-muted font-medium">Motivo do colaborador:</span> {adj.reason}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <p className="text-sm text-text-secondary">
+                        <span className="text-text-muted font-medium">Motivo do colaborador:</span> {adj.reason}
+                      </p>
+                      <span className="text-sm">
+                        <CertificateButton certificates={certificates.get(certificateKey(adj.employee_id, adj.date))} authType="manager" />
+                      </span>
+                    </div>
                   </div>
 
                   <div>

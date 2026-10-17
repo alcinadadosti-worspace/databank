@@ -64,6 +64,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
           mimetype: c.mimetype,
           size: c.size,
           uploaded_at: c.uploaded_at,
+          uploaded_by: c.uploaded_by ?? 'employee',
           is_test: c.is_test,
         };
       }),
