@@ -388,14 +388,6 @@ export async function deleteMedicalCertificate(id: string) {
   });
 }
 
-export async function sendMedicalCertificateTest(slackId: string) {
-  return apiFetch<{ success: boolean; message: string }>('/api/admin/test-medical-certificate', {
-    method: 'POST',
-    authType: 'admin',
-    body: JSON.stringify({ slack_id: slackId }),
-  });
-}
-
 // ─── Admin ─────────────────────────────────────────────────────
 
 // All /api/admin routes require the RH login token (authType: 'admin')

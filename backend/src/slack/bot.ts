@@ -1424,41 +1424,6 @@ export async function sendMedicalCertificateRequest(
   }
 }
 
-/** RH test: both modals, sent ONLY to the Slack user given. Nothing touches real records. */
-export async function sendMedicalCertificateTest(slackUserId: string): Promise<void> {
-  const app = getSlackApp();
-  if (!app) throw new Error('Slack não configurado');
-
-  const base = {
-    flow: 'test' as const, daily_record_id: null, employee_id: 0,
-    employee_name: 'Colaborador Teste', date: todayInSaoPaulo(),
-  };
-  await rateLimitedPostMessage(app, {
-    channel: slackUserId,
-    text: 'Teste: envio de atestado médico',
-    blocks: [
-      { type: 'header', text: { type: 'plain_text', text: ':test_tube: Teste — atestado médico', emoji: true } },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: 'Mensagem de teste, enviada só para você. Os arquivos aparecem em *Atestados*, no painel do RH, marcados como teste. Nenhum registro de ponto é alterado.',
-        },
-      },
-      {
-        type: 'actions',
-        block_id: 'certificate_test_justify',
-        elements: [certificateButton({ ...base, mode: 'justify', type: 'late' }, false, 'Atestado médico (alerta de atraso)')],
-      },
-      {
-        type: 'actions',
-        block_id: 'certificate_test_attach',
-        elements: [certificateButton({ ...base, mode: 'attach' }, false, '📎 Enviar atestado (falta do dia)')],
-      },
-    ],
-  });
-}
-
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {

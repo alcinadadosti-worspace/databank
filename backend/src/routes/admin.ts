@@ -1,10 +1,9 @@
 import { Router, Request, Response } from 'express';
 import * as queries from '../models/queries';
 import { syncPunches } from '../jobs/sync-punches';
-import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp, sendMedicalCertificateTest } from '../slack/bot';
+import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
 import { calculateDailyHours } from '../services/hours-calculator';
 import { recalculateDay } from '../services/day-recalc';
-import { getStorageBucket } from '../models/database';
 
 const router = Router();
 
@@ -428,33 +427,6 @@ router.put('/record/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[admin] Error editing record:', error);
     res.status(500).json({ error: 'Failed to edit record' });
-  }
-});
-
-/**
- * POST /api/admin/test-medical-certificate { slack_id } - Sends the atestado
- * test (both modals) ONLY to the Slack user typed by RH; no real record changes.
- */
-router.post('/test-medical-certificate', async (req: Request, res: Response) => {
-  try {
-    const slackId = String(req.body?.slack_id || '').trim();
-    if (!/^[UW][A-Z0-9]{6,}$/.test(slackId)) {
-      res.status(400).json({ error: 'Informe um Slack ID válido (ex.: U0123ABCD)' });
-      return;
-    }
-    // Catch a missing/misnamed bucket here instead of after someone uploads a file
-    const bucket = getStorageBucket();
-    const [bucketExists] = await bucket.exists();
-    if (!bucketExists) {
-      res.status(500).json({ error: `O Firebase Storage (${bucket.name}) não existe ou não está acessível. Confira FIREBASE_STORAGE_BUCKET no Render.` });
-      return;
-    }
-    await sendMedicalCertificateTest(slackId);
-    await queries.logAudit('MEDICAL_CERTIFICATE_TEST_SENT', 'slack', undefined, `Test sent to ${slackId}`);
-    res.json({ success: true, message: `Teste enviado para ${slackId}. Confira o Slack.` });
-  } catch (error) {
-    console.error('[admin] Error sending medical certificate test:', error);
-    res.status(500).json({ error: 'Falha ao enviar teste: ' + (error as Error).message });
   }
 });
 

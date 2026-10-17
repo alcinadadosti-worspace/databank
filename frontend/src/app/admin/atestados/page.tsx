@@ -3,9 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import DateRangePicker from '@/components/DateRangePicker';
 import { CertificateViewer, formatFileSize } from '@/components/MedicalCertificates';
-import {
-  getMedicalCertificates, deleteMedicalCertificate, sendMedicalCertificateTest, type MedicalCertificate,
-} from '@/lib/api';
+import { getMedicalCertificates, deleteMedicalCertificate, type MedicalCertificate } from '@/lib/api';
 import { formatDate, formatDateTime, daysAgo, todayISO } from '@/lib/utils';
 
 const FLOW_LABEL: Record<MedicalCertificate['flow'], string> = {
@@ -22,10 +20,6 @@ export default function AdminAtestados() {
   const [search, setSearch] = useState('');
   const [viewing, setViewing] = useState<MedicalCertificate | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
-
-  const [testSlackId, setTestSlackId] = useState('');
-  const [testStatus, setTestStatus] = useState<{ ok: boolean; message: string } | null>(null);
-  const [sendingTest, setSendingTest] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,20 +54,6 @@ export default function AdminAtestados() {
       window.alert((err as Error).message || 'Erro ao excluir');
     } finally {
       setDeleting(null);
-    }
-  }
-
-  async function handleSendTest(e: React.FormEvent) {
-    e.preventDefault();
-    setSendingTest(true);
-    setTestStatus(null);
-    try {
-      const res = await sendMedicalCertificateTest(testSlackId.trim());
-      setTestStatus({ ok: true, message: res.message });
-    } catch (err) {
-      setTestStatus({ ok: false, message: (err as Error).message || 'Erro ao enviar teste' });
-    } finally {
-      setSendingTest(false);
     }
   }
 
@@ -164,31 +144,6 @@ export default function AdminAtestados() {
           </div>
         </>
       )}
-
-      <div className="card space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold text-text-primary">Testar no Slack</h3>
-          <p className="text-xs text-text-tertiary mt-1">
-            Envia a mensagem de teste do atestado só para o Slack ID informado. Nenhum colaborador recebe nada e nenhum ponto é alterado.
-          </p>
-        </div>
-        <form onSubmit={handleSendTest} className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            value={testSlackId}
-            onChange={e => setTestSlackId(e.target.value)}
-            placeholder="Seu Slack ID (ex.: U0123ABCD)"
-            className="input w-full sm:w-64 font-mono"
-            required
-          />
-          <button type="submit" className="btn-secondary text-sm" disabled={sendingTest || !testSlackId.trim()}>
-            {sendingTest ? 'Enviando...' : 'Enviar teste'}
-          </button>
-        </form>
-        {testStatus && (
-          <p className={`text-xs ${testStatus.ok ? 'text-green-500' : 'text-red-500'}`}>{testStatus.message}</p>
-        )}
-      </div>
 
       {viewing && <CertificateViewer certificates={viewingList} authType="admin" onClose={() => setViewing(null)} />}
     </div>
