@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   getPendingJustifications, approveJustification, rejectJustification,
   getUnjustifiedRecords, forceReviewRecord, reinforceAlert,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { useManagerAuth } from '../ManagerAuthContext';
+import { useMedicalCertificates, certificateKey, CertificateButton } from '@/components/MedicalCertificates';
 
 function formatMins(abs: number) {
   const h = Math.floor(abs / 60);
@@ -56,6 +57,10 @@ export default function ManagerJustifications() {
   const [uActionLoading, setUActionLoading] = useState<number | null>(null);
   const [reinforcing, setReinforcing] = useState<Set<number>>(new Set());
   const [reinforced, setReinforced] = useState<Set<number>>(new Set());
+
+  // Atestados the employee attached on Slack (📎 next to the reason)
+  const justificationDates = useMemo(() => justifications.map(j => j.date).filter(Boolean), [justifications]);
+  const { byDay: certificates } = useMedicalCertificates(manager ? 'manager' : undefined, justificationDates);
 
   const loadAll = useCallback(async () => {
     if (!manager) return;
@@ -200,9 +205,14 @@ export default function ManagerJustifications() {
                   <PunchRow r={j as any} />
 
                   <div className="bg-bg-secondary rounded-md p-3">
-                    <p className="text-sm text-text-secondary">
-                      <span className="text-text-muted font-medium">Motivo:</span> {j.reason}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <p className="text-sm text-text-secondary">
+                        <span className="text-text-muted font-medium">Motivo:</span> {j.reason}
+                      </p>
+                      <span className="text-sm">
+                        <CertificateButton certificates={certificates.get(certificateKey(j.employee_id, j.date))} authType="manager" />
+                      </span>
+                    </div>
                     {j.custom_note && (
                       <p className="text-sm text-text-tertiary mt-1">
                         <span className="text-text-muted font-medium">Observacao:</span> {j.custom_note}

@@ -288,6 +288,7 @@ export default function ManagerRecords() {
           records={filteredRecords}
           showEmployee
           onEdit={openEditModal}
+          certificateAuth="manager"
         />
       )}
 

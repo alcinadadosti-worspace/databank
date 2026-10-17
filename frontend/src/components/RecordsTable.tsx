@@ -1,16 +1,24 @@
 'use client';
 
+import { useMemo } from 'react';
 import { formatMinutes, formatDate, formatDateTime, classificationBadge, classificationLabel } from '@/lib/utils';
 import type { DailyRecord } from '@/lib/api';
+import { useMedicalCertificates, certificateKey, CertificateButton } from './MedicalCertificates';
 
 interface RecordsTableProps {
   records: DailyRecord[];
   showEmployee?: boolean;
   showLeader?: boolean;
   onEdit?: (record: DailyRecord) => void;
+  /** Login used to list/open atestados sent on Slack (📎); omit to hide them */
+  certificateAuth?: 'admin' | 'manager';
 }
 
-export default function RecordsTable({ records, showEmployee = true, showLeader = false, onEdit }: RecordsTableProps) {
+export default function RecordsTable({ records, showEmployee = true, showLeader = false, onEdit, certificateAuth }: RecordsTableProps) {
+  const dates = useMemo(() => records.map(r => r.date), [records]);
+  const { byDay: certificates } = useMedicalCertificates(certificateAuth, dates);
+  const certsOf = (record: DailyRecord) => certificates.get(certificateKey(record.employee_id, record.date));
+
   if (records.length === 0) {
     return (
       <div className="card text-center py-12">
@@ -85,6 +93,11 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                 <span className="truncate">{record.justification_reason}</span>
               </div>
             )}
+            {certificateAuth && certsOf(record) && (
+              <div className="text-xs">
+                <CertificateButton certificates={certsOf(record)} authType={certificateAuth} />
+              </div>
+            )}
             {record.edited_by && (
               <div className="text-xs text-text-secondary">
                 <ManualEditNote record={record} />
@@ -154,7 +167,7 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                   </span>
                 </td>
                 <td className="px-4 py-3 text-text-secondary text-xs max-w-[220px] space-y-1">
-                  {!record.justification_reason && !record.edited_by && '—'}
+                  {!record.justification_reason && !record.edited_by && !certsOf(record) && '—'}
                   {record.justification_reason && (
                     <span className="flex items-center gap-1.5">
                       {record.justification_status === 'approved' && (
@@ -172,6 +185,7 @@ export default function RecordsTable({ records, showEmployee = true, showLeader 
                       <span className="truncate">{record.justification_reason}</span>
                     </span>
                   )}
+                  {certificateAuth && <CertificateButton certificates={certsOf(record)} authType={certificateAuth} />}
                   <ManualEditNote record={record} />
                 </td>
               </tr>

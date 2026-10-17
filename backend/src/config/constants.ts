@@ -226,9 +226,12 @@ export function getExpectedMinutes(
   return isApprentice ? apprenticeMinutes : WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
 }
 
+/** The justification whose button opens the "send your medical certificate" modal */
+export const MEDICAL_CERTIFICATE_REASON = 'Atestado médico';
+
 /** Justification options for lateness */
 export const LATE_JUSTIFICATIONS = [
-  'Atestado médico',
+  MEDICAL_CERTIFICATE_REASON,
   'Ajuste de horas',
   'Compensação de horas',
   'Esquecimento',

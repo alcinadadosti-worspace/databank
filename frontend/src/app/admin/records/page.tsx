@@ -312,6 +312,7 @@ export default function AdminRecords() {
           showEmployee
           showLeader
           onEdit={openEditModal}
+          certificateAuth="admin"
         />
       )}
 

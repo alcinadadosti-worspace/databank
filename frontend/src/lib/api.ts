@@ -339,6 +339,63 @@ export async function reinforceAlert(recordIds: number[]) {
   );
 }
 
+// ─── Medical Certificates (atestados) ──────────────────────────
+
+// Health data: every call carries the RH or gestor login token. The backend
+// only lists/serves a gestor's own team; RH sees all and is the only one who deletes.
+
+export interface MedicalCertificate {
+  id: string;
+  employee_id: number;
+  employee_name: string;
+  leader_name: string | null;
+  date: string;
+  daily_record_id: number | null;
+  justification_id: number | null;
+  flow: 'late' | 'full_day' | 'test';
+  filename: string;
+  mimetype: string;
+  size: number;
+  uploaded_at: string;
+  is_test: boolean;
+}
+
+export async function getMedicalCertificates(start: string, end: string, authType: 'admin' | 'manager') {
+  return apiFetch<{ certificates: MedicalCertificate[] }>(
+    `/api/medical-certificates?start=${start}&end=${end}`,
+    { authType }
+  );
+}
+
+// The file needs the Authorization header, so it can't be a plain <a href>
+export async function fetchMedicalCertificateFile(id: string, authType: 'admin' | 'manager'): Promise<Blob> {
+  const token = getAuthToken(authType);
+  const res = await fetch(`${API_BASE}/api/medical-certificates/${encodeURIComponent(id)}/file`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401) handleExpiredSession(authType);
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+  return res.blob();
+}
+
+export async function deleteMedicalCertificate(id: string) {
+  return apiFetch<{ success: boolean }>(`/api/medical-certificates/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    authType: 'admin',
+  });
+}
+
+export async function sendMedicalCertificateTest(slackId: string) {
+  return apiFetch<{ success: boolean; message: string }>('/api/admin/test-medical-certificate', {
+    method: 'POST',
+    authType: 'admin',
+    body: JSON.stringify({ slack_id: slackId }),
+  });
+}
+
 // ─── Admin ─────────────────────────────────────────────────────
 
 // All /api/admin routes require the RH login token (authType: 'admin')

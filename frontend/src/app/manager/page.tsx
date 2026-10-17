@@ -225,7 +225,7 @@ export default function ManagerDashboard() {
             </button>
           </div>
         </div>
-        <RecordsTable records={records} showEmployee />
+        <RecordsTable records={records} showEmployee certificateAuth="manager" />
       </div>
     </div>
   );

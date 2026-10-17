@@ -1,8 +1,14 @@
-import { App, LogLevel } from '@slack/bolt';
+import { App, LogLevel, type UploadedFile } from '@slack/bolt';
+import type { WebClient } from '@slack/web-api';
 import { env } from '../config/env';
-import { LATE_JUSTIFICATIONS, OVERTIME_JUSTIFICATIONS } from '../config/constants';
+import { LATE_JUSTIFICATIONS, OVERTIME_JUSTIFICATIONS, MEDICAL_CERTIFICATE_REASON, todayInSaoPaulo } from '../config/constants';
 import * as queries from '../models/queries';
 import { formatMinutes, classificationLabel } from '../services/hours-calculator';
+import {
+  CertificateFileError, downloadSlackFile, saveCertificate, countCertificatesForDay,
+  MAX_CERTIFICATE_BYTES, MAX_FILES_PER_UPLOAD, MAX_FILES_PER_DAY, SLACK_CERTIFICATE_FILETYPES,
+  type CertificateFlow,
+} from '../services/medical-certificates';
 
 let slackApp: App | null = null;
 
@@ -1137,6 +1143,322 @@ function alreadyJustifiedMessage(existing: { status?: string | null } | null): {
   };
 }
 
+// ─── Medical Certificate (atestado) Upload ─────────────────────
+
+const MEDICAL_CERTIFICATE_MODAL = 'medical_certificate_modal';
+const CERT_FILES_BLOCK = 'certificate_files_block';
+const CERT_FILES_INPUT = 'certificate_files_input';
+const CERT_NOTE_BLOCK = 'certificate_note_block';
+const CERT_NOTE_INPUT = 'certificate_note_input';
+
+/**
+ * What an "Enviar atestado" modal is for. justify = the late alert's "Atestado
+ * médico" button: creates the justification, file optional (can come later).
+ * attach = files for a day already marked as atestado (late justification or
+ * the gestor's full-day decision).
+ */
+interface CertificateTarget {
+  mode: 'justify' | 'attach';
+  flow: CertificateFlow;
+  daily_record_id: number | null;
+  employee_id: number | null;
+  employee_name: string;
+  date: string | null;
+  type?: 'late' | 'overtime';
+}
+
+interface CertificateModalMeta extends CertificateTarget {
+  message_ts?: string;
+  channel_id?: string;
+}
+
+function formatFullDateBR(date: string): string {
+  const [y, m, d] = date.split('-');
+  return d && m && y ? `${d}/${m}/${y}` : date;
+}
+
+function certificateButton(target: CertificateTarget, hasFiles: boolean, label?: string) {
+  return {
+    type: 'button' as const,
+    text: { type: 'plain_text' as const, text: label ?? (hasFiles ? '📎 Enviar mais um arquivo' : '📎 Enviar atestado'), emoji: true },
+    value: JSON.stringify(target),
+    action_id: 'upload_medical_certificate',
+  };
+}
+
+async function openCertificateModal(client: WebClient, triggerId: string, meta: CertificateModalMeta): Promise<void> {
+  const filesOptional = meta.mode === 'justify';
+  const blocks: any[] = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [`*Colaborador:* ${meta.employee_name}`, meta.date ? `*Data:* ${formatFullDateBR(meta.date)}` : null]
+          .filter(Boolean).join('\n'),
+      },
+    },
+    {
+      type: 'input',
+      block_id: CERT_FILES_BLOCK,
+      optional: filesOptional,
+      label: { type: 'plain_text', text: 'Foto ou PDF do atestado' },
+      hint: {
+        type: 'plain_text',
+        text: filesOptional
+          ? `Até ${MAX_FILES_PER_UPLOAD} arquivos (ex.: frente e verso), 10 MB cada. Ainda não está com o atestado? Envie sem arquivo e anexe depois pelo botão "Enviar atestado".`
+          : `Até ${MAX_FILES_PER_UPLOAD} arquivos (ex.: frente e verso): foto ou PDF, 10 MB cada.`,
+      },
+      element: {
+        type: 'file_input',
+        action_id: CERT_FILES_INPUT,
+        filetypes: SLACK_CERTIFICATE_FILETYPES,
+        max_files: MAX_FILES_PER_UPLOAD,
+      },
+    },
+  ];
+  if (meta.mode === 'justify') {
+    blocks.push({
+      type: 'input',
+      block_id: CERT_NOTE_BLOCK,
+      optional: true,
+      label: { type: 'plain_text', text: 'Observação' },
+      element: { type: 'plain_text_input', action_id: CERT_NOTE_INPUT, multiline: true, max_length: 500 },
+    });
+  }
+
+  const view = {
+    type: 'modal' as const,
+    callback_id: MEDICAL_CERTIFICATE_MODAL,
+    private_metadata: JSON.stringify(meta),
+    title: { type: 'plain_text' as const, text: 'Atestado médico' },
+    submit: { type: 'plain_text' as const, text: 'Enviar' },
+    close: { type: 'plain_text' as const, text: 'Cancelar' },
+    blocks,
+  };
+  try {
+    await client.views.open({ trigger_id: triggerId, view });
+  } catch (error) {
+    // The extension filter is only a convenience (bytes are checked on save):
+    // if Slack rejects it, still open the modal rather than nothing at all
+    if ((error as { data?: { error?: string } }).data?.error !== 'invalid_arguments') throw error;
+    console.warn('[slack] views.open rejected the file filter, retrying without it:', (error as any).data);
+    delete blocks[1].element.filetypes;
+    await client.views.open({ trigger_id: triggerId, view });
+  }
+}
+
+/** Shows the outcome where the employee clicked (or as a new DM when that message is unknown). */
+async function showCertificateMessage(
+  client: WebClient, meta: CertificateModalMeta, slackUserId: string, text: string, blocks: any[]
+): Promise<void> {
+  if (meta.message_ts && meta.channel_id) {
+    await client.chat.update({ channel: meta.channel_id, ts: meta.message_ts, text, blocks });
+  } else {
+    await client.chat.postMessage({ channel: slackUserId, text, blocks });
+  }
+}
+
+/**
+ * Saves the files of a submitted modal. justify mode first registers the
+ * "Atestado médico" justification (as the plain button used to), so the day is
+ * justified even when the file only comes later.
+ */
+async function handleCertificateSubmission(
+  client: WebClient, meta: CertificateModalMeta, files: UploadedFile[], note: string, slackUserId: string
+): Promise<void> {
+  const isTest = meta.flow === 'test';
+  let employeeId = meta.employee_id;
+  let date = meta.date;
+  let dailyRecordId = meta.daily_record_id;
+  let justificationId: number | null = null;
+
+  if (isTest) {
+    employeeId = 0;
+    date = date ?? todayInSaoPaulo();
+  } else if (meta.mode === 'justify') {
+    const record = dailyRecordId ? await queries.getDailyRecordById(dailyRecordId) : undefined;
+    if (!record) {
+      await showCertificateMessage(client, meta, slackUserId, 'Registro não encontrado', [{
+        type: 'section',
+        text: { type: 'mrkdwn', text: ':x: *Não encontrei o registro deste dia.* Fale com o RH para enviar o atestado.' },
+      }]);
+      return;
+    }
+    employeeId = record.employee_id;
+    date = record.date;
+    dailyRecordId = record.id;
+
+    const existing = await queries.getJustificationByRecordId(record.id);
+    if (existing && existing.reason !== MEDICAL_CERTIFICATE_REASON) {
+      const msg = alreadyJustifiedMessage(existing);
+      await showCertificateMessage(client, meta, slackUserId, msg.plain, [{ type: 'section', text: { type: 'mrkdwn', text: msg.mrkdwn } }]);
+      return;
+    }
+    if (existing) {
+      justificationId = existing.id;
+    } else {
+      justificationId = await queries.insertJustification(record.id, employeeId, meta.type ?? 'late', MEDICAL_CERTIFICATE_REASON, note || undefined);
+      await queries.logAudit('JUSTIFICATION_VIA_SLACK', 'justification', justificationId,
+        `${meta.employee_name}: ${meta.type ?? 'late'} - ${MEDICAL_CERTIFICATE_REASON}${note ? `: ${note}` : ''}`);
+    }
+  } else if (dailyRecordId) {
+    const existing = await queries.getJustificationByRecordId(dailyRecordId);
+    if (existing?.reason === MEDICAL_CERTIFICATE_REASON) justificationId = existing.id;
+  }
+
+  if (employeeId === null || !date) {
+    await showCertificateMessage(client, meta, slackUserId, 'Não foi possível enviar o atestado', [{
+      type: 'section',
+      text: { type: 'mrkdwn', text: ':x: *Não consegui identificar o dia deste atestado.* Fale com o RH.' },
+    }]);
+    return;
+  }
+
+  const already = await countCertificatesForDay(employeeId, date, isTest);
+  const room = Math.max(0, MAX_FILES_PER_DAY - already);
+  let saved = 0;
+  const failed: { name: string; reason: string }[] = [];
+
+  for (const [i, file] of files.entries()) {
+    if (i >= room) {
+      failed.push({ name: file.name, reason: `o limite é de ${MAX_FILES_PER_DAY} arquivos por dia` });
+      continue;
+    }
+    try {
+      const url = file.url_private_download
+        || ((await client.files.info({ file: file.id })).file as { url_private_download?: string } | undefined)?.url_private_download;
+      if (!url) throw new CertificateFileError('o Slack não informou o link do arquivo');
+      const buffer = await downloadSlackFile(url, env.SLACK_BOT_TOKEN);
+      await saveCertificate({
+        buffer, originalName: file.name, employeeId, date, dailyRecordId, justificationId,
+        flow: meta.flow, uploadedBySlackId: slackUserId, slackFileId: file.id,
+      });
+      saved++;
+    } catch (error) {
+      console.error(`[slack] Medical certificate file ${file.id} (${file.name}) failed:`, error);
+      failed.push({ name: file.name, reason: error instanceof CertificateFileError ? error.message : 'erro ao salvar' });
+    }
+  }
+
+  if (saved > 0) {
+    await queries.logAudit('MEDICAL_CERTIFICATE_UPLOADED', 'employee', employeeId,
+      `${meta.employee_name}: ${saved} file(s) for ${date} (${meta.flow})`);
+  }
+
+  const total = already + saved;
+  const lines: string[] = meta.mode === 'justify'
+    ? [
+      ':white_check_mark: *Justificativa registrada com sucesso!*',
+      '',
+      `*Colaborador:* ${meta.employee_name}`,
+      `*Tipo:* ${meta.type === 'overtime' ? 'Hora Extra' : 'Atraso'}`,
+      `*Motivo:* ${MEDICAL_CERTIFICATE_REASON}`,
+      ...(note ? [`*Observação:* ${note}`] : []),
+    ]
+    : [`:hospital: *Atestado médico — ${formatFullDateBR(date)}*`, `*Colaborador:* ${meta.employee_name}`];
+  lines.push('', total > 0
+    ? `:paperclip: *Atestado recebido* (${total} arquivo${total > 1 ? 's' : ''}). O RH e o seu gestor já podem ver.`
+    : ':hourglass_flowing_sand: *Atestado ainda não enviado.* Quando estiver com ele, toque em *Enviar atestado*.');
+  for (const f of failed) lines.push(`:x: Não consegui salvar *${f.name}*: ${f.reason}.`);
+  if (isTest) lines.push('', '_Teste: nenhum registro de ponto foi alterado._');
+
+  const blocks: any[] = [{ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } }];
+  if (total < MAX_FILES_PER_DAY) {
+    const next: CertificateTarget = {
+      mode: 'attach', flow: meta.flow, daily_record_id: dailyRecordId, employee_id: employeeId,
+      employee_name: meta.employee_name, date, type: meta.type,
+    };
+    blocks.push({ type: 'actions', elements: [certificateButton(next, total > 0)] });
+  }
+  await showCertificateMessage(client, meta, slackUserId,
+    total > 0 ? 'Atestado recebido' : `Justificativa registrada: ${MEDICAL_CERTIFICATE_REASON}`, blocks);
+}
+
+/**
+ * The gestor marked a no-punch day as atestado: ask the employee for the file.
+ * Returns false when the employee can't be reached on Slack.
+ */
+export async function sendMedicalCertificateRequest(
+  employee: { id: number; name: string; slack_id: string | null },
+  date: string,
+  dailyRecordId: number | null
+): Promise<boolean> {
+  const app = getSlackApp();
+  if (!app) return false;
+  const targetUser = getTargetUserId(employee.slack_id);
+  if (!targetUser) {
+    console.log(`[slack] Skipping medical certificate request for ${employee.name} — no slack_id`);
+    return false;
+  }
+
+  const target: CertificateTarget = {
+    mode: 'attach', flow: 'full_day', daily_record_id: dailyRecordId, employee_id: employee.id,
+    employee_name: employee.name, date,
+  };
+  try {
+    await rateLimitedPostMessage(app, {
+      channel: targetUser,
+      text: `Envie o atestado médico de ${formatFullDateBR(date)}`,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: [
+              `:hospital: *Atestado médico — ${formatFullDateBR(date)}*`,
+              '',
+              'Seu gestor registrou atestado médico para este dia.',
+              'Envie uma foto ou o PDF do atestado pelo botão abaixo. Só o RH e o seu gestor têm acesso ao arquivo.',
+            ].join('\n'),
+          },
+        },
+        { type: 'actions', elements: [certificateButton(target, false)] },
+      ],
+    });
+    await queries.logAudit('SLACK_MEDICAL_CERTIFICATE_REQUEST', 'employee', employee.id,
+      `Asked ${employee.name} for the certificate of ${date}`);
+    return true;
+  } catch (error) {
+    console.error('[slack] Failed to send medical certificate request:', error);
+    return false;
+  }
+}
+
+/** RH test: both modals, sent ONLY to the Slack user given. Nothing touches real records. */
+export async function sendMedicalCertificateTest(slackUserId: string): Promise<void> {
+  const app = getSlackApp();
+  if (!app) throw new Error('Slack não configurado');
+
+  const base = {
+    flow: 'test' as const, daily_record_id: null, employee_id: 0,
+    employee_name: 'Colaborador Teste', date: todayInSaoPaulo(),
+  };
+  await rateLimitedPostMessage(app, {
+    channel: slackUserId,
+    text: 'Teste: envio de atestado médico',
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: ':test_tube: Teste — atestado médico', emoji: true } },
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: 'Mensagem de teste, enviada só para você. Os arquivos aparecem em *Atestados*, no painel do RH, marcados como teste. Nenhum registro de ponto é alterado.',
+        },
+      },
+      {
+        type: 'actions',
+        block_id: 'certificate_test_justify',
+        elements: [certificateButton({ ...base, mode: 'justify', type: 'late' }, false, 'Atestado médico (alerta de atraso)')],
+      },
+      {
+        type: 'actions',
+        block_id: 'certificate_test_attach',
+        elements: [certificateButton({ ...base, mode: 'attach' }, false, '📎 Enviar atestado (falta do dia)')],
+      },
+    ],
+  });
+}
+
 // ─── Register Interactive Handlers ─────────────────────────────
 
 function registerInteractions(app: App): void {
@@ -1151,6 +1473,16 @@ function registerInteractions(app: App): void {
 
         const channel = (body as any).channel?.id || (body as any).user?.id;
         const ts = (body as any).message?.ts;
+
+        // "Atestado médico" opens the modal to attach the certificate; the
+        // justification is registered on submit (with or without the file)
+        if (reason === MEDICAL_CERTIFICATE_REASON) {
+          await openCertificateModal(client, (body as any).trigger_id, {
+            mode: 'justify', flow: 'late', daily_record_id, employee_id: null,
+            employee_name, date: null, type, message_ts: ts, channel_id: channel,
+          });
+          return;
+        }
 
         // Guard: check if already reviewed by manager
         const existing = await queries.getJustificationByRecordId(daily_record_id);
@@ -1348,6 +1680,52 @@ function registerInteractions(app: App): void {
     }
   });
 
+  // "Enviar atestado" — file for a day already marked as atestado (or the RH test)
+  app.action('upload_medical_certificate', async ({ ack, body, action, client }) => {
+    await ack();
+
+    try {
+      const target = JSON.parse((action as any).value) as CertificateTarget;
+      await openCertificateModal(client, (body as any).trigger_id, {
+        ...target,
+        message_ts: (body as any).message?.ts,
+        channel_id: (body as any).channel?.id || (body as any).user?.id,
+      });
+    } catch (error) {
+      console.error('[slack] Error opening medical certificate modal:', error);
+    }
+  });
+
+  app.view(MEDICAL_CERTIFICATE_MODAL, async ({ ack, body, view, client }) => {
+    const meta = JSON.parse(view.private_metadata) as CertificateModalMeta;
+    const files = view.state.values[CERT_FILES_BLOCK]?.[CERT_FILES_INPUT]?.files ?? [];
+
+    const tooBig = files.find(f => (f.size ?? 0) > MAX_CERTIFICATE_BYTES);
+    if (tooBig) {
+      await ack({ response_action: 'errors', errors: { [CERT_FILES_BLOCK]: `"${tooBig.name}" passa de 10 MB.` } });
+      return;
+    }
+    if (meta.mode === 'attach' && files.length === 0) {
+      await ack({ response_action: 'errors', errors: { [CERT_FILES_BLOCK]: 'Anexe a foto ou o PDF do atestado.' } });
+      return;
+    }
+    // Downloading + storing can take longer than Slack's 3s, so close the modal first
+    await ack();
+
+    const note = (view.state.values[CERT_NOTE_BLOCK]?.[CERT_NOTE_INPUT]?.value || '').trim();
+    const slackUserId = body.user.id;
+    try {
+      await handleCertificateSubmission(client, meta, files, note, slackUserId);
+      console.log(`[slack] Medical certificate submitted for ${meta.employee_name} (${meta.flow}, ${files.length} file(s))`);
+    } catch (error) {
+      console.error('[slack] Error handling medical certificate:', error);
+      await client.chat.postMessage({
+        channel: slackUserId,
+        text: ':x: Não consegui registrar o seu atestado. Tente de novo pelo botão ou fale com o RH.',
+      }).catch(() => undefined);
+    }
+  });
+
   // ─── Handle Manager Folga/Falta Decisions ───────────────────────
 
   app.action('set_folga', async ({ ack, body, action, client }) => {
@@ -1523,6 +1901,13 @@ function registerInteractions(app: App): void {
           `${employee_name} on ${date} marked as atestado medico (no prior record)`);
       }
 
+      // Ask the employee for the certificate file (photo/PDF) on Slack
+      const employee = await queries.getEmployeeById(employee_id);
+      const savedRecord = record ?? await queries.getDailyRecord(employee_id, date);
+      const requested = employee
+        ? await sendMedicalCertificateRequest(employee, date, savedRecord?.id ?? null)
+        : false;
+
       await client.chat.update({
         channel: (body as any).channel?.id || (body as any).user?.id,
         ts: (body as any).message?.ts,
@@ -1538,6 +1923,10 @@ function registerInteractions(app: App): void {
                 `*Colaborador:* ${employee_name}`,
                 `*Data:* ${date}`,
                 `*Status:* 🏥 Atestado Médico`,
+                '',
+                requested
+                  ? ':envelope: Pedimos ao colaborador, pelo Slack, que envie o atestado (foto ou PDF).'
+                  : ':warning: Não consegui pedir o atestado ao colaborador pelo Slack (sem Slack cadastrado ou falha no envio).',
               ].join('\n'),
             },
           },

@@ -30,6 +30,7 @@ const adminNav: NavItem[] = [
   { label: 'Registros', href: '/admin/records', icon: <IconClock /> },
   { label: 'Gestores', href: '/admin/leaders', icon: <IconShield /> },
   { label: 'Ajustes', href: '/admin/ajustes', icon: <IconCheckCircle /> },
+  { label: 'Atestados', href: '/admin/atestados', icon: <IconFile /> },
   { label: 'Ferias', href: '/admin/ferias', icon: <IconUmbrella /> },
   { label: 'Feriados', href: '/admin/holidays', icon: <IconCalendar /> },
   { label: 'Unidades', href: '/admin/funcionamento', icon: <IconBuilding /> },

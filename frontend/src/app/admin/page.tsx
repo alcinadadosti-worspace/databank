@@ -407,7 +407,7 @@ export default function AdminDashboard() {
             : `Registros de ${startDate.split('-').reverse().join('/')} até ${endDate.split('-').reverse().join('/')}`
           }
         </h3>
-        <RecordsTable records={filteredRecords} showEmployee showLeader />
+        <RecordsTable records={filteredRecords} showEmployee showLeader certificateAuth="admin" />
       </div>
     </div>
   );

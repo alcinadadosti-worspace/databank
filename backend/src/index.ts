@@ -20,6 +20,7 @@ import reportsRouter from './routes/reports';
 import vacationsRouter from './routes/vacations';
 import vacationSchedulesRouter from './routes/vacation-schedules';
 import folgasRouter from './routes/folgas';
+import medicalCertificatesRouter from './routes/medical-certificates';
 
 const app = express();
 
@@ -47,6 +48,8 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/vacations', vacationsRouter);
 app.use('/api/vacation-schedules', vacationSchedulesRouter);
 app.use('/api/folgas', folgasRouter);
+// Atestados: RH or gestor login required (checked inside the router)
+app.use('/api/medical-certificates', medicalCertificatesRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

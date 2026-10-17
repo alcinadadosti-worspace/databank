@@ -40,7 +40,7 @@ export default function ManagerTeam() {
       {loading ? (
         <p className="text-sm text-text-tertiary">Carregando...</p>
       ) : (
-        <RecordsTable records={records} showEmployee />
+        <RecordsTable records={records} showEmployee certificateAuth="manager" />
       )}
     </div>
   );
