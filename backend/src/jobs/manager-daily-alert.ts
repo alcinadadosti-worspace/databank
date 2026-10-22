@@ -1,6 +1,37 @@
 import * as queries from '../models/queries';
 import { sendManagerWeeklySummary, sendManagerDailySummary, sendNoRecordNotification, sendMissingPunchNotification, sendLateStartNotification, sendLatePunchNotification } from '../slack/bot';
 import { WORK_SCHEDULE, isLojaSustentavelEmployee, isNoLunchEmployee } from '../config/constants';
+import { syncPunches } from './sync-punches';
+
+/**
+ * Re-sync the given dates from Sólides (no notifications) before a check or
+ * summary that reads daily_records. If Sólides is down — or sends nothing for a
+ * working day — the stored records are stale and the check would blame people
+ * for punches that never arrived (21/10/2026: the punch API returned 500 from
+ * 16:00 and the next 10:00 check sent 72 false "Ponto Incompleto" DMs).
+ * Returns false when the run must be skipped.
+ *
+ * allowEmpty: a day with no punches at all (e.g. a local holiday missing from
+ * the calendar) only blocks the daily check, which would flag everyone as "sem
+ * registro"; in the weekly summary that day simply has no rows.
+ */
+async function hasFreshPunchData(dates: string[], context: string, allowEmpty = false): Promise<boolean> {
+  for (const date of dates) {
+    let reason: string | null = null;
+    try {
+      const punches = await syncPunches(date, { skipNotifications: true });
+      if (punches === 0 && !allowEmpty) reason = `Sólides não retornou nenhum ponto para ${date}`;
+    } catch (error) {
+      reason = `sync de ${date} falhou: ${String(error)}`;
+    }
+    if (reason) {
+      console.error(`[${context}] Skipping — ${reason}`);
+      await queries.logAudit('CHECK_SKIPPED_STALE_DATA', 'system', undefined, `${context}: ${reason}`);
+      return false;
+    }
+  }
+  return true;
+}
 
 // Cache of employees on vacation for specific dates
 const vacationCache = new Map<string, Set<number>>();
@@ -190,6 +221,9 @@ export async function runDailyChecks(): Promise<void> {
     return;
   }
 
+  // No employee or manager notification from stale data
+  if (!(await hasFreshPunchData([date], 'daily-check'))) return;
+
   // Run the end-of-day checks (sends notifications to employees and managers for no-record)
   await checkPreviousDayRecords();
 
@@ -299,6 +333,10 @@ export async function sendWeeklyManagerAlerts(): Promise<void> {
 
     dates.sort(); // Sort chronologically
     console.log(`[weekly-alert] Collecting records for dates: ${dates.join(', ')}`);
+
+    // Re-sync the whole week so a day missed during an outage is fixed (or the
+    // summary is skipped) instead of reaching managers with missing punches
+    if (!(await hasFreshPunchData(dates, 'weekly-alert', true))) return;
 
     // Collect all records for the week
     const allRecords: queries.DailyRecord[] = [];

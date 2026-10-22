@@ -78,8 +78,10 @@ async function upsertIfChanged(
  *
  * Record 1: dateIn = entrada, dateOut = saida almoco
  * Record 2: dateIn = retorno almoco, dateOut = saida final
+ *
+ * Returns how many punch records Sólides sent for the day (0 = nothing arrived).
  */
-export async function syncPunches(targetDate?: string, options?: SyncOptions): Promise<void> {
+export async function syncPunches(targetDate?: string, options?: SyncOptions): Promise<number> {
   const skipNotifications = options?.skipNotifications ?? false;
   // São Paulo date: the cron runs until 23:55 BRT, and the UTC date made every run
   // from 21:00 on sync the (empty) next day — Loja Sustentável's 21:00 exits only
@@ -92,7 +94,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
 
     if (!punchData || punchData.length === 0) {
       console.log('[sync] No punch data received');
-      return;
+      return 0;
     }
 
     // Group punches by employee + date
@@ -304,6 +306,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         `Synced ${punchData.length} punches for ${processed} employees (${changed} updated) on ${today}`);
     }
     console.log(`[sync] Completed. ${punchData.length} punches, ${processed} employees, ${changed} updated`);
+    return punchData.length;
   } catch (error) {
     console.error('[sync] Error syncing punches:', error);
     await queries.logAudit('SYNC_ERROR', 'system', undefined, String(error));
