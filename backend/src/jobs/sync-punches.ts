@@ -107,8 +107,9 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       grouped.get(key)!.push(punch);
     }
 
-    // Get folgas for today (fetched once, used per employee)
+    // Get folgas and RH atestados for today (fetched once, used per employee)
     const onFolga = await queries.getEmployeesOnFolga(today);
+    const onLeave = await queries.getMedicalLeaveCoverage(today);
 
     // Existing records for the day — needed to preserve manually corrected punches
     const existingRecords = await queries.getDailyRecordsByDate(today);
@@ -191,6 +192,14 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
         continue;
       }
 
+      // Whole-day atestado lançado pelo RH — save punches but classify as atestado, no alerts
+      const leave = onLeave.get(employee.id);
+      if (leave?.fullDay) {
+        if (await upsertIfChanged(prevRecord, employee.id, date, punch1, punch2, punch3, punch4, null, null, 'atestado_medico')) changed++;
+        processed++;
+        continue;
+      }
+
       // Skip integral folga — save punches but classify as folga, no alerts
       const folgaRecord = onFolga.get(employee.id);
       if (folgaRecord?.type === 'integral') {
@@ -205,16 +214,15 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const isApprentice = employee.is_apprentice === true;
       const isSat = isSaturday(date);
 
-      // Get expected minutes; reduce for partial folga
+      // Get expected minutes; reduce for partial folga and hour-based RH atestado
       let expectedMinutes: number;
       if (isLojasSustentavel) {
         expectedMinutes = getLojaSustentavelExpectedMinutes(date);
       } else {
         expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee.name, employee.schedule_overrides);
       }
-      if (folgaRecord?.type === 'partial') {
-        expectedMinutes = Math.max(0, expectedMinutes - (folgaRecord.hours_off * 60));
-      }
+      const minutesOff = (folgaRecord?.type === 'partial' ? folgaRecord.hours_off * 60 : 0) + (leave?.hoursOff ?? 0) * 60;
+      expectedMinutes = Math.max(0, expectedMinutes - minutesOff);
 
       // Saturday, apprentices, Loja Sustentável, and no-lunch employees only need 1 complete pair; regular weekdays need 2
       const minPairs = (isSat || isApprentice || isLojasSustentavel || isNoLunch) ? 1 : 2;
@@ -228,17 +236,21 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
           { punch1, punch2, punch3, punch4 },
           date,
           employee,
-          { minutesOff: folgaRecord?.type === 'partial' ? folgaRecord.hours_off * 60 : 0 }
+          { minutesOff }
         );
       } else {
         const completePairs = punches.filter(p => p.dateIn && p.dateOut);
-        if (completePairs.length >= minPairs) {
-          completePairs.sort((a, b) => a.dateIn - b.dateIn);
-          let totalMs = 0;
-          for (const pair of completePairs) {
-            totalMs += pair.dateOut! - pair.dateIn;
-          }
-          const totalWorkedMinutes = Math.round(totalMs / 60000);
+        let totalMs = 0;
+        for (const pair of completePairs) {
+          totalMs += pair.dateOut! - pair.dateIn;
+        }
+        const totalWorkedMinutes = Math.round(totalMs / 60000);
+        // Shortened day (partial folga / hour-based atestado): one period that already
+        // covers the shorter journey is the whole day. A shorter one may just be the
+        // morning, so it waits for the rest instead of alerting "Atraso" at lunch time.
+        const coversShortenedDay = minutesOff > 0 && completePairs.length >= 1
+          && totalWorkedMinutes >= expectedMinutes - WORK_SCHEDULE.TOLERANCE_MINUTES;
+        if (completePairs.length >= minPairs || coversShortenedDay) {
           const differenceMinutes = totalWorkedMinutes - expectedMinutes;
           let classification: HourClassification;
           if (Math.abs(differenceMinutes) <= WORK_SCHEDULE.TOLERANCE_MINUTES) {

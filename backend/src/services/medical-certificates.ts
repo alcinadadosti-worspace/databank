@@ -13,10 +13,13 @@ export const MAX_FILES_PER_DAY = 10;
 /** Offered in Slack's file picker — convenience only, the bytes are checked again on save. */
 export const SLACK_CERTIFICATE_FILETYPES = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'pdf'];
 
-/** Where it came from: late justification, gestor's no-punch decision, punch adjustment request, RH test */
-export type CertificateFlow = 'late' | 'full_day' | 'adjustment' | 'test';
-/** Who attached it on Slack: the employee, or the gestor (e.g. a photo received on WhatsApp) */
-export type CertificateUploader = 'employee' | 'manager';
+/**
+ * Where it came from: late justification, gestor's no-punch decision, punch
+ * adjustment request, RH test, or an atestado the RH registered in the panel
+ */
+export type CertificateFlow = 'late' | 'full_day' | 'adjustment' | 'test' | 'rh';
+/** Who attached it: the employee or the gestor on Slack (e.g. a photo received on WhatsApp), or the RH in the panel */
+export type CertificateUploader = 'employee' | 'manager' | 'rh';
 
 export interface MedicalCertificate {
   id: string;

@@ -129,6 +129,22 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
     };
   }
 
+  // Weekday shortened by a partial folga or an hour-based atestado: a single period
+  // that already covers the shorter journey is the whole day (e.g. works the morning,
+  // doctor in the afternoon). A shorter single period stays incomplete — at lunch
+  // time that's just the morning, and an "Atraso" then would alert mid-day.
+  if (minutesOff > 0 && punches.punch1 && punches.punch2 && !punches.punch3 && !punches.punch4) {
+    const totalWorkedMinutes = timeToMinutes(punches.punch2) - timeToMinutes(punches.punch1);
+    const differenceMinutes = totalWorkedMinutes - expectedMinutes;
+    if (differenceMinutes < -WORK_SCHEDULE.TOLERANCE_MINUTES) return null;
+    return {
+      totalWorkedMinutes,
+      differenceMinutes,
+      classification: differenceMinutes <= WORK_SCHEDULE.TOLERANCE_MINUTES ? 'normal' : 'overtime',
+      isComplete: true,
+    };
+  }
+
   // Weekdays: need all 4 punches
   if (!punches.punch1 || !punches.punch2 || !punches.punch3 || !punches.punch4) {
     return null;

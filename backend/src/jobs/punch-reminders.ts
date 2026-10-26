@@ -15,19 +15,29 @@ async function getEmployeesOnVacation(): Promise<Set<number>> {
   return vacationEmployeesCache;
 }
 
-// Cache of employees on integral folga for the current day
+// Cache of employees on integral folga or whole-day RH atestado for the current day.
+// Refreshed every 10 min: a folga/atestado registered in the morning for the same
+// day must stop the afternoon reminders.
+const FOLGA_CACHE_TTL_MS = 10 * 60 * 1000;
 let folgaCache: Map<number, queries.Folga> | null = null;
+let leaveCache: Map<number, queries.MedicalLeaveCoverage> | null = null;
 let folgaCacheDate = '';
+let folgaCacheAt = 0;
 
 async function getEmployeesOnIntegralFolga(): Promise<Set<number>> {
   const today = new Date().toISOString().split('T')[0];
-  if (folgaCacheDate !== today || !folgaCache) {
+  if (folgaCacheDate !== today || !folgaCache || !leaveCache || Date.now() - folgaCacheAt > FOLGA_CACHE_TTL_MS) {
     folgaCache = await queries.getEmployeesOnFolga(today);
+    leaveCache = await queries.getMedicalLeaveCoverage(today);
     folgaCacheDate = today;
+    folgaCacheAt = Date.now();
   }
   const integralIds = new Set<number>();
   for (const [empId, folga] of folgaCache) {
     if (folga.type === 'integral') integralIds.add(empId);
+  }
+  for (const [empId, leave] of leaveCache) {
+    if (leave.fullDay) integralIds.add(empId);
   }
   return integralIds;
 }

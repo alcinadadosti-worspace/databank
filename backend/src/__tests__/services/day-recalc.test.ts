@@ -6,6 +6,7 @@ jest.mock('../../models/queries', () => ({
   isWorkingDayAsync: jest.fn(),
   getEmployeesOnVacation: jest.fn(),
   getEmployeesOnFolga: jest.fn(),
+  getMedicalLeaveCoverage: jest.fn(),
   getEmployeeRecordsInRange: jest.fn(),
   getEmployeeById: jest.fn(),
   updateDailyRecordPunches: jest.fn(),
@@ -26,8 +27,13 @@ beforeEach(() => {
   q.isWorkingDayAsync.mockResolvedValue(true);
   q.getEmployeesOnVacation.mockResolvedValue(new Set());
   q.getEmployeesOnFolga.mockResolvedValue(new Map());
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map());
   q.getEmployeeById.mockResolvedValue(EMP as any);
 });
+
+function atestado(fullDay: boolean, hoursOff = 0) {
+  return new Map([[EMP.id, { fullDay, hoursOff }]]);
+}
 
 describe('calculateDailyHoursForEmployee minutesOff', () => {
   it('subtracts a partial folga from the weekday expected minutes', () => {
@@ -37,6 +43,13 @@ describe('calculateDailyHoursForEmployee minutesOff', () => {
     const withFolga = calculateDailyHoursForEmployee(punches, WEEKDAY, EMP, { minutesOff: 240 });
     expect(withFolga?.differenceMinutes).toBe(0);
     expect(withFolga?.classification).toBe('normal');
+  });
+
+  it('on a shortened weekday a single period is complete only when it covers the shorter journey', () => {
+    const morning = { punch1: '08:00', punch2: '12:00', punch3: null, punch4: null };
+    expect(calculateDailyHoursForEmployee(morning, WEEKDAY, EMP)).toBeNull();
+    expect(calculateDailyHoursForEmployee(morning, WEEKDAY, EMP, { minutesOff: 240 })?.classification).toBe('normal');
+    expect(calculateDailyHoursForEmployee(morning, WEEKDAY, EMP, { minutesOff: 60 })).toBeNull();
   });
 
   it('subtracts a partial folga on Saturday too', () => {
@@ -69,6 +82,24 @@ describe('recalculateDay', () => {
 
   it('computes a regular day normally', async () => {
     expect(await recalculateDay(FULL_DAY, WEEKDAY, EMP)).toEqual({ totalWorkedMinutes: 480, differenceMinutes: 0, classification: 'normal' });
+  });
+
+  it('marks a day covered by an RH atestado in days as atestado_medico', async () => {
+    q.getMedicalLeaveCoverage.mockResolvedValue(atestado(true));
+    expect(await recalculateDay(HALF_DAY, WEEKDAY, EMP)).toEqual({ totalWorkedMinutes: null, differenceMinutes: null, classification: 'atestado_medico' });
+  });
+
+  it('takes RH atestado hours off the expected minutes, on top of a partial folga', async () => {
+    q.getEmployeesOnFolga.mockResolvedValue(folga('partial', 2));
+    q.getMedicalLeaveCoverage.mockResolvedValue(atestado(false, 2));
+    const r = await recalculateDay({ punch1: '08:00', punch2: '10:00', punch3: '14:00', punch4: '16:00' }, WEEKDAY, EMP);
+    expect(r).toEqual({ totalWorkedMinutes: 240, differenceMinutes: 0, classification: 'normal' });
+  });
+
+  it('vacation wins over an RH atestado', async () => {
+    q.getEmployeesOnVacation.mockResolvedValue(new Set([EMP.id]));
+    q.getMedicalLeaveCoverage.mockResolvedValue(atestado(true));
+    expect((await recalculateDay(FULL_DAY, WEEKDAY, EMP)).classification).toBe('ferias');
   });
 });
 
@@ -119,6 +150,24 @@ describe('refreshStoredDays', () => {
     q.getEmployeeRecordsInRange.mockResolvedValue([record({ classification: 'falta' })] as any);
     expect(await refreshStoredDays(EMP.id, WEEKDAY, WEEKDAY)).toBe(0);
     expect(q.updateDailyRecordPunches).not.toHaveBeenCalled();
+  });
+
+  it("an RH atestado in days replaces the gestor's falta and a past Sem registro", async () => {
+    q.getEmployeeRecordsInRange.mockResolvedValue([
+      record({ classification: 'falta' }),
+      record({ id: 100, date: '2026-10-15', classification: 'sem_registro' }),
+    ] as any);
+    q.getMedicalLeaveCoverage.mockResolvedValue(atestado(true));
+    expect(await refreshStoredDays(EMP.id, WEEKDAY, '2026-10-15')).toBe(2);
+    expect(q.updateDailyRecordPunches).toHaveBeenCalledWith(99, null, null, null, null, null, null, 'atestado_medico');
+    expect(q.updateDailyRecordPunches).toHaveBeenCalledWith(100, null, null, null, null, null, null, 'atestado_medico');
+  });
+
+  it('deleting an RH atestado reopens the day; without releaseAtestado a Slack atestado stays', async () => {
+    q.getEmployeeRecordsInRange.mockResolvedValue([record({ classification: 'atestado_medico' })] as any);
+    expect(await refreshStoredDays(EMP.id, WEEKDAY, WEEKDAY)).toBe(0);
+    await refreshStoredDays(EMP.id, WEEKDAY, WEEKDAY, { releaseAtestado: true });
+    expect(q.updateDailyRecordPunches).toHaveBeenCalledWith(99, null, null, null, null, null, null, 'sem_registro');
   });
 
   it('does not rewrite records that are already right', async () => {

@@ -95,6 +95,11 @@ export function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+/** Today in São Paulo — todayISO is UTC, so after 21:00 BRT it is already tomorrow */
+export function todayInSaoPaulo(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
 export function daysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);

@@ -6,6 +6,7 @@ jest.mock('../../services/solides-api', () => ({ fetchPunches: jest.fn() }));
 jest.mock('../../slack/bot', () => ({ sendEmployeeAlert: jest.fn() }));
 jest.mock('../../models/queries', () => ({
   getEmployeesOnFolga: jest.fn(),
+  getMedicalLeaveCoverage: jest.fn(),
   getDailyRecordsByDate: jest.fn(),
   getAllEmployees: jest.fn(),
   updateEmployeeSolidesId: jest.fn(),
@@ -32,6 +33,7 @@ function fullDay(solidesId: string) {
 beforeEach(() => {
   jest.resetAllMocks();
   q.getEmployeesOnFolga.mockResolvedValue(new Map());
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map());
   q.isWorkingDayAsync.mockResolvedValue(true);
   q.getAllEmployees.mockResolvedValue([
     { id: 1, name: 'Ana', solides_employee_id: 's1' },
@@ -98,4 +100,42 @@ it('reports a Sólides failure instead of finishing as success', async () => {
   fetchMock.mockRejectedValue(new Error('Sólides API error 503'));
   await expect(syncPunches(DATE, { skipNotifications: true })).rejects.toThrow('503');
   expect(q.logAudit).toHaveBeenCalledWith('SYNC_ERROR', 'system', undefined, expect.stringContaining('503'));
+});
+
+it('a whole-day RH atestado saves the punches as atestado_medico and never alerts', async () => {
+  fetchMock.mockResolvedValue(fullDay('s1')); // 7h worked → would be "late"
+  q.getDailyRecordsByDate.mockResolvedValue([]);
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: true, hoursOff: 0 }]]));
+
+  await syncPunches(DATE); // notifications on: the alert path must not even be reached
+
+  const call = q.upsertDailyRecord.mock.calls[0];
+  expect(call[0]).toBe(1);
+  expect(call[8]).toBe('atestado_medico');
+  expect(q.getDailyRecord).not.toHaveBeenCalled();
+});
+
+it('RH atestado hours come off the expected day (7h worked + 1h atestado = normal)', async () => {
+  fetchMock.mockResolvedValue(fullDay('s1'));
+  q.getDailyRecordsByDate.mockResolvedValue([]);
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: false, hoursOff: 1 }]]));
+
+  await syncPunches(DATE, { skipNotifications: true });
+
+  expect(q.upsertDailyRecord.mock.calls[0].slice(6)).toEqual([420, 0, 'normal']);
+});
+
+it('a 4h atestado: the morning alone is the whole day (normal); with 1h off it waits for the afternoon', async () => {
+  const morning = [{ id: 's1a', employeeId: 's1', employeeName: '', date: DATE, dateIn: at('08:00'), dateOut: at('12:00'), type: 0, status: 'APPROVED' }];
+  fetchMock.mockResolvedValue(morning);
+  q.getDailyRecordsByDate.mockResolvedValue([]);
+
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: false, hoursOff: 4 }]]));
+  await syncPunches(DATE, { skipNotifications: true });
+  expect(q.upsertDailyRecord.mock.calls[0].slice(6)).toEqual([240, 0, 'normal']);
+
+  q.upsertDailyRecord.mockClear();
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: false, hoursOff: 1 }]]));
+  await syncPunches(DATE, { skipNotifications: true });
+  expect(q.upsertDailyRecord.mock.calls[0].slice(6)).toEqual([null, null, null]); // not "Atraso" at lunch time
 });

@@ -74,6 +74,7 @@ export const COLLECTIONS = {
   VACATION_SCHEDULES: 'vacation_schedules',
   FOLGAS: 'folgas',
   MEDICAL_CERTIFICATES: 'medical_certificates',
+  MEDICAL_LEAVES: 'medical_leaves',
 } as const;
 
 /**

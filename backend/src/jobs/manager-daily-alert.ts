@@ -33,6 +33,9 @@ async function hasFreshPunchData(dates: string[], context: string, allowEmpty = 
   return true;
 }
 
+/** Classifications the sync computes from complete punches (as opposed to decisions) */
+const COMPUTED_CLASSIFICATIONS = new Set(['normal', 'late', 'overtime']);
+
 // Cache of employees on vacation for specific dates
 const vacationCache = new Map<string, Set<number>>();
 
@@ -53,6 +56,16 @@ async function getEmployeesOnFolgaForDate(date: string): Promise<Map<number, que
   return folgaCache.get(date)!;
 }
 
+// Cache of RH atestados for specific dates
+const leaveCache = new Map<string, Map<number, queries.MedicalLeaveCoverage>>();
+
+async function getMedicalLeaveCoverageForDate(date: string): Promise<Map<number, queries.MedicalLeaveCoverage>> {
+  if (!leaveCache.has(date)) {
+    leaveCache.set(date, await queries.getMedicalLeaveCoverage(date));
+  }
+  return leaveCache.get(date)!;
+}
+
 /**
  * Check previous day's records for issues and send appropriate notifications.
  * This runs at 08:00 Mon-Sat.
@@ -68,12 +81,19 @@ export async function checkPreviousDayRecords(): Promise<void> {
 
   console.log(`[end-of-day-check] Checking records for ${date} (Saturday: ${isSaturday})`);
 
+  // Fresh coverage every run: a folga/atestado registered after an earlier run (or a
+  // manual re-run) must not be checked against stale data and alert anyway
+  vacationCache.clear();
+  folgaCache.clear();
+  leaveCache.clear();
+
   try {
     const allEmployees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(date);
     const recordsByEmpId = new Map(records.map(r => [r.employee_id, r]));
     const onVacation = await getEmployeesOnVacationForDate(date);
     const onFolga = await getEmployeesOnFolgaForDate(date);
+    const onLeave = await getMedicalLeaveCoverageForDate(date);
 
     for (const employee of allEmployees) {
       // Skip employees who don't punch
@@ -84,6 +104,15 @@ export async function checkPreviousDayRecords(): Promise<void> {
         const record = recordsByEmpId.get(employee.id);
         if (record && !record.classification) {
           await queries.updateRecordClassification(record.id, 'ferias');
+        }
+        continue;
+      }
+
+      // Skip employees on a whole-day RH atestado - no punches expected
+      if (onLeave.get(employee.id)?.fullDay) {
+        const record = recordsByEmpId.get(employee.id);
+        if (record && !record.classification) {
+          await queries.updateRecordClassification(record.id, 'atestado_medico');
         }
         continue;
       }
@@ -122,6 +151,16 @@ export async function checkPreviousDayRecords(): Promise<void> {
       }
 
       const record = recordsByEmpId.get(employee.id);
+
+      // Day shortened by a partial folga or an hour-based atestado that the sync already
+      // computed against the shorter journey (and alerted if it was short): skipping lunch
+      // punches or arriving after 10:00 is expected that day, so no "ajuste" DM
+      const minutesOff = (folgaRecord?.type === 'partial' ? folgaRecord.hours_off * 60 : 0)
+        + (onLeave.get(employee.id)?.hoursOff ?? 0) * 60;
+      if (minutesOff > 0 && record?.classification && COMPUTED_CLASSIFICATIONS.has(record.classification)) {
+        continue;
+      }
+
       const punchCount = countPunches(record);
       const expectedPunches = getExpectedPunches(isSaturday, employee);
 

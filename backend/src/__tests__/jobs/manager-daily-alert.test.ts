@@ -18,6 +18,9 @@ jest.mock('../../models/queries', () => ({
   getDailyRecordsByDate: jest.fn(),
   getEmployeesOnVacation: jest.fn(),
   getEmployeesOnFolga: jest.fn(),
+  getMedicalLeaveCoverage: jest.fn(),
+  isWorkingDayForEmployee: jest.fn(),
+  updateRecordClassification: jest.fn(),
   attachJustifications: jest.fn(),
   logAudit: jest.fn(),
 }));
@@ -33,6 +36,8 @@ beforeEach(() => {
   q.getDailyRecordsByDate.mockResolvedValue([]);
   q.getEmployeesOnVacation.mockResolvedValue(new Set());
   q.getEmployeesOnFolga.mockResolvedValue(new Map());
+  q.getMedicalLeaveCoverage.mockResolvedValue(new Map());
+  q.isWorkingDayForEmployee.mockResolvedValue(true);
   q.attachJustifications.mockImplementation(async (records: any) => records);
 });
 
@@ -90,4 +95,41 @@ it('a day with no punches (e.g. unregistered holiday) does not cancel the weekly
 
   expect(q.logAudit).not.toHaveBeenCalledWith('CHECK_SKIPPED_STALE_DATA', expect.anything(), expect.anything(), expect.anything());
   expect(b.sendManagerWeeklySummary).toHaveBeenCalled();
+});
+
+describe('08:00 check with RH atestados', () => {
+  // Thursday 10/15 morning: the check looks at Wednesday 10/14 (a weekday, 4 punches expected)
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    jest.setSystemTime(new Date('2026-10-15T15:00:00Z'));
+    syncMock.mockResolvedValue(120);
+    q.getAllEmployees.mockResolvedValue([{ id: 1, name: 'Ana', slack_id: 'U1', leader_id: 5 }] as any);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const morningOnly = (classification: string | null) => [
+    { id: 5, employee_id: 1, date: '2026-10-14', punch_1: '08:00', punch_2: '12:00', punch_3: null, punch_4: null, classification },
+  ] as any;
+
+  it('without an atestado, a morning-only day still asks the employee for the missing punches', async () => {
+    q.getDailyRecordsByDate.mockResolvedValue(morningOnly(null));
+    await runDailyChecks();
+    expect(b.sendMissingPunchNotification).toHaveBeenCalled();
+  });
+
+  it('a 4h atestado day already computed by the sync gets no "ajuste" DM', async () => {
+    q.getDailyRecordsByDate.mockResolvedValue(morningOnly('normal'));
+    q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: false, hoursOff: 4 }]]));
+    await runDailyChecks();
+    expect(b.sendMissingPunchNotification).not.toHaveBeenCalled();
+    expect(b.sendLateStartNotification).not.toHaveBeenCalled();
+    expect(q.updateRecordClassification).not.toHaveBeenCalled();
+  });
+
+  it('a whole-day atestado without punches does not ask the gestor about the absence', async () => {
+    q.getDailyRecordsByDate.mockResolvedValue([]);
+    q.getMedicalLeaveCoverage.mockResolvedValue(new Map([[1, { fullDay: true, hoursOff: 0 }]]));
+    await runDailyChecks();
+    expect(b.sendNoRecordNotification).not.toHaveBeenCalled();
+  });
 });

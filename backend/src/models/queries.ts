@@ -1486,6 +1486,8 @@ export interface UnitEmployee {
   is_on_vacation: boolean;
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
+  /** Whole-day atestado lançado pelo RH */
+  is_on_atestado: boolean;
   is_exempt_today: boolean;
   /** Gestor's Slack decision for a day without punches (falta, atestado_medico…), if any */
   absence_decision: string | null;
@@ -1520,6 +1522,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
 
   const onVacation = await getEmployeesOnVacation(date);
   const onFolga = await getEmployeesOnFolga(date);
+  const onLeave = await getMedicalLeaveCoverage(date);
 
   // Loja Sustentável rotation: determine who worked yesterday to mark the other as
   // exempt today. Only the rotation employees matter — fetch their docs directly
@@ -1651,7 +1654,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     // never list them as absent nor offer "Lançar Ponto" for a day they don't work.
     const isSaturdayOff = dateDow === 6 && emp.works_saturday === false;
     const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff;
-    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isExemptToday || !!(record?.punch_1);
+    const isOnAtestado = !!onLeave.get(emp.id)?.fullDay;
+    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isOnAtestado || isExemptToday || !!(record?.punch_1);
     // Without this, a day the gestor already decided in Slack still showed as a
     // plain "Sem registro" absence
     const absenceDecision = !record?.punch_1 && record?.classification && SLACK_ABSENCE_DECISIONS.has(record.classification)
@@ -1671,6 +1675,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       is_on_vacation: isOnVacation,
       is_on_folga: isOnFolga,
       folga_type: folgaType,
+      is_on_atestado: isOnAtestado,
       is_exempt_today: isExemptToday,
       absence_decision: absenceDecision,
     };
@@ -2895,6 +2900,84 @@ export async function getEmployeesOnFolga(date: string): Promise<Map<number, Fol
     .get();
   const folgas = docsToArray<Folga>(snap);
   return new Map(folgas.map(f => [f.employee_id, f]));
+}
+
+// ─── Medical leaves (atestados lançados pelo RH) ──────────────
+
+/**
+ * An atestado the RH registers in the Atestados tab: whole days off (any length —
+ * a medical leave can run for months) or hours on a single day (e.g. a doctor's
+ * appointment). Whole days work like an integral folga (no alerts, the day is
+ * classified "atestado_medico"); hours come off the day's expected minutes like
+ * a partial folga. The scanned document, if any, is a regular medical_certificates
+ * file listed in certificate_ids.
+ */
+export interface MedicalLeave {
+  id: string;
+  employee_id: number;
+  kind: 'days' | 'hours';
+  start_date: string; // YYYY-MM-DD
+  end_date: string;   // last day covered; same as start_date for hours
+  days: number | null;  // calendar days, counting the start date
+  hours: number | null;
+  notes: string | null;
+  certificate_ids: string[];
+  created_at: string;
+  created_by: string;
+}
+
+/** What the RH atestados cover on one day for one employee */
+export interface MedicalLeaveCoverage {
+  fullDay: boolean;
+  /** Hours off from hour-based atestados (summed) */
+  hoursOff: number;
+}
+
+export async function insertMedicalLeave(
+  data: Omit<MedicalLeave, 'id' | 'certificate_ids' | 'created_at'>
+): Promise<MedicalLeave> {
+  const ref = getDb().collection(COLLECTIONS.MEDICAL_LEAVES).doc();
+  const leave: MedicalLeave = { ...data, id: ref.id, certificate_ids: [], created_at: new Date().toISOString() };
+  await ref.set(leave);
+  invalidateCache('records_units'); // atestados affect unit presence views
+  return leave;
+}
+
+export async function setMedicalLeaveCertificates(id: string, certificateIds: string[]): Promise<void> {
+  await getDb().collection(COLLECTIONS.MEDICAL_LEAVES).doc(id).update({ certificate_ids: certificateIds });
+}
+
+export async function getMedicalLeave(id: string): Promise<MedicalLeave | null> {
+  const doc = await getDb().collection(COLLECTIONS.MEDICAL_LEAVES).doc(id).get();
+  return doc.exists ? (doc.data() as MedicalLeave) : null;
+}
+
+/** Atestados overlapping [start, end]; past ones are excluded server-side, like vacations. */
+export async function getMedicalLeavesInRange(start: string, end: string): Promise<MedicalLeave[]> {
+  const snap = await getDb().collection(COLLECTIONS.MEDICAL_LEAVES)
+    .where('end_date', '>=', start)
+    .get();
+  return snap.docs
+    .map(d => d.data() as MedicalLeave)
+    .filter(l => l.start_date <= end)
+    .sort((a, b) => b.start_date.localeCompare(a.start_date) || b.created_at.localeCompare(a.created_at));
+}
+
+export async function deleteMedicalLeave(id: string): Promise<void> {
+  await getDb().collection(COLLECTIONS.MEDICAL_LEAVES).doc(id).delete();
+  invalidateCache('records_units');
+}
+
+/** Returns a Map of employee_id → what the RH atestados cover on the given date. */
+export async function getMedicalLeaveCoverage(date: string): Promise<Map<number, MedicalLeaveCoverage>> {
+  const coverage = new Map<number, MedicalLeaveCoverage>();
+  for (const leave of await getMedicalLeavesInRange(date, date)) {
+    const c = coverage.get(leave.employee_id) ?? { fullDay: false, hoursOff: 0 };
+    if (leave.kind === 'days') c.fullDay = true;
+    else c.hoursOff += leave.hours ?? 0;
+    coverage.set(leave.employee_id, c);
+  }
+  return coverage;
 }
 
 export async function insertFolga(

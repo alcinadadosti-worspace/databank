@@ -145,6 +145,7 @@ export function CertificateViewer({
                     <p className="text-xs text-text-muted">
                       {formatFileSize(c.size)} · enviado em {formatDateTime(c.uploaded_at)}
                       {c.uploaded_by === 'manager' && ' pelo gestor'}
+                      {c.uploaded_by === 'rh' && ' pelo RH'}
                     </p>
                   </div>
                   {state?.url && (

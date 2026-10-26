@@ -352,14 +352,63 @@ export interface MedicalCertificate {
   date: string;
   daily_record_id: number | null;
   justification_id: number | null;
-  flow: 'late' | 'full_day' | 'adjustment' | 'test';
+  /** 'rh' = attached to an atestado the RH registered in the panel */
+  flow: 'late' | 'full_day' | 'adjustment' | 'test' | 'rh';
   filename: string;
   mimetype: string;
   size: number;
   uploaded_at: string;
   /** 'manager' = attached by the gestor on Slack (e.g. a photo received on WhatsApp) */
-  uploaded_by: 'employee' | 'manager';
+  uploaded_by: 'employee' | 'manager' | 'rh';
   is_test: boolean;
+}
+
+/** Atestado the RH registered in the Atestados tab: whole days, or hours on one day */
+export interface MedicalLeave {
+  id: string;
+  employee_id: number;
+  employee_name: string;
+  leader_id: number | null;
+  leader_name: string | null;
+  kind: 'days' | 'hours';
+  start_date: string;
+  end_date: string;
+  days: number | null;
+  hours: number | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string;
+  certificates: MedicalCertificate[];
+}
+
+export async function getMedicalLeaves(start: string, end: string, authType: 'admin' | 'manager') {
+  return apiFetch<{ leaves: MedicalLeave[] }>(
+    `/api/medical-certificates/leaves?start=${start}&end=${end}`,
+    { authType }
+  );
+}
+
+// Multipart (optional files), so no JSON Content-Type: the browser sets the boundary
+export async function createMedicalLeave(form: FormData) {
+  const token = getAuthToken('admin');
+  const res = await fetch(`${API_BASE}/api/medical-certificates/leaves`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (res.status === 401) handleExpiredSession('admin');
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ success: boolean }>;
+}
+
+export async function deleteMedicalLeave(id: string) {
+  return apiFetch<{ success: boolean }>(`/api/medical-certificates/leaves/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    authType: 'admin',
+  });
 }
 
 export async function getMedicalCertificates(start: string, end: string, authType: 'admin' | 'manager') {
@@ -652,6 +701,8 @@ export interface UnitEmployee {
   is_on_vacation: boolean;
   is_on_folga: boolean;
   folga_type: 'integral' | 'partial' | null;
+  /** Whole-day atestado lançado pelo RH */
+  is_on_atestado: boolean;
   is_exempt_today: boolean;
   absence_decision?: string | null; // gestor's Slack decision (falta, atestado_medico…) for a day without punches
 }
