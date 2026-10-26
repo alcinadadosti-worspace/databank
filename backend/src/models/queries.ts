@@ -1163,7 +1163,7 @@ const UNIT_NAMES_MAP: Record<number, string> = {
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
   10: 'Loja Sao Sebastiao',           // Kemilly
   11: 'Loja Coruripe',                // Maria Taciane
-  12: 'Loja Digital',
+  12: 'Loja Penedo',                  // Mariane (came from Maria Taciane in Oct/2026)
   13: 'Financeiro/Administrativo',
   14: 'Gente e Cultura',
   15: 'Marketing',
@@ -1375,7 +1375,7 @@ const UNIT_NAMES: Record<number, string> = {
   7: 'Supervisoras Penedo',           // Erick Café - VD team
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
   // 10, 11, 18: Kemilly, Maria Taciane and Keliany have virtual units (handled separately)
-  12: 'Loja Digital',
+  12: 'Loja Penedo',                  // Mariane (came from Maria Taciane in Oct/2026)
   13: 'Financeiro/Administrativo',    // Michaell — only Tomás
   14: 'Gente e Cultura',
   15: 'Marketing',
@@ -1390,15 +1390,6 @@ const LOGISTICA_PALMEIRA_EMPLOYEES = [
   'Robéria Gilo Da Silva',
   'Samuel Monteiro da Silva',
 ].map(n => n.toLowerCase());
-
-// Maria Taciane's employees that came from Loja Penedo (virtual unit)
-const LOJA_PENEDO_EMPLOYEES = [
-  'cristielle pereira lima da silva',
-  'deise gislaine silva vitor',
-  'samyra anchieta bispo',
-  'maria fernanda gomes vieira',
-  'anny karoline andrade santos',
-];
 
 // Maria Taciane's employees that came from Loja Teotonio Vilela (virtual unit)
 const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
@@ -1450,7 +1441,7 @@ const STORE_LEADER_MAPPING: Record<string, number> = {
   'ana clara de matos chagas': 9,           // → Salão de vendas Penedo
   'erick café santos júnior': 7,            // → Supervisoras Penedo
   'erick cafe santos junior': 7,            // → Supervisoras Penedo (without accent)
-  'mariane santos sousa': 12,               // → Loja Digital
+  'mariane santos sousa': 12,               // → Loja Penedo
   // Leidiane Souza excluded - Alta Liderança
 };
 
@@ -1799,7 +1790,8 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
-  // Split Maria Taciane's employees into virtual units (Loja Coruripe, Loja Penedo, Loja Teotonio Vilela)
+  // Split Maria Taciane's employees into virtual units (Loja Coruripe, Loja Teotonio Vilela).
+  // Loja Penedo moved to Mariane (leader_id=12) in Oct/2026 and is a regular unit now.
   const mariaTacianeLeader = leaderMap.get(11); // Maria Taciane ID
   const mariaTacianeEmps = grouped.get(11) || [];
 
@@ -1817,27 +1809,6 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     units.push({
       leader_id: 11,
       unit_name: 'Loja Coruripe',
-      leader_name: mariaTacianeLeader?.name ?? 'Maria Taciane Pereira Barbosa',
-      employees: unitEmployees,
-      present_count: unitEmployees.filter(e => e.present).length,
-      total_count: unitEmployees.length,
-    });
-  }
-
-  // Loja Penedo (employees that came from Ana Clara's old team)
-  const lojaPenedoEmps = mariaTacianeEmps.filter(emp =>
-    LOJA_PENEDO_EMPLOYEES.includes(emp.name.toLowerCase())
-  );
-  if (lojaPenedoEmps.length > 0) {
-    const unitEmployees = lojaPenedoEmps.map(toUnitEmployee);
-    unitEmployees.sort((a, b) => {
-      if (a.present !== b.present) return a.present ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    units.push({
-      leader_id: 11,
-      unit_name: 'Loja Penedo',
       leader_name: mariaTacianeLeader?.name ?? 'Maria Taciane Pereira Barbosa',
       employees: unitEmployees,
       present_count: unitEmployees.filter(e => e.present).length,

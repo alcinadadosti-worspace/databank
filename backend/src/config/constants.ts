@@ -139,7 +139,7 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   'maria cicília brito veiga',
   'bruna soares siqueira',
   'edlane silva de lima',
-  // Loja Penedo (under Maria Taciane, leader_id=11)
+  // Loja Penedo (under Mariane, leader_id=12)
   'deise gislaine silva vitor',
   'maria fernanda gomes vieira',
   'anny karoline andrade santos',
