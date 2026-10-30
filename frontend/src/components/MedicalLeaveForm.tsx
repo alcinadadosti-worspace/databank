@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getEmployees, createMedicalLeave, type Employee } from '@/lib/api';
+import { getEmployees, getEmployeesByLeader, createMedicalLeave, type Employee } from '@/lib/api';
 import { formatDate, todayInSaoPaulo } from '@/lib/utils';
 import { formatFileSize } from '@/components/MedicalCertificates';
 
@@ -17,10 +17,17 @@ function addDays(date: string, days: number): string {
 }
 
 /**
- * RH registers an atestado: whole days (calendar days, counting the first) or
- * hours on a single day, with the scanned document as an optional attachment.
+ * Registers an atestado: whole days (calendar days, counting the first) or hours
+ * on a single day, with the scanned document. RH picks anyone and the file is
+ * optional; a gestor (leaderId) picks from their team and must attach the file.
  */
-export default function MedicalLeaveForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export default function MedicalLeaveForm({ authType, leaderId, onClose, onSaved }: {
+  authType: 'admin' | 'manager';
+  leaderId?: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isManager = authType === 'manager';
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeId, setEmployeeId] = useState(0);
   const [kind, setKind] = useState<'days' | 'hours'>('days');
@@ -34,10 +41,12 @@ export default function MedicalLeaveForm({ onClose, onSaved }: { onClose: () => 
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getEmployees()
+    // Same team the backend accepts: direct reports + secondary approvals
+    if (isManager && !leaderId) return;
+    (isManager ? getEmployeesByLeader(leaderId!) : getEmployees())
       .then(data => setEmployees(data.employees))
       .catch(() => setError('Não foi possível carregar os colaboradores'));
-  }, []);
+  }, [isManager, leaderId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
@@ -85,6 +94,7 @@ export default function MedicalLeaveForm({ onClose, onSaved }: { onClose: () => 
     if (!startDate) { setError('Informe a data'); return; }
     if (kind === 'days' && !daysValid) { setError(`A quantidade de dias deve ser de 1 a ${MAX_DAYS}`); return; }
     if (kind === 'hours' && totalHours <= 0) { setError('Informe as horas do atestado'); return; }
+    if (isManager && files.length === 0) { setError('Anexe o arquivo do atestado (PDF ou foto)'); return; }
 
     const form = new FormData();
     form.append('employee_id', String(employeeId));
@@ -97,7 +107,7 @@ export default function MedicalLeaveForm({ onClose, onSaved }: { onClose: () => 
 
     setSaving(true);
     try {
-      await createMedicalLeave(form);
+      await createMedicalLeave(form, authType);
       onSaved();
     } catch (err) {
       setError((err as Error).message || 'Erro ao lançar o atestado');
@@ -209,7 +219,9 @@ export default function MedicalLeaveForm({ onClose, onSaved }: { onClose: () => 
           )}
 
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1">Arquivo do atestado (opcional)</label>
+            <label className="block text-sm font-medium text-text-secondary mb-1">
+              Arquivo do atestado{isManager ? '' : ' (opcional)'}
+            </label>
             <input
               type="file"
               multiple

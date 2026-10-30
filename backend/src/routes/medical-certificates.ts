@@ -11,10 +11,11 @@ import {
 } from '../services/medical-certificates';
 
 /**
- * Medical certificates: files sent through Slack and atestados the RH registers
- * in the panel. Health data (LGPD): every route needs a login — RH (admin) sees
- * all, a gestor only their own team (same rule as the team listing: leader_id or
- * secondary_approver_id). Files are streamed by the backend; there is no public URL.
+ * Medical certificates: files sent through Slack and atestados registered in the
+ * panel by the RH or the employee's gestor. Health data (LGPD): every route needs
+ * a login — RH (admin) sees all, a gestor only their own team (same rule as the
+ * team listing: leader_id or secondary_approver_id). Files are streamed by the
+ * backend; there is no public URL.
  */
 const router = Router();
 router.use(requireAuth);
@@ -52,6 +53,13 @@ async function visibleEmployeeIds(user: JwtPayload): Promise<Set<number> | null>
 function canSee(cert: MedicalCertificate, visible: Set<number> | null): boolean {
   if (visible === null) return true;
   return !cert.is_test && visible.has(cert.employee_id);
+}
+
+/** RH deletes any atestado; a gestor only the ones they launched, for someone still on their team */
+function canDeleteLeave(leave: queries.MedicalLeave, user: JwtPayload, visible: Set<number> | null): boolean {
+  if (user.role === 'admin') return true;
+  return leave.created_by_role === 'manager' && leave.created_by_leader_id === user.id
+    && !!visible?.has(leave.employee_id);
 }
 
 function toApiCertificate(c: MedicalCertificate, emp: queries.EmployeeWithLeader | undefined) {
@@ -127,7 +135,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-/** GET /api/medical-certificates/leaves?start=&end= - RH atestados overlapping the period */
+/** GET /api/medical-certificates/leaves?start=&end= - panel atestados overlapping the period */
 router.get('/leaves', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const start = String(req.query.start || '');
@@ -154,6 +162,8 @@ router.get('/leaves', async (req: AuthenticatedRequest, res: Response) => {
           employee_name: emp?.name ?? `Colaborador ${l.employee_id}`,
           leader_id: emp?.leader_id ?? null,
           leader_name: emp?.leader_name ?? null,
+          created_by_role: l.created_by_role ?? 'rh',
+          can_delete: canDeleteLeave(l, req.user!, visible),
           certificates: l.certificate_ids
             .map(id => certs.get(id))
             .filter((c): c is MedicalCertificate => !!c)
@@ -168,12 +178,14 @@ router.get('/leaves', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /**
- * POST /api/medical-certificates/leaves - RH only (multipart)
- * Fields: employee_id, kind ('days' | 'hours'), start_date, days | hours, notes?; files? (up to 3)
+ * POST /api/medical-certificates/leaves - RH for anyone, a gestor for their own team (multipart)
+ * Fields: employee_id, kind ('days' | 'hours'), start_date, days | hours, notes?; files (up to 3,
+ * optional for the RH, required for a gestor)
  */
-router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/leaves', uploadFiles, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+    const isManager = req.user!.role === 'manager';
     const employeeId = Number(req.body.employee_id);
     const kind = req.body.kind;
     const startDate = String(req.body.start_date || '');
@@ -181,6 +193,16 @@ router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedReque
 
     if (!Number.isInteger(employeeId) || employeeId <= 0) {
       res.status(400).json({ error: 'Escolha o colaborador' });
+      return;
+    }
+    const visible = await visibleEmployeeIds(req.user!);
+    if (visible && !visible.has(employeeId)) {
+      res.status(403).json({ error: 'Esse colaborador não é da sua equipe' });
+      return;
+    }
+    // The gestor's atestado silences alerts for the whole period: the RH needs the document behind it
+    if (isManager && files.length === 0) {
+      res.status(400).json({ error: 'Anexe o arquivo do atestado (PDF ou foto)' });
       return;
     }
     if (kind !== 'days' && kind !== 'hours') {
@@ -236,7 +258,9 @@ router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedReque
 
     const overlap = (await queries.getMedicalLeavesInRange(startDate, endDate)).find(l => l.employee_id === employeeId);
     if (overlap) {
-      res.status(409).json({ error: `${employee.name} já tem atestado lançado nesse período (${describeLeave(overlap)}). Exclua o anterior para lançar de novo.` });
+      // A gestor can't delete what the RH (or another gestor) launched
+      const fix = canDeleteLeave(overlap, req.user!, visible) ? 'Exclua o anterior para lançar de novo.' : 'Para mudar, fale com o RH.';
+      res.status(409).json({ error: `${employee.name} já tem atestado lançado nesse período (${describeLeave(overlap)}). ${fix}` });
       return;
     }
 
@@ -251,6 +275,8 @@ router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedReque
     const leave = await queries.insertMedicalLeave({
       employee_id: employeeId, kind, start_date: startDate, end_date: endDate, days, hours, notes,
       created_by: req.user!.name,
+      created_by_role: isManager ? 'manager' : 'rh',
+      created_by_leader_id: isManager ? req.user!.id : null,
     });
     const saved: MedicalCertificate[] = [];
     try {
@@ -263,14 +289,14 @@ router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedReque
           dailyRecordId: null,
           justificationId: null,
           flow: 'rh',
-          uploadedBy: 'rh',
+          uploadedBy: isManager ? 'manager' : 'rh',
           uploadedBySlackId: null,
           slackFileId: null,
         }));
       }
       if (saved.length > 0) await queries.setMedicalLeaveCertificates(leave.id, saved.map(c => c.id));
     } catch (error) {
-      // Undo: the RH just launches it again instead of finding an atestado without its file
+      // Undo: whoever launched it just tries again instead of finding an atestado without its file
       await Promise.all(saved.map(c => deleteCertificate(c).catch(() => undefined)));
       await queries.deleteMedicalLeave(leave.id).catch(() => undefined);
       throw error;
@@ -293,12 +319,18 @@ router.post('/leaves', requireAdmin, uploadFiles, async (req: AuthenticatedReque
   }
 });
 
-/** DELETE /api/medical-certificates/leaves/:id - RH only; also deletes its files */
-router.delete('/leaves/:id', requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
+/** DELETE /api/medical-certificates/leaves/:id - RH, or the gestor who launched it; also deletes its files */
+router.delete('/leaves/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const leave = await queries.getMedicalLeave(String(req.params.id));
-    if (!leave) {
+    const visible = await visibleEmployeeIds(req.user!);
+    // Same 404 for "doesn't exist" and "not your team": don't confirm the id exists
+    if (!leave || (visible && !visible.has(leave.employee_id))) {
       res.status(404).json({ error: 'Atestado não encontrado' });
+      return;
+    }
+    if (!canDeleteLeave(leave, req.user!, visible)) {
+      res.status(403).json({ error: 'Só o RH exclui atestado lançado por outra pessoa' });
       return;
     }
     for (const id of leave.certificate_ids) {

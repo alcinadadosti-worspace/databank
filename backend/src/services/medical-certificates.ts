@@ -15,10 +15,11 @@ export const SLACK_CERTIFICATE_FILETYPES = ['jpg', 'jpeg', 'png', 'heic', 'heif'
 
 /**
  * Where it came from: late justification, gestor's no-punch decision, punch
- * adjustment request, RH test, or an atestado the RH registered in the panel
+ * adjustment request, RH test, or an atestado registered in the panel (by the RH
+ * or the gestor — uploaded_by tells which)
  */
 export type CertificateFlow = 'late' | 'full_day' | 'adjustment' | 'test' | 'rh';
-/** Who attached it: the employee or the gestor on Slack (e.g. a photo received on WhatsApp), or the RH in the panel */
+/** Who attached it: the employee on Slack, the gestor (on Slack, e.g. a photo received on WhatsApp, or in the panel), or the RH in the panel */
 export type CertificateUploader = 'employee' | 'manager' | 'rh';
 
 export interface MedicalCertificate {

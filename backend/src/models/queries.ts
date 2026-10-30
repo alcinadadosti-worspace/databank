@@ -2902,12 +2902,12 @@ export async function getEmployeesOnFolga(date: string): Promise<Map<number, Fol
   return new Map(folgas.map(f => [f.employee_id, f]));
 }
 
-// ─── Medical leaves (atestados lançados pelo RH) ──────────────
+// ─── Medical leaves (atestados lançados no painel) ────────────
 
 /**
- * An atestado the RH registers in the Atestados tab: whole days off (any length —
- * a medical leave can run for months) or hours on a single day (e.g. a doctor's
- * appointment). Whole days work like an integral folga (no alerts, the day is
+ * An atestado the RH or the employee's gestor registers in the Atestados tab:
+ * whole days off (any length — a medical leave can run for months) or hours on a
+ * single day (e.g. a doctor's appointment). Whole days work like an integral folga (no alerts, the day is
  * classified "atestado_medico"); hours come off the day's expected minutes like
  * a partial folga. The scanned document, if any, is a regular medical_certificates
  * file listed in certificate_ids.
@@ -2924,9 +2924,13 @@ export interface MedicalLeave {
   certificate_ids: string[];
   created_at: string;
   created_by: string;
+  /** Missing on atestados launched before 2026-10-30, when only the RH launched them */
+  created_by_role?: 'rh' | 'manager';
+  /** The gestor's leader id (only they and the RH can delete it); null for the RH */
+  created_by_leader_id?: number | null;
 }
 
-/** What the RH atestados cover on one day for one employee */
+/** What the panel atestados cover on one day for one employee */
 export interface MedicalLeaveCoverage {
   fullDay: boolean;
   /** Hours off from hour-based atestados (summed) */
@@ -2968,7 +2972,7 @@ export async function deleteMedicalLeave(id: string): Promise<void> {
   invalidateCache('records_units');
 }
 
-/** Returns a Map of employee_id → what the RH atestados cover on the given date. */
+/** Returns a Map of employee_id → what the panel atestados cover on the given date. */
 export async function getMedicalLeaveCoverage(date: string): Promise<Map<number, MedicalLeaveCoverage>> {
   const coverage = new Map<number, MedicalLeaveCoverage>();
   for (const leave of await getMedicalLeavesInRange(date, date)) {

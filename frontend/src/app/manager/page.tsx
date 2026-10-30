@@ -130,7 +130,7 @@ export default function ManagerDashboard() {
                         ) : emp.is_on_vacation ? (
                           <span className="text-2xs font-sans font-medium text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded">Férias</span>
                         ) : emp.is_on_atestado ? (
-                          <span className="text-2xs font-sans font-medium text-teal-600 bg-teal-600/10 px-1.5 py-0.5 rounded" title="Atestado lançado pelo RH">Atestado</span>
+                          <span className="text-2xs font-sans font-medium text-teal-600 bg-teal-600/10 px-1.5 py-0.5 rounded" title="Atestado lançado no painel">Atestado</span>
                         ) : emp.is_on_folga && emp.folga_type === 'integral' ? (
                           <span className="text-2xs font-sans font-medium text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">Folga</span>
                         ) : emp.is_exempt_today ? (

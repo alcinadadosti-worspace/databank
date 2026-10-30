@@ -15,7 +15,7 @@ const FLOW_LABEL: Record<MedicalCertificate['flow'], string> = {
   full_day: 'Falta do dia',
   adjustment: 'Ajuste de ponto',
   test: 'Teste',
-  rh: 'Lançado pelo RH',
+  rh: 'Lançado no painel',
 };
 
 const NO_LEADER = 'Sem gestor';
@@ -43,11 +43,12 @@ interface LeaderGroup {
 }
 
 /**
- * Atestados page, split by gestor: atestados the RH registered (whole days or
- * hours) and files received through Slack. RH (admin) sees everyone, registers
- * and deletes; a gestor (manager) gets only their team from the backend.
+ * Atestados page, split by gestor: atestados registered in the panel (whole days
+ * or hours) and files received through Slack. RH (admin) sees everyone, registers
+ * and deletes; a gestor (manager, leaderId) gets only their team from the backend,
+ * registers for it and deletes only what they registered.
  */
-export default function MedicalCertificatesList({ authType }: { authType: 'admin' | 'manager' }) {
+export default function MedicalCertificatesList({ authType, leaderId }: { authType: 'admin' | 'manager'; leaderId?: number }) {
   const isAdmin = authType === 'admin';
   const [range, setRange] = useState({ start: daysAgo(30), end: todayISO() });
   const [certificates, setCertificates] = useState<MedicalCertificate[]>([]);
@@ -71,7 +72,7 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
         getMedicalCertificates(range.start, range.end, authType),
         getMedicalLeaves(range.start, leavesEnd, authType),
       ]);
-      // Files of RH atestados open from their atestado's row
+      // Files of panel atestados open from their atestado's row
       setCertificates(certData.certificates.filter(c => c.flow !== 'rh'));
       setLeaves(leaveData.leaves);
     } catch (err) {
@@ -138,7 +139,7 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
     )) return;
     setDeleting(l.id);
     try {
-      await deleteMedicalLeave(l.id);
+      await deleteMedicalLeave(l.id, authType);
       setLeaves(prev => prev.filter(x => x.id !== l.id));
     } catch (err) {
       window.alert((err as Error).message || 'Erro ao excluir');
@@ -154,16 +155,14 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
           <h2 className="text-lg font-semibold text-text-primary">Atestados</h2>
           <p className="text-sm text-text-tertiary mt-1">
             {isAdmin
-              ? 'Lançados pelo RH ou enviados pelo Slack, separados por gestor. Só o RH e o gestor de cada colaborador abrem os arquivos.'
-              : 'Atestados da sua equipe, lançados pelo RH ou enviados pelo Slack. Só você e o RH abrem os arquivos; para excluir um, fale com o RH.'}
+              ? 'Lançados pelo RH ou pelo gestor, ou enviados pelo Slack, separados por gestor. Só o RH e o gestor de cada colaborador abrem os arquivos.'
+              : 'Atestados da sua equipe, lançados por você ou pelo RH, ou enviados pelo Slack. Só você e o RH abrem os arquivos. Você exclui os que lançou; para os outros, fale com o RH.'}
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          {isAdmin && (
-            <button onClick={() => setShowForm(true)} className="btn-primary text-sm">
-              Lançar atestado
-            </button>
-          )}
+          <button onClick={() => setShowForm(true)} className="btn-primary text-sm">
+            Lançar atestado
+          </button>
           <button onClick={load} className="btn-secondary text-sm" disabled={loading}>
             Atualizar
           </button>
@@ -212,7 +211,7 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
                   leaves={g.leaves}
                   deleting={deleting}
                   onView={l => setViewing(l.certificates)}
-                  onDelete={isAdmin ? handleDeleteLeave : undefined}
+                  onDelete={handleDeleteLeave}
                 />
               )}
               {g.certificates.length > 0 && (
@@ -231,6 +230,8 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
       {viewing && <CertificateViewer certificates={viewing} authType={authType} onClose={() => setViewing(null)} />}
       {showForm && (
         <MedicalLeaveForm
+          authType={authType}
+          leaderId={leaderId}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); load(); }}
         />
@@ -242,7 +243,7 @@ export default function MedicalCertificatesList({ authType }: { authType: 'admin
 const TH = 'text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider bg-bg-secondary';
 
 function LeavesTable({ leaves, deleting, onView, onDelete }: {
-  leaves: MedicalLeave[]; deleting: string | null; onView: (l: MedicalLeave) => void; onDelete?: (l: MedicalLeave) => void;
+  leaves: MedicalLeave[]; deleting: string | null; onView: (l: MedicalLeave) => void; onDelete: (l: MedicalLeave) => void;
 }) {
   const actions = (l: MedicalLeave) => (
     <div className="flex gap-2 justify-end">
@@ -251,14 +252,15 @@ function LeavesTable({ leaves, deleting, onView, onDelete }: {
           Ver{l.certificates.length > 1 ? ` (${l.certificates.length})` : ''}
         </button>
       )}
-      {onDelete && <DeleteButton busy={deleting === l.id} onClick={() => onDelete(l)} title={`Excluir atestado de ${l.employee_name}`} />}
+      {l.can_delete && <DeleteButton busy={deleting === l.id} onClick={() => onDelete(l)} title={`Excluir atestado de ${l.employee_name}`} />}
     </div>
   );
-  const launched = (l: MedicalLeave) => `${formatDateTime(l.created_at)} por ${l.created_by}`;
+  const author = (l: MedicalLeave) => l.created_by_role === 'manager' ? `${l.created_by} (gestor)` : l.created_by;
+  const launched = (l: MedicalLeave) => `${formatDateTime(l.created_at)} por ${author(l)}`;
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-text-tertiary">Lançados pelo RH</p>
+      <p className="text-xs font-medium text-text-tertiary">Lançados no painel</p>
 
       {/* Mobile cards */}
       <div className="lg:hidden space-y-3">
@@ -297,7 +299,7 @@ function LeavesTable({ leaves, deleting, onView, onDelete }: {
                   </td>
                   <td className="px-4 py-3 text-text-secondary text-xs whitespace-nowrap">
                     {formatDateTime(l.created_at)}
-                    <span className="block text-text-muted">por {l.created_by}</span>
+                    <span className="block text-text-muted">por {author(l)}</span>
                   </td>
                   <td className="px-4 py-3">{actions(l)}</td>
                 </tr>

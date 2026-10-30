@@ -342,7 +342,8 @@ export async function reinforceAlert(recordIds: number[]) {
 // ─── Medical Certificates (atestados) ──────────────────────────
 
 // Health data: every call carries the RH or gestor login token. The backend
-// only lists/serves a gestor's own team; RH sees all and is the only one who deletes.
+// only lists/serves a gestor's own team; RH sees all. A gestor launches atestados
+// for the team and deletes only the ones they launched; the rest only the RH deletes.
 
 export interface MedicalCertificate {
   id: string;
@@ -352,18 +353,18 @@ export interface MedicalCertificate {
   date: string;
   daily_record_id: number | null;
   justification_id: number | null;
-  /** 'rh' = attached to an atestado the RH registered in the panel */
+  /** 'rh' = attached to an atestado registered in the panel (by the RH or the gestor) */
   flow: 'late' | 'full_day' | 'adjustment' | 'test' | 'rh';
   filename: string;
   mimetype: string;
   size: number;
   uploaded_at: string;
-  /** 'manager' = attached by the gestor on Slack (e.g. a photo received on WhatsApp) */
+  /** 'manager' = attached by the gestor, on Slack (e.g. a photo received on WhatsApp) or in the panel */
   uploaded_by: 'employee' | 'manager' | 'rh';
   is_test: boolean;
 }
 
-/** Atestado the RH registered in the Atestados tab: whole days, or hours on one day */
+/** Atestado registered in the Atestados tab (RH or gestor): whole days, or hours on one day */
 export interface MedicalLeave {
   id: string;
   employee_id: number;
@@ -378,6 +379,9 @@ export interface MedicalLeave {
   notes: string | null;
   created_at: string;
   created_by: string;
+  created_by_role: 'rh' | 'manager';
+  /** RH: always; gestor: only the ones they launched */
+  can_delete: boolean;
   certificates: MedicalCertificate[];
 }
 
@@ -389,14 +393,14 @@ export async function getMedicalLeaves(start: string, end: string, authType: 'ad
 }
 
 // Multipart (optional files), so no JSON Content-Type: the browser sets the boundary
-export async function createMedicalLeave(form: FormData) {
-  const token = getAuthToken('admin');
+export async function createMedicalLeave(form: FormData, authType: 'admin' | 'manager') {
+  const token = getAuthToken(authType);
   const res = await fetch(`${API_BASE}/api/medical-certificates/leaves`, {
     method: 'POST',
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
   });
-  if (res.status === 401) handleExpiredSession('admin');
+  if (res.status === 401) handleExpiredSession(authType);
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || `HTTP ${res.status}`);
@@ -404,10 +408,10 @@ export async function createMedicalLeave(form: FormData) {
   return res.json() as Promise<{ success: boolean }>;
 }
 
-export async function deleteMedicalLeave(id: string) {
+export async function deleteMedicalLeave(id: string, authType: 'admin' | 'manager') {
   return apiFetch<{ success: boolean }>(`/api/medical-certificates/leaves/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    authType: 'admin',
+    authType,
   });
 }
 
