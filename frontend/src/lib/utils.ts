@@ -107,6 +107,16 @@ export function daysAgo(days: number): string {
 }
 
 /**
+ * Managers who also get their direct reports that the unit view shows in another
+ * leader's card. Leidiane (6, Canal Loja): the unit view drops Canal Loja and puts
+ * each store leader in her own store, so Mariane (48, the only one who punches)
+ * sits in "Loja Penedo" and Leidiane's panel showed "Nenhuma unidade" although she
+ * is the one who adjusts her. Only Leidiane asked for this: the same rule would put
+ * Ana Clara, Erick and Jonathan on Romulo's (1) panel.
+ */
+const SHOWS_DIRECT_REPORTS_FROM_OTHER_UNITS = new Set([6]);
+
+/**
  * Unit cards for the manager panel: the manager's own units, plus the stores
  * they cover as secondary approver (e.g. Kemilly on Teotônio/Coruripe while
  * Taciane is away). A covered unit belongs to another leader, so it is narrowed
@@ -114,7 +124,10 @@ export function daysAgo(days: number): string {
  * out, as they do from the manager's own store cards.
  */
 export function unitsForManager(units: UnitData[], managerId: number, team: Employee[]): UnitData[] {
-  const coveredIds = new Set(team.filter(e => e.secondary_approver_id === managerId).map(e => e.id));
+  const includeDirect = SHOWS_DIRECT_REPORTS_FROM_OTHER_UNITS.has(managerId);
+  const coveredIds = new Set(team
+    .filter(e => e.secondary_approver_id === managerId || (includeDirect && e.leader_id === managerId))
+    .map(e => e.id));
   const result: UnitData[] = [];
   for (const unit of units) {
     if (unit.leader_id === managerId) {
