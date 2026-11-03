@@ -142,6 +142,7 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
   // Loja Penedo (under Mariane, leader_id=12)
   'deise gislaine silva vitor',
   'anny karoline andrade santos',
+  'vitoria regina lúcio da silva',
 ]);
 
 /**
