@@ -1396,7 +1396,6 @@ const LOJA_TEOTONIO_VILELA_EMPLOYEES = [
   'camille kauane da silva nunes',
   'eliene da silva santos',
   'maria tatiane basto cardoso',
-  'josenildo alves',
   'shayane ferreira',
   'jayane da silva dias',
 ];
