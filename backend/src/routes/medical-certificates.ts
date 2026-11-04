@@ -243,9 +243,9 @@ router.post('/leaves', uploadFiles, async (req: AuthenticatedRequest, res: Respo
     if (kind === 'hours') {
       // Same journey the sync expects that day. Hours covering all of it would leave the
       // day without punches counted as an absence — that's a whole day off.
-      const expected = isLojaSustentavelEmployee(employee.name)
+      const expected = isLojaSustentavelEmployee(employee)
         ? getLojaSustentavelExpectedMinutes(startDate)
-        : getExpectedMinutes(startDate, employee.is_apprentice === true, employee.expected_daily_minutes || 240, employee.name, employee.schedule_overrides);
+        : getExpectedMinutes(startDate, employee.is_apprentice === true, employee.expected_daily_minutes || 240, employee, employee.schedule_overrides);
       if (expected <= 0) {
         res.status(400).json({ error: `${formatDateBR(startDate)} não é dia de trabalho de ${employee.name}: não há horas para abonar` });
         return;

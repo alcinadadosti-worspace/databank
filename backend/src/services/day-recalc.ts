@@ -22,7 +22,7 @@ export async function recalculateDay(punches: PunchSet, date: string, employee: 
 
   // Loja Sustentável works on Sundays; everyone else follows the holiday calendar
   const isSunday = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
-  const workingDay = (isLojaSustentavelEmployee(employee.name) && isSunday) || await queries.isWorkingDayAsync(date);
+  const workingDay = (isLojaSustentavelEmployee(employee) && isSunday) || await queries.isWorkingDayAsync(date);
   if (!workingDay) return { ...noHours, classification: null };
 
   if ((await queries.getEmployeesOnVacation(date)).has(employee.id)) {

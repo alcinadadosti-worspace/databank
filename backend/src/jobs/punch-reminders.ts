@@ -1,6 +1,6 @@
 import * as queries from '../models/queries';
 import { sendPunchReminder } from '../slack/bot';
-import { isSaturday, EXTENDED_SATURDAY_EMPLOYEES, isLojaSustentavelEmployee, isNoLunchEmployee } from '../config/constants';
+import { isSaturday, hasExtendedSaturday, isLojaSustentavelEmployee, isNoLunchEmployee, isBeforeAdmission } from '../config/constants';
 
 // Cache of employees on vacation for the current day
 let vacationEmployeesCache: Set<number> | null = null;
@@ -102,8 +102,10 @@ export async function sendEntryReminders(): Promise<void> {
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
       if (emp.exemption_days && emp.exemption_days.includes(todayDow)) continue;
+      // Imported by the RH before their first day: nothing to remind yet
+      if (isBeforeAdmission(emp, today)) continue;
       // Loja Sustentável employees start at 09:00, not 08:00 — skip standard 07:50 reminder
-      if (isLojaSustentavelEmployee(emp.name)) continue;
+      if (isLojaSustentavelEmployee(emp)) continue;
 
       await sendPunchReminder(emp.slack_id, emp.name, 'entry', 10);
       markReminderSent(emp.id, 'entry');
@@ -157,9 +159,9 @@ export async function sendExitReminders(): Promise<void> {
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
       // Loja Sustentável employees exit at 21:00, not 18:00 — skip standard 17:50 reminder
-      if (isLojaSustentavelEmployee(emp.name)) continue;
+      if (isLojaSustentavelEmployee(emp)) continue;
       // No-lunch employees have no lunch return (punch_2 is their exit) — standard exit check doesn't apply
-      if (isNoLunchEmployee(emp.name)) continue;
+      if (isNoLunchEmployee(emp)) continue;
 
       const record = recordMap.get(emp.id);
       // Has returned from lunch but hasn't left yet
@@ -208,9 +210,9 @@ export async function sendSaturdayExitReminders(): Promise<void> {
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
       // Skip employees with extended Saturday hours (they get their reminder at 13:50)
-      if (EXTENDED_SATURDAY_EMPLOYEES.has(emp.name.toLowerCase())) continue;
+      if (hasExtendedSaturday(emp)) continue;
       // Loja Sustentável employees exit at 21:00 on Saturday — not covered by this reminder
-      if (isLojaSustentavelEmployee(emp.name)) continue;
+      if (isLojaSustentavelEmployee(emp)) continue;
       // Skip employees who don't work on Saturdays
       if (emp.works_saturday === false) continue;
 
@@ -257,7 +259,10 @@ export async function sendSaturdayLateExitReminders(): Promise<void> {
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
       // Only employees with extended Saturday hours
-      if (!EXTENDED_SATURDAY_EMPLOYEES.has(emp.name.toLowerCase())) continue;
+      if (!hasExtendedSaturday(emp)) continue;
+      // Loja Sustentável exits at 21:00 on Saturday — never the 14:00 reminder either
+      if (isLojaSustentavelEmployee(emp)) continue;
+      if (emp.works_saturday === false) continue;
 
       const record = recordMap.get(emp.id);
       if (record && record.punch_1 && !record.punch_2) {
@@ -309,9 +314,9 @@ export async function checkLunchReturnReminders(): Promise<void> {
       if (onVacation.has(emp.id)) continue;
       if (onIntegralFolga.has(emp.id)) continue;
       // Loja Sustentável employees don't have a lunch break (punch_2 is their exit)
-      if (isLojaSustentavelEmployee(emp.name)) continue;
+      if (isLojaSustentavelEmployee(emp)) continue;
       // No-lunch employees don't have a lunch break either (punch_2 is their exit)
-      if (isNoLunchEmployee(emp.name)) continue;
+      if (isNoLunchEmployee(emp)) continue;
 
       const record = recordMap.get(emp.id);
       // Has gone to lunch but hasn't returned yet

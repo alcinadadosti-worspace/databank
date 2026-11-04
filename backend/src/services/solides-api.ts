@@ -91,6 +91,46 @@ export async function fetchAllEmployees(): Promise<SolidesEmployee[]> {
   return allEmployees;
 }
 
+/** epoch millis → YYYY-MM-DD in São Paulo (Sólides stores admission at local midnight) */
+function millisToSaoPauloDate(ms: unknown): string | null {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
+/**
+ * Read-only roster for the RH panel: active people (showFired=false) or dismissed
+ * ones (showFired=true). Only what the panel needs — no CPF, PIS or birth date.
+ * The e-mail is used server-side to find the Slack account and never leaves the backend.
+ */
+export async function fetchEmployeeRoster(showFired: boolean): Promise<SolidesRosterEntry[]> {
+  const roster: SolidesRosterEntry[] = [];
+  let page = 0;
+  let totalPages = 1;
+
+  while (page < totalPages && page < 20) {
+    const data = await readOnlyFetch(EMPLOYER_URL, '/employee/find-all', {
+      page: String(page),
+      size: '500',
+      showFired: String(showFired),
+    });
+    totalPages = data.totalPages || 1;
+    for (const emp of data.content || []) {
+      roster.push({
+        id: String(emp.id),
+        name: String(emp.name ?? '').trim(),
+        email: emp.email ? String(emp.email).trim().toLowerCase() : null,
+        admissionDate: millisToSaoPauloDate(emp.admissionDate),
+        fired: emp.fired === true,
+        // Missing flag counts as "registers punches" so it never raises a false divergence
+        recordsPunch: emp.recordsPunch !== false,
+      });
+    }
+    page++;
+  }
+
+  return roster;
+}
+
 // ─── Punches ───────────────────────────────────────────────────
 
 /**
@@ -180,6 +220,15 @@ export interface SolidesEmployee {
   companyId?: string;
   managerId?: string;
   fired: boolean;
+}
+
+export interface SolidesRosterEntry {
+  id: string;
+  name: string;
+  email: string | null;
+  admissionDate: string | null; // YYYY-MM-DD (São Paulo)
+  fired: boolean;
+  recordsPunch: boolean;
 }
 
 export interface SolidesPunchRecord {

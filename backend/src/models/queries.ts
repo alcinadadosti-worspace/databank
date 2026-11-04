@@ -243,6 +243,138 @@ export async function deleteEmployee(employeeId: number) {
   invalidateCaches();
 }
 
+/** Fields the RH panel fills when importing someone from Sólides */
+export interface PanelEmployeeInput {
+  name: string;
+  slack_id: string | null;
+  leader_id: number;
+  secondary_approver_id: number | null;
+  solides_employee_id: string;
+  is_apprentice: boolean;
+  expected_daily_minutes: number;
+  no_punch_required: boolean;
+  works_saturday: boolean;
+  saturday_minutes: number;
+  schedule_type: ScheduleType;
+  unit_name: string | null;
+  admission_date: string | null;
+}
+
+/** Thrown when the person (Sólides ID) or the Slack account is already registered */
+export class EmployeeConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmployeeConflictError';
+  }
+}
+
+/**
+ * Creates an employee imported through the RH panel. The id counter alone can't be
+ * trusted (scripts created ids by hand without bumping it), so the new id is above
+ * both the counter and the highest existing id, and the doc is checked to be free —
+ * all in one transaction, together with the duplicate checks.
+ */
+export async function insertEmployeeFromPanel(input: PanelEmployeeInput): Promise<Employee> {
+  const db = getDb();
+  const employeesRef = db.collection(COLLECTIONS.EMPLOYEES);
+  const counterRef = db.collection(COLLECTIONS.COUNTERS).doc(COLLECTIONS.EMPLOYEES);
+
+  const created = await db.runTransaction(async (tx) => {
+    const [counterDoc, top, sameSolides, sameSlack] = await Promise.all([
+      tx.get(counterRef),
+      tx.get(employeesRef.orderBy('id', 'desc').limit(1)),
+      tx.get(employeesRef.where('solides_employee_id', '==', input.solides_employee_id).limit(1)),
+      input.slack_id ? tx.get(employeesRef.where('slack_id', '==', input.slack_id).limit(1)) : Promise.resolve(null),
+    ]);
+    if (!sameSolides.empty) {
+      const other = sameSolides.docs[0].data();
+      throw new EmployeeConflictError(`Essa pessoa já está cadastrada no Databank (${other.name}, id ${other.id})`);
+    }
+    if (sameSlack && !sameSlack.empty) {
+      const other = sameSlack.docs[0].data();
+      throw new EmployeeConflictError(`Esse Slack já é de ${other.name} (id ${other.id})`);
+    }
+
+    const counterValue = counterDoc.exists ? Number(counterDoc.data()!.value) || 0 : 0;
+    const topId = top.empty ? 0 : Number(top.docs[0].data().id) || 0;
+    let nextId = Math.max(counterValue, topId) + 1;
+    // Skip ids that are taken or still hold someone's history: a removed employee's
+    // daily_records stay, and reusing the id would hand that history to the new person
+    let free = false;
+    for (let attempt = 0; attempt < 50 && !free; attempt++) {
+      const [doc, history] = await Promise.all([
+        tx.get(employeesRef.doc(String(nextId))),
+        tx.get(db.collection(COLLECTIONS.DAILY_RECORDS).where('employee_id', '==', nextId).limit(1)),
+      ]);
+      if (!doc.exists && history.empty) free = true;
+      else nextId++;
+    }
+    if (!free) throw new Error(`No free employee id found after ${nextId}`);
+
+    const data: Employee = {
+      id: nextId,
+      ...input,
+      created_via: 'painel_rh',
+      created_at: new Date().toISOString(),
+    };
+    tx.set(employeesRef.doc(String(nextId)), data);
+    tx.set(counterRef, { value: nextId });
+    return data;
+  });
+
+  invalidateCaches();
+  return created;
+}
+
+/** What removing an employee touches — shown to the RH before confirming */
+export interface EmployeeRemovalSummary {
+  daily_records: number;
+  folgas: number;
+  vacation_schedules: number;
+  pending_justifications: number;
+  pending_adjustments: number;
+  /** The same Slack account is also a gestor (leaders): that access stays */
+  also_leader: { id: number; name: string } | null;
+}
+
+export async function getEmployeeRemovalSummary(employee: Employee): Promise<EmployeeRemovalSummary> {
+  const db = getDb();
+  const byEmployee = (collection: string) => db.collection(collection).where('employee_id', '==', employee.id);
+  const [records, folgas, schedules, justifications, adjustments, leaders] = await Promise.all([
+    byEmployee(COLLECTIONS.DAILY_RECORDS).count().get(),
+    byEmployee(COLLECTIONS.FOLGAS).count().get(),
+    byEmployee(COLLECTIONS.VACATION_SCHEDULES).count().get(),
+    byEmployee(COLLECTIONS.JUSTIFICATIONS).get(),
+    byEmployee(COLLECTIONS.PUNCH_ADJUSTMENTS).where('status', '==', 'pending').count().get(),
+    getAllLeaders(),
+  ]);
+  const leader = employee.slack_id ? leaders.find(l => l.slack_id === employee.slack_id) : undefined;
+  return {
+    daily_records: records.data().count,
+    folgas: folgas.data().count,
+    vacation_schedules: schedules.data().count,
+    pending_justifications: justifications.docs.filter(d => !d.data().status || d.data().status === 'pending').length,
+    pending_adjustments: adjustments.data().count,
+    also_leader: leader ? { id: leader.id, name: leader.name } : null,
+  };
+}
+
+/**
+ * Removes a dismissed employee: the registration and the vacation due dates
+ * (vacation_schedules). The history — daily_records, folgas, justificativas,
+ * ajustes, férias, atestados — stays, as with every dismissal done by script.
+ */
+export async function removeEmployeeKeepingHistory(employeeId: number): Promise<{ vacation_schedules_removed: number }> {
+  const db = getDb();
+  const schedules = await db.collection(COLLECTIONS.VACATION_SCHEDULES).where('employee_id', '==', employeeId).get();
+  const batch = db.batch();
+  schedules.docs.forEach(d => batch.delete(d.ref));
+  batch.delete(db.collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)));
+  await batch.commit();
+  invalidateCaches();
+  return { vacation_schedules_removed: schedules.size };
+}
+
 export async function updateEmployeeNameAndSolidesId(
   employeeId: number,
   name: string,
@@ -1455,6 +1587,104 @@ const VD_LEADER_MAPPING: Record<string, number> = {
   'erick cafe santos junior': 7,                 // → Supervisoras Penedo (without accent)
 };
 
+/**
+ * Gestores with more than one card in Unidades (or whose card needs a list to
+ * appear at all): their people say which card through `unit_name`. The name lists
+ * above are the LEGACY fallback for people without the field. Everyone in them got
+ * `unit_name` in the Nov/2026 migration, so editing those lists changes nothing for
+ * them — set `unit_name` (and `leader_id`) instead. Don't add names to those lists.
+ * A `unit_name` only counts while it belongs to the person's current gestor
+ * (explicitUnitNameFor), so a transfer by `leader_id` alone still works.
+ */
+export const UNIT_OPTIONS_BY_LEADER: Record<number, string[]> = {
+  2: ['Logistica Penedo', 'Logistica Palmeira dos Indios'],
+  10: ['Loja Sao Sebastiao'],
+  11: ['Loja Coruripe', 'Loja Teotonio Vilela'],
+  18: ['Loja Palmeira dos Indios', 'Loja Sustentável Palmeira'],
+};
+
+/**
+ * Every card a `unit_name` can point to → the leader that owns the card. Names used by
+ * two leaders (Financeiro/Administrativo: 13 and 17) are left out, they'd be ambiguous.
+ */
+export const UNIT_CARD_LEADER: ReadonlyMap<string, number> = (() => {
+  const owners = new Map<string, Set<number>>();
+  const add = (name: string, leaderId: number) => {
+    if (!owners.has(name)) owners.set(name, new Set());
+    owners.get(name)!.add(leaderId);
+  };
+  for (const [leaderId, name] of Object.entries(UNIT_NAMES)) add(name, Number(leaderId));
+  for (const [leaderId, names] of Object.entries(UNIT_OPTIONS_BY_LEADER)) names.forEach(n => add(n, Number(leaderId)));
+  const result = new Map<string, number>();
+  for (const [name, ids] of owners) if (ids.size === 1) result.set(name, [...ids][0]);
+  return result;
+})();
+
+/** The Marketing sub-leader's people show in the Marketing (15) card */
+const MERGED_INTO_LEADER: Record<number, number> = { 16: 15 };
+
+/**
+ * Which card the RH must choose when importing someone for this gestor:
+ * required for gestores with several cards (and for the channel heads 1 and 6,
+ * who have no card of their own — the person would be invisible otherwise).
+ */
+export function unitChoicesForLeader(leaderId: number): { required: boolean; options: string[] } {
+  const multi = UNIT_OPTIONS_BY_LEADER[leaderId];
+  if (multi) return { required: true, options: [...multi] };
+  if (UNIT_NAMES[leaderId] || MERGED_INTO_LEADER[leaderId]) return { required: false, options: [] };
+  return { required: true, options: [...UNIT_CARD_LEADER.keys()].sort((a, b) => a.localeCompare(b)) };
+}
+
+/**
+ * The card the legacy name-based rules put someone in (null = no card: they'd only
+ * show if they don't punch, in "Sem Ponto"). Mirrors getUnitRecords' legacy routing;
+ * used by the data migration and the RH pendências.
+ */
+export function legacyUnitNameFor(emp: { name: string; leader_id: number | null }): string | null {
+  const name = (emp.name ?? '').toLowerCase();
+  let leaderId = emp.leader_id;
+  if (leaderId === null || leaderId === undefined) return null;
+  if (leaderId === 6) leaderId = STORE_LEADER_MAPPING[name] ?? null;
+  else if (leaderId === 1) leaderId = VD_LEADER_MAPPING[name] ?? null;
+  if (leaderId === null) return null;
+  leaderId = MERGED_INTO_LEADER[leaderId] ?? leaderId;
+  switch (leaderId) {
+    case 2:
+      return LOGISTICA_PALMEIRA_EMPLOYEES.includes(name) ? 'Logistica Palmeira dos Indios' : 'Logistica Penedo';
+    case 10:
+      return LOJA_SAO_SEBASTIAO_EMPLOYEES.includes(name) ? 'Loja Sao Sebastiao' : null;
+    case 11:
+      if (LOJA_CORURIPE_EMPLOYEES.includes(name)) return 'Loja Coruripe';
+      return LOJA_TEOTONIO_VILELA_EMPLOYEES.includes(name) ? 'Loja Teotonio Vilela' : null;
+    case 18:
+      if (LOJA_PALMEIRA_EMPLOYEES.includes(name)) return 'Loja Palmeira dos Indios';
+      return LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(name) ? 'Loja Sustentável Palmeira' : null;
+    default:
+      return UNIT_NAMES[leaderId] ?? null;
+  }
+}
+
+/**
+ * The registration's `unit_name`, only while it belongs to the person's current gestor:
+ * one of the gestor's own cards, or — for the channel heads 1 and 6, who have no card —
+ * any card. Moving someone by changing just `leader_id` (the usual procedure) makes a
+ * stale `unit_name` stop counting, so they follow the new gestor instead of staying in
+ * the old card where nobody can adjust them.
+ */
+export function explicitUnitNameFor(emp: { leader_id: number | null; unit_name?: string | null }): string | null {
+  const unitName = emp.unit_name;
+  if (!unitName || emp.leader_id === null || emp.leader_id === undefined) return null;
+  const cardLeader = UNIT_CARD_LEADER.get(unitName);
+  if (cardLeader === undefined) return null;
+  if (cardLeader === (MERGED_INTO_LEADER[emp.leader_id] ?? emp.leader_id)) return unitName;
+  return unitChoicesForLeader(emp.leader_id).options.includes(unitName) ? unitName : null;
+}
+
+/** A valid `unit_name` from the registration; otherwise the legacy rules */
+export function resolveUnitName(emp: { name: string; leader_id: number | null; unit_name?: string | null }): string | null {
+  return explicitUnitNameFor(emp) ?? legacyUnitNameFor(emp);
+}
+
 // Custom sort order: Loja first, then VD/Salão, then others alphabetically
 const UNIT_SORT_ORDER: Record<string, number> = {
   'Loja Coruripe': 1,
@@ -1530,8 +1760,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   yesterdayObj.setUTCDate(yesterdayObj.getUTCDate() - 1);
   const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
   const lojaSustentavelWorkedYesterday = new Set<number>();
-  const rotationEmps = employees.filter(e =>
-    LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(e.name.toLowerCase()));
+  const rotationEmps = employees.filter(e => isLojaSustentavelEmployee(e));
   for (const emp of rotationEmps) {
     const rec = await getDailyRecord(emp.id, yesterdayStr);
     if (rec?.punch_1) lojaSustentavelWorkedYesterday.add(emp.id);
@@ -1549,11 +1778,21 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     }
   }
 
+  // People whose card comes from their registration (unit_name) skip the legacy
+  // name-based routing below; they're placed in that card at the end
+  const explicitUnitEmployees: { emp: EmployeeWithLeader; unitName: string }[] = [];
+  const legacyRoutedEmployees: EmployeeWithLeader[] = [];
+  for (const emp of regularEmployees) {
+    const unitName = explicitUnitNameFor(emp);
+    if (unitName) explicitUnitEmployees.push({ emp, unitName });
+    else legacyRoutedEmployees.push(emp);
+  }
+
   // Group regular employees by leader
   const leaderMap = new Map(leaders.map(l => [l.id, l]));
   const grouped = new Map<number, EmployeeWithLeader[]>();
 
-  for (const emp of regularEmployees) {
+  for (const emp of legacyRoutedEmployees) {
     const leaderId = emp.leader_id;
     if (!grouped.has(leaderId)) grouped.set(leaderId, []);
     grouped.get(leaderId)!.push(emp);
@@ -1647,12 +1886,13 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const folgaRecord = onFolga.get(emp.id);
     const isOnFolga = !!folgaRecord;
     const folgaType = folgaRecord?.type ?? null;
-    const isRotationExempt = LOJA_SUSTENTAVEL_PALMEIRA_EMPLOYEES.includes(emp.name.toLowerCase())
-      && lojaSustentavelWorkedYesterday.has(emp.id);
+    const isRotationExempt = isLojaSustentavelEmployee(emp) && lojaSustentavelWorkedYesterday.has(emp.id);
     // Employees with works_saturday=false (e.g. apprentices) are off on Saturdays —
     // never list them as absent nor offer "Lançar Ponto" for a day they don't work.
     const isSaturdayOff = dateDow === 6 && emp.works_saturday === false;
-    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff;
+    // Imported by the RH before their first day: not absent yet
+    const isBeforeStart = isBeforeAdmission(emp, date);
+    const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff || isBeforeStart;
     const isOnAtestado = !!onLeave.get(emp.id)?.fullDay;
     const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isOnAtestado || isExemptToday || !!(record?.punch_1);
     // Without this, a day the gestor already decided in Slack still showed as a
@@ -1841,6 +2081,34 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     });
   }
 
+  // Cards chosen in the registration (unit_name): RH panel imports and the Nov/2026 migration
+  const touchedCards = new Set<UnitData>();
+  for (const { emp, unitName } of explicitUnitEmployees) {
+    const cardLeaderId = UNIT_CARD_LEADER.get(unitName)!;
+    let unit = units.find(u => u.unit_name === unitName && u.leader_id === cardLeaderId);
+    if (!unit) {
+      unit = {
+        leader_id: cardLeaderId,
+        unit_name: unitName,
+        leader_name: leaderMap.get(cardLeaderId)?.name ?? '',
+        employees: [],
+        present_count: 0,
+        total_count: 0,
+      };
+      units.push(unit);
+    }
+    unit.employees.push(toUnitEmployee(emp));
+    touchedCards.add(unit);
+  }
+  for (const unit of touchedCards) {
+    unit.employees.sort((a, b) => {
+      if (a.present !== b.present) return a.present ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    unit.present_count = unit.employees.filter(e => e.present).length;
+    unit.total_count = unit.employees.length;
+  }
+
   // Add "Sem Ponto" card for employees who don't use punch clock
   if (noPunchEmployees.length > 0) {
     const unitEmployees = noPunchEmployees.map(toUnitEmployee);
@@ -1962,6 +2230,13 @@ export interface Employee {
   // their own leader's (wins over the leader-wide cover_leader_id). leader_id,
   // team membership and approvals stay unchanged — only alert routing moves.
   alert_cover_leader_id?: number | null;
+  // Registration fields set by the RH panel (import from Sólides) and by the Nov/2026
+  // migration of the name lists. Missing = the legacy name lists still decide.
+  unit_name?: string | null;           // Card in Unidades / gestor panel (see UNIT_OPTIONS_BY_LEADER)
+  saturday_minutes?: number | null;    // 240 = Saturday until 12:00, 360 = until 14:00
+  schedule_type?: ScheduleType | null; // 'padrao' | 'loja_sustentavel' | 'sem_almoco'
+  admission_date?: string | null;      // YYYY-MM-DD from Sólides; earlier days aren't working days
+  created_via?: string;                // 'painel_rh' when imported through the panel
   created_at: string;
 }
 
@@ -2185,7 +2460,7 @@ export async function getHolidaysForYear(year: number): Promise<Holiday[]> {
 }
 
 // Import static holiday check
-import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee, isNoLunchEmployee, ABSENCE_CLASSIFICATIONS } from '../config/constants';
+import { isHoliday as isStaticHoliday, isWorkingDay as isStaticWorkingDay, isLojaSustentavelEmployee, isNoLunchEmployee, isBeforeAdmission, ABSENCE_CLASSIFICATIONS, type ScheduleType } from '../config/constants';
 
 /**
  * Check if a date is a holiday (combines static + database holidays)
@@ -2228,9 +2503,12 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
   const dateObj = new Date(dateStr + 'T12:00:00Z');
   const dayOfWeek = dateObj.getUTCDay(); // 0 = Sunday, 6 = Saturday
 
+  // Imported by the RH before their first day (admission date from Sólides)
+  if (isBeforeAdmission(employee, dateStr)) return false;
+
   // Sunday - Loja Sustentável employees work on Sundays (except holidays)
   if (dayOfWeek === 0) {
-    if (isLojaSustentavelEmployee(employee.name)) {
+    if (isLojaSustentavelEmployee(employee)) {
       const dbHoliday = await getHolidayForDate(dateStr);
       return !dbHoliday && !isStaticHoliday(dateStr);
     }
@@ -3063,10 +3341,10 @@ function isDateSaturday(dateStr: string): boolean {
 /** Which punches a day is missing, by the employee's schedule (2 on Saturday/apprentice/intern/Loja Sustentável). */
 export function computeMissingPunchesForRecord(
   record: { punch_1?: string | null; punch_2?: string | null; punch_3?: string | null; punch_4?: string | null; date: string },
-  employee: { name: string; is_apprentice?: boolean; is_intern?: boolean }
+  employee: { name: string; is_apprentice?: boolean; is_intern?: boolean; saturday_minutes?: number | null; schedule_type?: string | null }
 ): string[] {
   const isSat = isDateSaturday(record.date);
-  const isTwoPunch = isSat || !!employee.is_apprentice || !!employee.is_intern || isLojaSustentavelEmployee(employee.name) || isNoLunchEmployee(employee.name);
+  const isTwoPunch = isSat || !!employee.is_apprentice || !!employee.is_intern || isLojaSustentavelEmployee(employee) || isNoLunchEmployee(employee);
   const missing: string[] = [];
   if (!record.punch_1) missing.push('Entrada');
   if (isTwoPunch) {

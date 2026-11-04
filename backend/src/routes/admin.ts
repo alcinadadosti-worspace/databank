@@ -4,6 +4,10 @@ import { syncPunches } from '../jobs/sync-punches';
 import { sendEmployeeAlert, sendManagerDailySummary, getSlackApp } from '../slack/bot';
 import { calculateDailyHours } from '../services/hours-calculator';
 import { recalculateDay } from '../services/day-recalc';
+import {
+  getSolidesRoster, listSlackUsers, suggestSlackAccounts, buildRosterView, defaultSecondaryApprover,
+  buildPanelEmployee, computePendencias, computeCardDefaults,
+} from '../services/employee-admin';
 
 const router = Router();
 
@@ -305,7 +309,169 @@ router.get('/employees', async (_req: Request, res: Response) => {
   }
 });
 
-/** DELETE /api/admin/employee/:id - Delete an employee */
+// ─── Cadastro pelo painel do RH (Sólides and Slack are only read) ──────────
+
+const SOLIDES_UNAVAILABLE = 'Não consegui consultar a Sólides agora. Tente de novo em alguns minutos.';
+
+/** GET /api/admin/solides/roster - Active Sólides people (with "already registered") + gestores for the import form */
+router.get('/solides/roster', async (_req: Request, res: Response) => {
+  let roster;
+  try {
+    roster = await getSolidesRoster(false);
+  } catch (error) {
+    console.error('[admin] Sólides roster failed:', error);
+    res.status(502).json({ error: SOLIDES_UNAVAILABLE });
+    return;
+  }
+  try {
+    const [employees, leaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
+    res.json({
+      people: buildRosterView(roster, employees),
+      leaders: leaders
+        .map(l => {
+          const units = queries.unitChoicesForLeader(l.id);
+          return {
+            id: l.id,
+            name: l.name,
+            sector: l.sector,
+            units,
+            // cards = several stores; own = their own card; channel = no card (Canal VD/Loja heads)
+            kind: queries.UNIT_OPTIONS_BY_LEADER[l.id] ? 'cards' : units.required ? 'channel' : 'own',
+            own_card: units.required ? null : queries.resolveUnitName({ name: '', leader_id: l.id }),
+            default_secondary_approver_id: defaultSecondaryApprover(l.id, employees),
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      card_defaults: computeCardDefaults(employees, queries.resolveUnitName),
+    });
+  } catch (error) {
+    console.error('[admin] Error building roster:', error);
+    res.status(500).json({ error: 'Falha ao carregar a lista da Sólides' });
+  }
+});
+
+/** GET /api/admin/solides/:solidesId/slack-suggestions - Slack accounts that look like this person (users.list, read-only) */
+router.get('/solides/:solidesId/slack-suggestions', async (req: Request, res: Response) => {
+  try {
+    const roster = await getSolidesRoster(false);
+    const person = roster.find(p => p.id === String(req.params.solidesId));
+    if (!person) {
+      res.status(404).json({ error: 'Essa pessoa não está entre os ativos da Sólides' });
+      return;
+    }
+    let users;
+    try {
+      users = await listSlackUsers();
+    } catch (error) {
+      console.error('[admin] Slack users.list failed:', error);
+      res.json({ suggestions: [], warning: 'Não consegui consultar o Slack agora; informe o Slack ID manualmente.' });
+      return;
+    }
+    const employees = await queries.getAllEmployees();
+    res.json({ suggestions: suggestSlackAccounts(person, users, employees) });
+  } catch (error) {
+    console.error('[admin] Error suggesting Slack accounts:', error);
+    res.status(502).json({ error: SOLIDES_UNAVAILABLE });
+  }
+});
+
+/** POST /api/admin/employees/import - Registers someone from Sólides. No Slack message is sent. */
+router.post('/employees/import', async (req: Request, res: Response) => {
+  let roster;
+  try {
+    // Fresh read: the name, admission date and "still active" come from Sólides at this moment
+    roster = await getSolidesRoster(false, true);
+  } catch (error) {
+    console.error('[admin] Sólides roster failed:', error);
+    res.status(502).json({ error: SOLIDES_UNAVAILABLE });
+    return;
+  }
+  try {
+    const [employees, leaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
+    const check = buildPanelEmployee(req.body, { roster, employees, leaders, unitChoices: queries.unitChoicesForLeader });
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error });
+      return;
+    }
+    const employee = await queries.insertEmployeeFromPanel(check.input);
+    const leaderName = leaders.find(l => l.id === employee.leader_id)?.name ?? `gestor ${employee.leader_id}`;
+    await queries.logAudit('EMPLOYEE_IMPORTED', 'employee', employee.id,
+      `Importado da Sólides pelo painel do RH: ${employee.name} (Sólides ${employee.solides_employee_id}) → ${leaderName}` +
+      `${employee.unit_name ? ` / ${employee.unit_name}` : ''}${employee.no_punch_required ? ' (sem ponto)' : ''}`);
+    res.status(201).json({ employee });
+  } catch (error) {
+    if ((error as Error)?.name === 'EmployeeConflictError') {
+      res.status(409).json({ error: (error as Error).message });
+      return;
+    }
+    console.error('[admin] Error importing employee:', error);
+    res.status(500).json({ error: 'Falha ao cadastrar o colaborador' });
+  }
+});
+
+/** GET /api/admin/solides/pendencias - Sólides × Databank differences for the RH to act on */
+router.get('/solides/pendencias', async (_req: Request, res: Response) => {
+  let active;
+  let fired;
+  try {
+    [active, fired] = await Promise.all([getSolidesRoster(false, true), getSolidesRoster(true, true)]);
+  } catch (error) {
+    console.error('[admin] Sólides roster failed:', error);
+    res.status(502).json({ error: SOLIDES_UNAVAILABLE });
+    return;
+  }
+  try {
+    const [employees, leaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
+    res.json(computePendencias(active, fired, employees, leaders, queries.resolveUnitName));
+  } catch (error) {
+    console.error('[admin] Error computing pendências:', error);
+    res.status(500).json({ error: 'Falha ao calcular as pendências' });
+  }
+});
+
+/** Is this Sólides ID active or dismissed there? Never blocks a removal when Sólides is down. */
+async function solidesStatusFor(solidesId: string | null): Promise<{ status: 'ativo' | 'demitido' | 'nao_encontrado' | 'sem_id' | 'indisponivel'; name: string | null }> {
+  if (!solidesId) return { status: 'sem_id', name: null };
+  try {
+    const active = (await getSolidesRoster(false)).find(p => p.id === solidesId);
+    if (active) return { status: 'ativo', name: active.name };
+    const fired = (await getSolidesRoster(true)).find(p => p.id === solidesId);
+    return fired ? { status: 'demitido', name: fired.name } : { status: 'nao_encontrado', name: null };
+  } catch (error) {
+    console.error('[admin] Sólides status failed:', error);
+    return { status: 'indisponivel', name: null };
+  }
+}
+
+/** GET /api/admin/employee/:id/removal-summary - What removing this employee touches (shown before confirming) */
+router.get('/employee/:id/removal-summary', async (req: Request, res: Response) => {
+  try {
+    const employeeId = parseInt(req.params.id as string, 10);
+    if (isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid employee ID' });
+      return;
+    }
+    const employee = await queries.getEmployeeById(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: 'Colaborador não encontrado' });
+      return;
+    }
+    const [summary, solides] = await Promise.all([
+      queries.getEmployeeRemovalSummary(employee),
+      solidesStatusFor(employee.solides_employee_id ? String(employee.solides_employee_id) : null),
+    ]);
+    res.json({
+      employee: { id: employee.id, name: employee.name, leader_id: employee.leader_id, solides_employee_id: employee.solides_employee_id },
+      summary,
+      solides,
+    });
+  } catch (error) {
+    console.error('[admin] Error building removal summary:', error);
+    res.status(500).json({ error: 'Falha ao carregar os dados do colaborador' });
+  }
+});
+
+/** DELETE /api/admin/employee/:id - Removes a dismissed employee (registration + vacation due dates; history stays) */
 router.delete('/employee/:id', async (req: Request, res: Response) => {
   try {
     const employeeId = parseInt(req.params.id as string, 10);
@@ -314,10 +480,26 @@ router.delete('/employee/:id', async (req: Request, res: Response) => {
       return;
     }
 
-    await queries.deleteEmployee(employeeId);
-    await queries.logAudit('EMPLOYEE_DELETED', 'employee', employeeId, `Employee ${employeeId} deleted`);
+    const employee = await queries.getEmployeeById(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: 'Colaborador não encontrado' });
+      return;
+    }
 
-    res.json({ success: true, message: `Employee ${employeeId} deleted` });
+    // Still active in Sólides: only with the explicit confirmation from the panel
+    const solides = await solidesStatusFor(employee.solides_employee_id ? String(employee.solides_employee_id) : null);
+    if (solides.status === 'ativo' && req.query.confirmar_ativo !== '1') {
+      res.status(409).json({ error: 'Na Sólides essa pessoa ainda está ativa. Confirme no painel para remover mesmo assim.' });
+      return;
+    }
+
+    const { vacation_schedules_removed } = await queries.removeEmployeeKeepingHistory(employeeId);
+    await queries.logAudit('EMPLOYEE_DELETED', 'employee', employeeId,
+      `Removido pelo painel do RH: ${employee.name} (gestor ${employee.leader_id}, Sólides ${employee.solides_employee_id ?? '-'}); ` +
+      `${vacation_schedules_removed} vencimento(s) de férias removido(s); histórico mantido` +
+      `${solides.status === 'ativo' ? ' — ainda ativo na Sólides, remoção confirmada no painel' : ''}`);
+
+    res.json({ success: true, message: `${employee.name} removido(a)`, vacation_schedules_removed });
   } catch (error) {
     console.error('[admin] Error deleting employee:', error);
     res.status(500).json({ error: 'Failed to delete employee' });
@@ -566,9 +748,9 @@ router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
     const allRecords = await queries.getAllRecordsRange(startDate, endDate);
     const records = Array.isArray(allRecords) ? allRecords : allRecords.data;
 
-    // Build employee name map for per-employee Saturday schedule lookup
+    // Employee map for the per-employee Saturday schedule (saturday_minutes, legacy name list)
     const allEmployees = await queries.getAllEmployees();
-    const employeeNameMap = new Map(allEmployees.map(e => [e.id, e.name]));
+    const employeeById = new Map(allEmployees.map(e => [e.id, e]));
 
     // Filter only Saturdays with suspicious values (overtime > 60min on Saturday is suspicious)
     const saturdayRecords = records.filter((r: any) => {
@@ -599,7 +781,8 @@ router.post('/recalculate-saturdays', async (req: Request, res: Response) => {
       const calcResult = calculateDailyHours(punchSet, {
         date: record.date,
         isApprentice: false,
-        employeeName: employeeNameMap.get(record.employee_id),
+        employeeName: employeeById.get(record.employee_id)?.name,
+        employee: employeeById.get(record.employee_id) ?? null,
       });
 
       if (calcResult) {

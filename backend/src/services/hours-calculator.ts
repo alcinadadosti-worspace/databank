@@ -1,4 +1,4 @@
-import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, isHoliday, getExpectedMinutes, getSaturdayMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee } from '../config/constants';
+import { WORK_SCHEDULE, HourClassification, isSaturday, isWorkingDay, isHoliday, getExpectedMinutes, getSaturdayMinutes, isLojaSustentavelEmployee, getLojaSustentavelExpectedMinutes, isNoLunchEmployee, type ScheduleProfile } from '../config/constants';
 
 export interface PunchSet {
   punch1: string | null; // Entry
@@ -18,7 +18,8 @@ export interface CalculationOptions {
   date?: string;             // Date in YYYY-MM-DD format (to check Saturday/holiday)
   isApprentice?: boolean;    // Apprentice has different hours
   expectedMinutes?: number;  // Override expected minutes
-  employeeName?: string | null; // Employee name for per-employee Saturday schedule
+  employeeName?: string | null; // Legacy: employee name for the per-employee schedule lists
+  employee?: ScheduleProfile | null; // Preferred over employeeName: the registration fields win over the name lists
   scheduleOverrides?: Record<string, number>; // Per-day expected minutes override: key = JS day-of-week ('0'=Sun...'6'=Sat)
   minutesOff?: number;       // Partial folga: subtracted from the resolved expected minutes
 }
@@ -54,8 +55,9 @@ function timeToMinutes(time: string): number {
 export function calculateDailyHours(punches: PunchSet, options?: CalculationOptions): CalculationResult | null {
   const date = options?.date;
   const isApprentice = options?.isApprentice ?? false;
-  const isLojasSustentavel = isLojaSustentavelEmployee(options?.employeeName);
-  const isNoLunch = isNoLunchEmployee(options?.employeeName);
+  const subject = options?.employee ?? options?.employeeName;
+  const isLojasSustentavel = isLojaSustentavelEmployee(subject);
+  const isNoLunch = isNoLunchEmployee(subject);
 
   // Loja Sustentável employees work on Sundays but not on holidays
   if (date && isLojasSustentavel) {
@@ -90,11 +92,11 @@ export function calculateDailyHours(punches: PunchSet, options?: CalculationOpti
   let expectedMinutes: number;
   if (isSat) {
     // Saturday: use per-employee schedule (defaults to 240 min / 12:00)
-    expectedMinutes = getSaturdayMinutes(options?.employeeName);
+    expectedMinutes = getSaturdayMinutes(subject);
   } else if (options?.expectedMinutes !== undefined) {
     expectedMinutes = options.expectedMinutes;
   } else if (date) {
-    expectedMinutes = getExpectedMinutes(date, isApprentice, 240, options?.employeeName, options?.scheduleOverrides);
+    expectedMinutes = getExpectedMinutes(date, isApprentice, 240, subject, options?.scheduleOverrides);
   } else {
     expectedMinutes = WORK_SCHEDULE.EXPECTED_DAILY_MINUTES;
   }
@@ -187,6 +189,8 @@ export interface EmployeeScheduleInfo {
   is_apprentice?: boolean;
   expected_daily_minutes?: number;
   schedule_overrides?: Record<string, number>;
+  saturday_minutes?: number | null;
+  schedule_type?: string | null;
 }
 
 /**
@@ -212,6 +216,7 @@ export function calculateDailyHoursForEmployee(
     isApprentice,
     ...(forceApprenticeMinutes ? { expectedMinutes: employee?.expected_daily_minutes || 240 } : {}),
     employeeName: employee?.name,
+    employee: employee ?? null,
     scheduleOverrides: employee?.schedule_overrides,
     minutesOff: extra?.minutesOff,
   });

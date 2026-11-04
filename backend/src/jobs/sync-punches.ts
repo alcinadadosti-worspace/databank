@@ -177,8 +177,8 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       // Stored record for this exact date, used to skip no-op writes below
       const prevRecord = existing && existing.date === date ? existing : undefined;
 
-      const isLojasSustentavel = isLojaSustentavelEmployee(employee.name);
-      const isNoLunch = isNoLunchEmployee(employee.name);
+      const isLojasSustentavel = isLojaSustentavelEmployee(employee);
+      const isNoLunch = isNoLunchEmployee(employee);
       const isSundayDate = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
 
       // Skip non-working days (Loja Sustentável employees work on Sundays)
@@ -219,7 +219,7 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       if (isLojasSustentavel) {
         expectedMinutes = getLojaSustentavelExpectedMinutes(date);
       } else {
-        expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee.name, employee.schedule_overrides);
+        expectedMinutes = getExpectedMinutes(date, isApprentice, employee.expected_daily_minutes || 240, employee, employee.schedule_overrides);
       }
       const minutesOff = (folgaRecord?.type === 'partial' ? folgaRecord.hours_off * 60 : 0) + (leave?.hoursOff ?? 0) * 60;
       expectedMinutes = Math.max(0, expectedMinutes - minutesOff);

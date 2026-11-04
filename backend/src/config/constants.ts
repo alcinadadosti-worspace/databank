@@ -129,8 +129,55 @@ export function isSaturday(dateStr: string): boolean {
 }
 
 /**
- * Employees whose Saturday shift ends at 14:00 (360 min) instead of the default 12:00 (240 min).
- * These are the virtual units "Loja Palmeira dos Indios" and "Loja Penedo".
+ * Journey rules can come from the employee's own registration (set by the RH panel
+ * when importing from Sólides, or by the Nov/2026 data migration):
+ *   saturday_minutes: 240 (Saturday until 12:00) or 360 (until 14:00)
+ *   schedule_type:    'padrao' | 'loja_sustentavel' (12h rotation, 2 punches) | 'sem_almoco' (2 punches)
+ * A field that is set always wins. When it is missing, the legacy name lists below
+ * apply, so anyone registered before these fields existed keeps the same behavior.
+ */
+export const SCHEDULE_TYPES = ['padrao', 'loja_sustentavel', 'sem_almoco'] as const;
+export type ScheduleType = typeof SCHEDULE_TYPES[number];
+
+/** Saturday journeys the panel offers — the Saturday exit reminders exist for exactly these two */
+export const SATURDAY_MINUTES_OPTIONS = [240, 360] as const;
+
+/** What the journey rules read from an employee (any employee object fits) */
+export interface ScheduleProfile {
+  name?: string | null;
+  saturday_minutes?: number | null;
+  schedule_type?: string | null;
+}
+
+/** The rules take the employee (preferred) or, for legacy callers, just the name */
+export type ScheduleSubject = ScheduleProfile | string | null | undefined;
+
+function subjectName(subject: ScheduleSubject): string {
+  const name = typeof subject === 'string' ? subject : subject?.name;
+  return (name ?? '').toLowerCase();
+}
+
+function subjectScheduleType(subject: ScheduleSubject): ScheduleType | null {
+  if (!subject || typeof subject === 'string') return null;
+  const type = subject.schedule_type;
+  return type && (SCHEDULE_TYPES as readonly string[]).includes(type) ? type as ScheduleType : null;
+}
+
+/**
+ * Days before the Sólides admission date (stored when the RH imports someone through
+ * the panel) are not working days for that person: no "Sem Registro", no entry
+ * reminder, no absence in the unit view. Employees without the field are unaffected.
+ */
+export function isBeforeAdmission(employee: { admission_date?: string | null } | null | undefined, dateStr: string): boolean {
+  const admission = employee?.admission_date;
+  return !!admission && /^\d{4}-\d{2}-\d{2}$/.test(admission) && dateStr < admission;
+}
+
+/**
+ * LEGACY — employees whose Saturday shift ends at 14:00 (360 min) instead of 12:00 (240 min),
+ * kept as the fallback for people without `saturday_minutes`. Everyone listed here got
+ * `saturday_minutes: 360` in the Nov/2026 migration, so EDITING THIS LIST CHANGES NOTHING
+ * for them: change the employee's `saturday_minutes` instead. Do not add names here.
  * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
  */
 export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
@@ -150,6 +197,9 @@ export const EXTENDED_SATURDAY_EMPLOYEES = new Set([
  * Only ONE employee works per day (Eduarda and Tayná alternate). Schedule:
  *   Mon-Sat: 09:00–21:00 (720 min)
  *   Sun:     09:00–20:00 (660 min)
+ * LEGACY fallback for people without `schedule_type` — both got `schedule_type:
+ * 'loja_sustentavel'` in the Nov/2026 migration, so editing this list changes nothing for
+ * them: change the employee's `schedule_type` instead. Do not add names here.
  * Names stored in lowercase form to match employee.name.toLowerCase().
  */
 export const LOJA_SUSTENTAVEL_EMPLOYEES = new Set([
@@ -157,8 +207,11 @@ export const LOJA_SUSTENTAVEL_EMPLOYEES = new Set([
   'luciene tayná félix da silva',
 ]);
 
-export function isLojaSustentavelEmployee(employeeName: string | null | undefined): boolean {
-  return !!(employeeName && LOJA_SUSTENTAVEL_EMPLOYEES.has(employeeName.toLowerCase()));
+export function isLojaSustentavelEmployee(subject: ScheduleSubject): boolean {
+  const type = subjectScheduleType(subject);
+  if (type) return type === 'loja_sustentavel';
+  const name = subjectName(subject);
+  return !!name && LOJA_SUSTENTAVEL_EMPLOYEES.has(name);
 }
 
 /**
@@ -177,24 +230,38 @@ export function getLojaSustentavelExpectedMinutes(dateStr: string): number {
  * come from the normal schedule (expected_daily_minutes / schedule_overrides),
  * so only the "1 pair, no lunch deduction" behavior is shared.
  * Currently empty (Juliene Reis, id 121, was dismissed in Oct/2026).
+ * LEGACY fallback for people without `schedule_type` ('sem_almoco') — do not add names here.
  * Names stored in lowercase-normalized form to match employee.name.toLowerCase().
  */
 export const NO_LUNCH_EMPLOYEES = new Set<string>([]);
 
-export function isNoLunchEmployee(employeeName: string | null | undefined): boolean {
-  return !!(employeeName && NO_LUNCH_EMPLOYEES.has(employeeName.toLowerCase()));
+export function isNoLunchEmployee(subject: ScheduleSubject): boolean {
+  const type = subjectScheduleType(subject);
+  if (type) return type === 'sem_almoco';
+  const name = subjectName(subject);
+  return !!name && NO_LUNCH_EMPLOYEES.has(name);
 }
 
 /**
- * Return the expected Saturday work minutes for a given employee.
- * Employees in Loja Palmeira dos Indios and Loja Penedo work until 14:00 (360 min).
- * All others work until 12:00 (240 min).
+ * Return the expected Saturday work minutes for a given employee: their
+ * `saturday_minutes` when set, otherwise 360 (08:00–14:00) for the legacy list
+ * and 240 (08:00–12:00) for everyone else.
  */
-export function getSaturdayMinutes(employeeName: string | null | undefined): number {
-  if (employeeName && EXTENDED_SATURDAY_EMPLOYEES.has(employeeName.toLowerCase())) {
+export function getSaturdayMinutes(subject: ScheduleSubject): number {
+  if (subject && typeof subject !== 'string') {
+    const minutes = subject.saturday_minutes;
+    if (typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0) return minutes;
+  }
+  const name = subjectName(subject);
+  if (name && EXTENDED_SATURDAY_EMPLOYEES.has(name)) {
     return 360; // 08:00–14:00
   }
   return WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES; // 08:00–12:00
+}
+
+/** Saturday until 14:00 — these get the 13:50 exit reminder instead of the 11:50 one */
+export function hasExtendedSaturday(subject: ScheduleSubject): boolean {
+  return getSaturdayMinutes(subject) > WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES;
 }
 
 /**
@@ -205,7 +272,7 @@ export function getExpectedMinutes(
   dateStr: string,
   isApprentice: boolean = false,
   apprenticeMinutes: number = 240,
-  employeeName?: string | null,
+  employee?: ScheduleSubject,
   scheduleOverrides?: Record<string, number>,
 ): number {
   if (!isWorkingDay(dateStr)) {
@@ -214,7 +281,7 @@ export function getExpectedMinutes(
 
   if (isSaturday(dateStr)) {
     if (isApprentice) return Math.min(apprenticeMinutes, WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES);
-    return getSaturdayMinutes(employeeName);
+    return getSaturdayMinutes(employee);
   }
 
   // Per-employee day-of-week override (e.g., 9h Mon-Thu, 8h Fri)

@@ -99,6 +99,116 @@ export async function getEmployeesByLeader(leaderId: number) {
   return apiFetch<{ employees: Employee[] }>(`/api/employees/leader/${leaderId}`);
 }
 
+// ─── Cadastro pelo painel do RH (Sólides e Slack só leitura) ───
+
+export interface SolidesPerson {
+  solides_id: string;
+  name: string;
+  admission_date: string | null;
+  records_punch: boolean;
+  registered_as: { id: number; name: string } | null;
+  /** Someone else (linked to another Sólides ID) has exactly this name */
+  homonym_of: { id: number; name: string } | null;
+}
+
+export interface ImportLeader {
+  id: number;
+  name: string;
+  sector: string | null;
+  units: { required: boolean; options: string[] };
+  /** cards = several stores; own = their own card; channel = no card of their own */
+  kind: 'cards' | 'own' | 'channel';
+  own_card: string | null;
+  default_secondary_approver_id: number | null;
+}
+
+export interface SlackSuggestion {
+  slack_id: string;
+  name: string;
+  display_name: string;
+  match: 'email' | 'nome' | 'parcial';
+  in_use_by: { id: number; name: string } | null;
+}
+
+export type ImportJourney = 'padrao' | 'aprendiz' | 'loja_sustentavel' | 'sem_almoco';
+export type ImportSaturday = 'ate_12' | 'ate_14' | 'nao_trabalha';
+
+export interface ImportEmployeePayload {
+  solides_employee_id: string;
+  leader_id: number;
+  unit_name: string | null;
+  secondary_approver_id: number | null;
+  slack_id: string | null;
+  journey: ImportJourney;
+  saturday: ImportSaturday;
+  no_punch_required: boolean;
+  confirm_homonym: boolean;
+}
+
+export interface EmployeeRemovalInfo {
+  employee: { id: number; name: string; leader_id: number; solides_employee_id: string | null };
+  summary: {
+    daily_records: number;
+    folgas: number;
+    vacation_schedules: number;
+    pending_justifications: number;
+    pending_adjustments: number;
+    also_leader: { id: number; name: string } | null;
+  };
+  solides: { status: 'ativo' | 'demitido' | 'nao_encontrado' | 'sem_id' | 'indisponivel'; name: string | null };
+}
+
+export interface PendenciaEmployee {
+  id: number;
+  name: string;
+  leader_name: string;
+  solides_id: string | null;
+}
+
+export interface SolidesPendencias {
+  nao_cadastrados: { solides_id: string; name: string; admission_date: string | null; records_punch: boolean }[];
+  demitidos_no_databank: PendenciaEmployee[];
+  divergencia_ponto: PendenciaEmployee[];
+  sem_vinculo: (PendenciaEmployee & { motivo: 'sem_id' | 'nao_encontrado' | 'id_antigo'; solides_atual: string | null })[];
+  sem_unidade: PendenciaEmployee[];
+}
+
+export async function getSolidesRoster() {
+  return apiFetch<{
+    people: SolidesPerson[];
+    leaders: ImportLeader[];
+    /** Journey/Saturday most people of each card already have */
+    card_defaults: Record<string, { journey: ImportJourney; saturday: ImportSaturday }>;
+  }>('/api/admin/solides/roster', { authType: 'admin' });
+}
+
+export async function getSlackSuggestions(solidesId: string) {
+  return apiFetch<{ suggestions: SlackSuggestion[]; warning?: string }>(
+    `/api/admin/solides/${encodeURIComponent(solidesId)}/slack-suggestions`, { authType: 'admin' });
+}
+
+export async function importEmployeeFromSolides(payload: ImportEmployeePayload) {
+  return apiFetch<{ employee: Employee }>('/api/admin/employees/import', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    authType: 'admin',
+  });
+}
+
+export async function getEmployeeRemovalInfo(employeeId: number) {
+  return apiFetch<EmployeeRemovalInfo>(`/api/admin/employee/${employeeId}/removal-summary`, { authType: 'admin' });
+}
+
+/** confirmActive: the RH confirmed removing someone Sólides still has as active */
+export async function removeEmployee(employeeId: number, confirmActive = false) {
+  return apiFetch<{ success: boolean; message: string; vacation_schedules_removed: number }>(
+    `/api/admin/employee/${employeeId}${confirmActive ? '?confirmar_ativo=1' : ''}`, { method: 'DELETE', authType: 'admin' });
+}
+
+export async function getSolidesPendencias() {
+  return apiFetch<SolidesPendencias>('/api/admin/solides/pendencias', { authType: 'admin' });
+}
+
 // ─── Leaders ───────────────────────────────────────────────────
 
 export async function getLeaders(sector?: string) {
