@@ -55,12 +55,30 @@ function getScheduleStatus(date: string): { bg: string; text: string; label: str
   }
 }
 
-function getPeriodStatus(periodDate: string, employeeVacations: Vacation[]): { bg: string; text: string; label: string; covered: boolean } {
-  const isCovered = employeeVacations.some(v => v.start_date <= periodDate);
-  if (isCovered) {
-    return { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Concluido', covered: true };
+// O registro guarda o periodo mais antigo em aberto: period_1_date = vencimento, period_2_date = limite p/ gozo.
+// Ferias com inicio ate o vencimento pertencem a periodos anteriores e nao contam para este.
+function isPeriodCovered(schedule: VacationSchedule, employeeVacations: Vacation[]): boolean {
+  // Saldo parcial no relatorio: ainda ha dias a gozar neste periodo
+  if ((schedule.days_taken ?? 0) > 0 && (schedule.days_remaining ?? 0) > 0) return false;
+  return employeeVacations.some(v =>
+    v.start_date > schedule.period_1_date &&
+    (!schedule.period_2_date || v.start_date <= schedule.period_2_date)
+  );
+}
+
+function getPeriodStatus(periodDate: string, covered: boolean): { bg: string; text: string; label: string; covered: boolean } {
+  const status = getScheduleStatus(periodDate);
+  if (covered) {
+    return { bg: 'bg-green-500/20', text: 'text-green-400', label: `✓ ${status.label}`, covered: true };
   }
-  return { ...getScheduleStatus(periodDate), covered: false };
+  return { ...status, covered: false };
+}
+
+function getLastVacation(employeeVacations: Vacation[]): Vacation | undefined {
+  return employeeVacations.reduce<Vacation | undefined>(
+    (last, v) => (!last || v.start_date > last.start_date ? v : last),
+    undefined
+  );
 }
 
 function calculateDays(startDate: string, endDate: string): number {
@@ -498,10 +516,9 @@ export default function AdminFerias() {
 
     for (const s of schedules) {
       const empVacations = vacationsByEmployee.get(s.employee_id) || [];
+      if (isPeriodCovered(s, empVacations)) continue;
       const dates = [s.period_1_date, s.period_2_date].filter(Boolean) as string[];
-      const uncovered = dates.filter(d => !empVacations.some(v => v.start_date <= d));
-      const nearest = uncovered.sort()[0];
-      if (!nearest) continue;
+      const nearest = dates.sort()[0];
       const diff = Math.ceil(
         (new Date(nearest + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -1009,25 +1026,32 @@ export default function AdminFerias() {
               <div className="lg:hidden space-y-3">
                 {filteredSchedules.map((schedule) => {
                   const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
-                  const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
-                  const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
+                  const covered = isPeriodCovered(schedule, empVacations);
+                  const p1 = getPeriodStatus(schedule.period_1_date, covered);
+                  const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, covered) : null;
+                  const lastVacation = getLastVacation(empVacations);
                   return (
                     <div key={schedule.id} className="card p-3 space-y-1.5">
                       <p className="text-sm font-medium text-text-primary">{schedule.employee_name}</p>
                       <p className="text-xs text-text-secondary">Gestor: {schedule.leader_name || '—'}</p>
                       {schedule.notes && <p className="text-xs text-text-muted">{schedule.notes}</p>}
+                      {lastVacation && (
+                        <p className="text-xs text-text-muted">
+                          Ultimas ferias: {formatDate(lastVacation.start_date)} a {formatDate(lastVacation.end_date)}
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <div>
                           <span className="text-xs text-text-muted mr-1">1º:</span>
                           <span className={`text-xs px-2 py-0.5 rounded ${p1.bg} ${p1.text}`}>
-                            {p1.covered ? '✓ Concluido' : p1.label}
+                            {p1.label}
                           </span>
                         </div>
                         {p2 && (
                           <div>
                             <span className="text-xs text-text-muted mr-1">2º:</span>
                             <span className={`text-xs px-2 py-0.5 rounded ${p2.bg} ${p2.text}`}>
-                              {p2.covered ? '✓ Concluido' : p2.label}
+                              {p2.label}
                             </span>
                           </div>
                         )}
@@ -1075,8 +1099,10 @@ export default function AdminFerias() {
                   <tbody className="divide-y divide-border-subtle">
                     {filteredSchedules.map((schedule) => {
                       const empVacations = vacationsByEmployee.get(schedule.employee_id) || [];
-                      const p1 = getPeriodStatus(schedule.period_1_date, empVacations);
-                      const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, empVacations) : null;
+                      const covered = isPeriodCovered(schedule, empVacations);
+                      const p1 = getPeriodStatus(schedule.period_1_date, covered);
+                      const p2 = schedule.period_2_date ? getPeriodStatus(schedule.period_2_date, covered) : null;
+                      const lastVacation = getLastVacation(empVacations);
                       return (
                         <tr key={schedule.id} className="hover:bg-bg-hover transition-colors">
                           <td className="px-4 py-3">
@@ -1085,13 +1111,18 @@ export default function AdminFerias() {
                               {schedule.notes && (
                                 <p className="text-xs text-text-muted">{schedule.notes}</p>
                               )}
+                              {lastVacation && (
+                                <p className="text-xs text-text-muted">
+                                  Ultimas ferias: {formatDate(lastVacation.start_date)} a {formatDate(lastVacation.end_date)}
+                                </p>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-sm text-text-secondary">{schedule.leader_name || '-'}</td>
                           <td className="px-4 py-3">
                             <div className="flex flex-col gap-1">
                               <span className={`text-xs px-2 py-1 rounded ${p1.bg} ${p1.text}`}>
-                                {p1.covered ? '✓ Concluido' : p1.label}
+                                {p1.label}
                               </span>
                               {!p1.covered && (
                                 <span className="text-xs text-text-muted">{formatDate(schedule.period_1_date)}</span>
@@ -1102,7 +1133,7 @@ export default function AdminFerias() {
                             {p2 ? (
                               <div className="flex flex-col gap-1">
                                 <span className={`text-xs px-2 py-1 rounded ${p2.bg} ${p2.text}`}>
-                                  {p2.covered ? '✓ Concluido' : p2.label}
+                                  {p2.label}
                                 </span>
                                 {!p2.covered && schedule.period_2_date && (
                                   <span className="text-xs text-text-muted">{formatDate(schedule.period_2_date)}</span>
