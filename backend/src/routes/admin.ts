@@ -328,6 +328,7 @@ router.get('/solides/roster', async (_req: Request, res: Response) => {
     res.json({
       people: buildRosterView(roster, employees),
       leaders: leaders
+        .filter(l => !queries.HIDDEN_LEADER_IDS.includes(l.id))
         .map(l => {
           const units = queries.unitChoicesForLeader(l.id);
           return {
@@ -387,7 +388,9 @@ router.post('/employees/import', async (req: Request, res: Response) => {
     return;
   }
   try {
-    const [employees, leaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
+    const [employees, allLeaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
+    // Same list the import screen offers: a hidden (dismissed) leader can't be chosen as gestor
+    const leaders = allLeaders.filter(l => !queries.HIDDEN_LEADER_IDS.includes(l.id));
     const check = buildPanelEmployee(req.body, { roster, employees, leaders, unitChoices: queries.unitChoicesForLeader });
     if (!check.ok) {
       res.status(check.status).json({ error: check.error });

@@ -83,6 +83,24 @@ describe('cards the RH can choose', () => {
   });
 });
 
+describe('Michaell (13) took over the RH team in Nov/2026', () => {
+  it('has two cards: Financeiro/Administrativo (Tomás) and Gente e Cultura (RH)', () => {
+    expect(unitChoicesForLeader(13)).toEqual({ required: true, options: ['Financeiro/Administrativo', 'Gente e Cultura'] });
+    expect(UNIT_CARD_LEADER.get('Gente e Cultura')).toBe(13);
+  });
+
+  it('RH people go to Gente e Cultura; Tomás (no unit_name) stays in Financeiro/Administrativo', () => {
+    expect(resolveUnitName({ name: 'Letícia Soares Belo', leader_id: 13, unit_name: 'Gente e Cultura' })).toBe('Gente e Cultura');
+    expect(resolveUnitName({ name: 'Tomás Azevedo Santos', leader_id: 13 })).toBe('Financeiro/Administrativo');
+    expect(resolveUnitName({ name: 'Nova Pessoa', leader_id: 13, unit_name: 'Financeiro/Administrativo' })).toBe('Financeiro/Administrativo');
+  });
+
+  it('Tomás (17) cannot use the Gente e Cultura card', () => {
+    expect(explicitUnitNameFor({ leader_id: 17, unit_name: 'Gente e Cultura' })).toBeNull();
+    expect(resolveUnitName({ name: 'Nova Pessoa', leader_id: 17, unit_name: 'Gente e Cultura' })).toBe('Financeiro/Administrativo');
+  });
+});
+
 describe('missing punches use the registration fields', () => {
   it('a no-lunch employee from schedule_type needs only entry and exit', () => {
     const record = { date: '2026-11-04', punch_1: '08:00', punch_2: null };

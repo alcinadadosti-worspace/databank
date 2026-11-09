@@ -14,8 +14,8 @@ const DEV_PASSWORD_HASH = '$2b$10$8K1p/wKQKRRqXk8XgXr5/.XKNz.6vqPZjvr.Bp0F5xX8qD
 
 // Manager email authentication mapping
 // TODO: Move to database for better maintainability
+// rafaela@cpalcina.com removed in Nov/2026 (dismissed; her team went to Michaell)
 const MANAGER_EMAILS: Record<string, string> = {
-  'rafaela@cpalcina.com': 'Rafaela Alves Mendes',
   'marianessousa02@gmail.com': 'Mariane Santos Sousa',
   'kemillyrafaelly05@hotmail.com': 'Kemilly Rafaelly Souza Silva',
   'alberto@cpalcina.com': 'Alberto Luiz Marinho Batista',
@@ -139,9 +139,8 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const sector = req.query.sector as string | undefined;
     const allLeaders = await queries.getAllLeaders();
-    // Filter out leaders that are actually just employees (e.g. Ravy id=16)
-    const HIDDEN_LEADER_IDS = [16];
-    const visibleLeaders = allLeaders.filter(l => !HIDDEN_LEADER_IDS.includes(l.id));
+    // Hide leaders that are just employees (Ravy 16) or no longer at the company (Rafaela 14)
+    const visibleLeaders = allLeaders.filter(l => !queries.HIDDEN_LEADER_IDS.includes(l.id));
     const leaders = sector
       ? visibleLeaders.filter(l => l.sector === sector)
       : visibleLeaders;

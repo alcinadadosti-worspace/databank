@@ -20,6 +20,7 @@ jest.mock('../../models/queries', () => ({
   unitChoicesForLeader: jest.fn(),
   resolveUnitName: jest.fn(),
   UNIT_OPTIONS_BY_LEADER: { 11: ['Loja Coruripe', 'Loja Teotonio Vilela'] },
+  HIDDEN_LEADER_IDS: [14, 16],
 }));
 // Sólides: only the read-only roster is used; nothing may write there
 jest.mock('../../services/solides-api', () => ({ fetchEmployeeRoster: jest.fn() }));
@@ -51,6 +52,7 @@ const LEADERS = [
   { id: 10, name: 'Kemilly Rafaelly Souza Silva', sector: 'Canal Loja' },
   { id: 11, name: 'Maria Taciane Pereira Barbosa', sector: 'Canal Loja' },
   { id: 12, name: 'Mariane Santos Sousa', sector: 'Canal Loja' },
+  { id: 14, name: 'Rafaela Alves Mendes', sector: 'Alta Lideranca' }, // dismissed, hidden
 ];
 
 const realFetch = global.fetch;
@@ -132,6 +134,7 @@ describe('GET /solides/roster', () => {
     const taciane = body.leaders.find((l: any) => l.id === 11);
     expect(taciane).toMatchObject({ units: { required: true }, kind: 'cards', own_card: null, default_secondary_approver_id: 10 });
     expect(body.leaders.find((l: any) => l.id === 12)).toMatchObject({ kind: 'own', own_card: 'Card' });
+    expect(body.leaders.map((l: any) => l.id)).not.toContain(14); // hidden leader is not offered
     expect(body.card_defaults).toEqual({ Card: { journey: 'padrao', saturday: 'ate_12' } });
     expect(s.fetchEmployeeRoster).toHaveBeenCalledWith(false);
   });
@@ -165,6 +168,12 @@ describe('POST /employees/import', () => {
     }));
     expect(q.logAudit).toHaveBeenCalledWith('EMPLOYEE_IMPORTED', 'employee', 131, expect.stringContaining('Mariane Santos Sousa'));
     expect(s.fetchEmployeeRoster).toHaveBeenCalledWith(false); // a fresh read
+  });
+
+  it('a hidden (dismissed) leader cannot be chosen as gestor', async () => {
+    const res = await call('POST', '/employees/import', { solides_employee_id: '7187482', leader_id: 14 });
+    expect(res.status).toBe(400);
+    expect(q.insertEmployeeFromPanel).not.toHaveBeenCalled();
   });
 
   it('store required for a gestor with several stores', async () => {

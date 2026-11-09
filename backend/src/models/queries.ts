@@ -68,6 +68,12 @@ function invalidateCaches() {
 
 // ─── Leaders ───────────────────────────────────────────────────
 
+/**
+ * Leaders kept only for history, never offered as a gestor: 16 is just an employee (Ravy);
+ * 14 is Rafaela Alves Mendes, dismissed in Nov/2026 — her RH team went to Michaell (13).
+ */
+export const HIDDEN_LEADER_IDS: readonly number[] = [14, 16];
+
 export async function getAllLeaders(): Promise<Leader[]> {
   if (leadersCache) return leadersCache;
   const snap = await getDb().collection(COLLECTIONS.LEADERS).orderBy('name').get();
@@ -1508,8 +1514,8 @@ const UNIT_NAMES: Record<number, string> = {
   9: 'Salão de vendas Penedo',        // Ana Clara - VD team
   // 10, 11, 18: Kemilly, Maria Taciane and Keliany have virtual units (handled separately)
   12: 'Loja Penedo',                  // Mariane (came from Maria Taciane in Oct/2026)
-  13: 'Financeiro/Administrativo',    // Michaell — only Tomás
-  14: 'Gente e Cultura',
+  13: 'Financeiro/Administrativo',    // Michaell — Tomás here; the RH team in 'Gente e Cultura' (UNIT_OPTIONS_BY_LEADER)
+  // 14: 'Gente e Cultura' - Rafaela dismissed in Nov/2026, the card belongs to Michaell (13) now
   15: 'Marketing',
   17: 'Financeiro/Administrativo',    // Tomás — the Financeiro team
 };
@@ -1600,6 +1606,8 @@ export const UNIT_OPTIONS_BY_LEADER: Record<number, string[]> = {
   2: ['Logistica Penedo', 'Logistica Palmeira dos Indios'],
   10: ['Loja Sao Sebastiao'],
   11: ['Loja Coruripe', 'Loja Teotonio Vilela'],
+  // Michaell: Tomás (no unit_name → Financeiro/Administrativo) and the RH team (unit_name 'Gente e Cultura')
+  13: ['Financeiro/Administrativo', 'Gente e Cultura'],
   18: ['Loja Palmeira dos Indios', 'Loja Sustentável Palmeira'],
 };
 
