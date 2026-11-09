@@ -7,7 +7,8 @@
  *   - Cria registros para colaboradores da planilha sem cadastro
  *   - NAO mexe em registros fora da planilha (ex.: orfao sched 80)
  *
- * Uso: npx tsx scripts/sync-ferias2-xlsx.ts [--apply]   (sem --apply = simulacao)
+ * Uso: npx tsx scripts/sync-ferias2-xlsx.ts [--file=caminho.xlsx] [--apply --backup=arquivo.json]   (sem --apply = simulacao)
+ *      Os xlsx saem de scripts/consolidate-ferias-pdfs.py, a partir dos PDFs de programacao de ferias.
  */
 import 'dotenv/config';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
@@ -55,7 +56,9 @@ const ALIASES: Record<string, string> = {
 async function main() {
   console.log(`=== Sync férias × planilha 2 (com saldo de dias) — modo: ${APPLY ? 'APLICAR' : 'SIMULACAO'} ===\n`);
 
-  const file = path.resolve(__dirname, '..', '..', 'Programacao_de_Ferias_Consolidada2.xlsx');
+  const fileArg = process.argv.find(a => a.startsWith('--file='))?.slice('--file='.length);
+  const file = fileArg ? path.resolve(fileArg) : path.resolve(__dirname, '..', '..', 'Programacao_de_Ferias_Consolidada2.xlsx');
+  console.log(`Arquivo: ${file}\n`);
   const wb = XLSX.readFile(file, { cellDates: false });
   const rows: any[][] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: null });
   const sheet = rows.slice(1)
@@ -77,26 +80,44 @@ async function main() {
   const schedules = schedSnap.docs.map(d => d.data() as any);
   const schedByEmpId = new Map(schedules.map(s => [s.employee_id, s]));
 
+  if (APPLY) {
+    const backupArg = process.argv.find(a => a.startsWith('--backup='))?.slice('--backup='.length);
+    if (!backupArg) throw new Error('--apply exige --backup=arquivo.json');
+    // flag wx: nao sobrescreve um backup anterior
+    fs.writeFileSync(path.resolve(backupArg), JSON.stringify(schedSnap.docs.map(d => ({ doc_id: d.id, ...d.data() })), null, 2), { flag: 'wx' });
+    console.log(`Backup de ${schedSnap.size} registros: ${path.resolve(backupArg)}\n`);
+  }
+
   let nextSchedId = schedules.reduce((m, s) => Math.max(m, s.id || 0), 0) + 1;
 
   let updated = 0, created = 0, unchanged = 0;
   const notFound: string[] = [];
+  const matchNotes: string[] = [];
+  const seenEmpIds = new Set<number>();
   const now = new Date().toISOString();
 
   for (const row of sheet) {
     let key = normalize(row.name);
-    if (ALIASES[key]) key = ALIASES[key];
+    if (ALIASES[key]) {
+      matchNotes.push(`apelido: "${row.name}" → "${ALIASES[key]}"`);
+      key = ALIASES[key];
+    }
 
     let emp = empByName.get(key);
     if (!emp) {
       const tokens = key.split(' ').slice(0, 3).join(' ');
       const partials = [...empByName.entries()].filter(([k]) => k.startsWith(tokens));
-      if (partials.length === 1) emp = partials[0][1];
+      if (partials.length === 1) {
+        emp = partials[0][1];
+        matchNotes.push(`parcial: "${row.name}" → "${emp.name}" (emp ${emp.id})`);
+      }
     }
     if (!emp) {
       notFound.push(row.name);
       continue;
     }
+    if (seenEmpIds.has(emp.id)) throw new Error(`Duas linhas da planilha caem no emp ${emp.id} (${emp.name}) — abortando`);
+    seenEmpIds.add(emp.id);
 
     const sched = schedByEmpId.get(emp.id);
 
@@ -163,6 +184,22 @@ async function main() {
   console.log(`  Atualizados: ${updated}`);
   console.log(`  Criados:     ${created}`);
   console.log(`  Sem employee na app (ignorados): ${notFound.length}${notFound.length ? ' — ' + notFound.join(', ') : ''}`);
+
+  console.log(`\n─── Casamentos por nome nao exato (${matchNotes.length}) ───`);
+  matchNotes.forEach(n => console.log(`  ${n}`));
+
+  const empById = new Map(employees.map(e => [e.id, e]));
+  const outOfSheet = schedules.filter(s => !seenEmpIds.has(s.employee_id));
+  console.log(`\n─── Registros de vencimento fora da planilha, nao mexidos (${outOfSheet.length}) ───`);
+  outOfSheet.forEach(s => {
+    const e = empById.get(s.employee_id);
+    console.log(`  sched ${s.id} | emp ${s.employee_id} ${e ? e.name : '(EMPLOYEE NAO EXISTE)'} | ${s.period_1_date} / ${s.period_2_date || '—'}`);
+  });
+
+  const scheduled = new Set(schedules.map(s => s.employee_id));
+  const noSchedule = employees.filter(e => !scheduled.has(e.id) && !seenEmpIds.has(e.id));
+  console.log(`\n─── Colaboradores sem vencimento e fora da planilha (${noSchedule.length}) ───`);
+  noSchedule.forEach(e => console.log(`  emp ${e.id} ${e.name}${e.no_punch_required ? ' (sem ponto)' : ''}`));
 
   process.exit(0);
 }
