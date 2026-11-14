@@ -1725,6 +1725,8 @@ export interface UnitEmployee {
   folga_type: 'integral' | 'partial' | null;
   /** Whole-day atestado lançado pelo RH */
   is_on_atestado: boolean;
+  /** Day off for a holiday: one for everyone, or a municipal one listing this employee */
+  is_on_holiday: boolean;
   is_exempt_today: boolean;
   /** Gestor's Slack decision for a day without punches (falta, atestado_medico…), if any */
   absence_decision: string | null;
@@ -1743,7 +1745,7 @@ const SLACK_ABSENCE_DECISIONS = new Set(['folga', 'falta', 'aparelho_danificado'
 
 export async function getUnitRecords(date: string): Promise<UnitData[]> {
   // Unit views are hit repeatedly (dashboards, absence range view) — cache per
-  // date. Record/vacation/folga writes invalidate via the 'records_units' pattern.
+  // date. Record/vacation/folga/holiday writes invalidate via the 'records_units' pattern.
   const unitsCacheKey = `records_units_${date}`;
   const cachedUnits = getCached<UnitData[]>(unitsCacheKey);
   if (cachedUnits) return cachedUnits;
@@ -1760,6 +1762,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
   const onVacation = await getEmployeesOnVacation(date);
   const onFolga = await getEmployeesOnFolga(date);
   const onLeave = await getMedicalLeaveCoverage(date);
+  const holidays = await getHolidayCoverage(date);
 
   // Loja Sustentável rotation: determine who worked yesterday to mark the other as
   // exempt today. Only the rotation employees matter — fetch their docs directly
@@ -1902,7 +1905,10 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
     const isBeforeStart = isBeforeAdmission(emp, date);
     const isExemptToday = !!(emp.exemption_days && emp.exemption_days.includes(dateDow)) || isRotationExempt || isSaturdayOff || isBeforeStart;
     const isOnAtestado = !!onLeave.get(emp.id)?.fullDay;
-    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isOnAtestado || isExemptToday || !!(record?.punch_1);
+    // Without this, people listed on a municipal holiday showed up in the gestor's
+    // Ausências with "Lançar Ponto" for a day they were off
+    const isOnHoliday = isOffForHoliday(holidays, emp.id);
+    const present = noPunchRequired || isOnVacation || (folgaType === 'integral') || isOnAtestado || isOnHoliday || isExemptToday || !!(record?.punch_1);
     // Without this, a day the gestor already decided in Slack still showed as a
     // plain "Sem registro" absence
     const absenceDecision = !record?.punch_1 && record?.classification && SLACK_ABSENCE_DECISIONS.has(record.classification)
@@ -1923,6 +1929,7 @@ export async function getUnitRecords(date: string): Promise<UnitData[]> {
       is_on_folga: isOnFolga,
       folga_type: folgaType,
       is_on_atestado: isOnAtestado,
+      is_on_holiday: isOnHoliday,
       is_exempt_today: isExemptToday,
       absence_decision: absenceDecision,
     };
@@ -2370,6 +2377,7 @@ export async function insertHoliday(
   }
   await getDb().collection(COLLECTIONS.HOLIDAYS).doc(String(id)).set(data);
   holidaysCache = null; // Invalidate cache
+  invalidateCache('records_units'); // holidays affect unit presence views
   return { id };
 }
 
@@ -2395,6 +2403,7 @@ export async function updateHoliday(
 
   await snap.docs[0].ref.update(updateData);
   holidaysCache = null; // Invalidate cache
+  invalidateCache('records_units'); // holidays affect unit presence views
   return true;
 }
 
@@ -2405,6 +2414,7 @@ export async function deleteHoliday(id: number): Promise<boolean> {
 
   await snap.docs[0].ref.delete();
   holidaysCache = null; // Invalidate cache
+  invalidateCache('records_units'); // holidays affect unit presence views
   return true;
 }
 
@@ -2432,20 +2442,54 @@ export async function isHoliday(date: string): Promise<boolean> {
   });
 }
 
-/**
- * Get holiday info for a specific date (if exists).
- */
-export async function getHolidayForDate(date: string): Promise<Holiday | undefined> {
+/** Every holiday registered in the panel for a date (recurring ones match month and day). */
+async function getHolidaysOnDate(date: string): Promise<Holiday[]> {
   const holidays = await getAllHolidays();
-  const [year, month, day] = date.split('-');
+  const [, month, day] = date.split('-');
 
-  return holidays.find(h => {
+  return holidays.filter(h => {
     if (h.recurring) {
       const [, hMonth, hDay] = h.date.split('-');
       return hMonth === month && hDay === day;
     }
     return h.date === date;
   });
+}
+
+/**
+ * Get holiday info for a specific date (if exists).
+ */
+export async function getHolidayForDate(date: string): Promise<Holiday | undefined> {
+  return (await getHolidaysOnDate(date))[0];
+}
+
+/** Who a date's holidays give the day off to */
+export interface HolidayCoverage {
+  /** National/state/company holiday (static list or panel), or a municipal one without a list */
+  everyone: boolean;
+  /** Employees listed on the date's municipal holidays */
+  employeeIds: Set<number>;
+}
+
+/**
+ * Holiday coverage for a date, across every holiday registered for it — a city's
+ * municipal holiday lists only the people who take it off, and two cities can
+ * share a date.
+ */
+export async function getHolidayCoverage(date: string): Promise<HolidayCoverage> {
+  const coverage: HolidayCoverage = { everyone: isStaticHoliday(date), employeeIds: new Set() };
+  for (const h of await getHolidaysOnDate(date)) {
+    if (h.type === 'municipal' && h.employee_ids && h.employee_ids.length > 0) {
+      for (const id of h.employee_ids) coverage.employeeIds.add(id);
+    } else {
+      coverage.everyone = true;
+    }
+  }
+  return coverage;
+}
+
+export function isOffForHoliday(coverage: HolidayCoverage, employeeId: number): boolean {
+  return coverage.everyone || coverage.employeeIds.has(employeeId);
 }
 
 /**
@@ -2517,8 +2561,7 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
   // Sunday - Loja Sustentável employees work on Sundays (except holidays)
   if (dayOfWeek === 0) {
     if (isLojaSustentavelEmployee(employee)) {
-      const dbHoliday = await getHolidayForDate(dateStr);
-      return !dbHoliday && !isStaticHoliday(dateStr);
+      return !isOffForHoliday(await getHolidayCoverage(dateStr), employee.id);
     }
     return false;
   }
@@ -2537,29 +2580,8 @@ export async function isWorkingDayForEmployee(dateStr: string, employee: Employe
     }
   }
 
-  // Check if it's a holiday (static + database)
-  const dbHoliday = await getHolidayForDate(dateStr);
-  if (dbHoliday) {
-    // Municipal holiday: only applies to employees explicitly listed
-    if (dbHoliday.type === 'municipal') {
-      if (dbHoliday.employee_ids && dbHoliday.employee_ids.length > 0) {
-        if (dbHoliday.employee_ids.includes(employee.id)) {
-          return false;
-        }
-        // Not in the list — employee works normally
-      }
-      // If no employee_ids set, treat as holiday for everyone (backward compat)
-      else {
-        return false;
-      }
-    } else {
-      return false;
-    }
-  } else if (isStaticHoliday(dateStr)) {
-    return false;
-  }
-
-  return true;
+  // Holidays (static + database); a municipal one with a list only covers who is listed
+  return !isOffForHoliday(await getHolidayCoverage(dateStr), employee.id);
 }
 
 // ─── Punch Adjustments ────────────────────────────────────────

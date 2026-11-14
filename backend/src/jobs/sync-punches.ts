@@ -181,10 +181,10 @@ export async function syncPunches(targetDate?: string, options?: SyncOptions): P
       const isNoLunch = isNoLunchEmployee(employee);
       const isSundayDate = new Date(date + 'T12:00:00Z').getUTCDay() === 0;
 
-      // Skip non-working days (Loja Sustentável employees work on Sundays)
-      const workingDay = (isLojasSustentavel && isSundayDate)
-        ? true
-        : await queries.isWorkingDayAsync(date);
+      // Skip non-working days (Loja Sustentável employees work on Sundays). A municipal
+      // holiday the employee is listed on counts as a holiday for them: no "Atraso" alert.
+      const workingDay = ((isLojasSustentavel && isSundayDate) || await queries.isWorkingDayAsync(date))
+        && !(await queries.getHolidayCoverage(date)).employeeIds.has(employee.id);
       if (!workingDay) {
         // Still save the punches but don't calculate/classify
         if (await upsertIfChanged(prevRecord, employee.id, date, punch1, punch2, punch3, punch4, null, null, null)) changed++;

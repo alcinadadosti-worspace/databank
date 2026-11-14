@@ -24,7 +24,12 @@ let leaveCache: Map<number, queries.MedicalLeaveCoverage> | null = null;
 let folgaCacheDate = '';
 let folgaCacheAt = 0;
 
-async function getEmployeesOnIntegralFolga(): Promise<Set<number>> {
+/**
+ * Employees off today besides vacation: integral folga, whole-day RH atestado or a
+ * municipal holiday they are listed on (holidays for everyone already skip the
+ * whole reminder run).
+ */
+async function getEmployeesWithDayOff(): Promise<Set<number>> {
   const today = new Date().toISOString().split('T')[0];
   if (folgaCacheDate !== today || !folgaCache || !leaveCache || Date.now() - folgaCacheAt > FOLGA_CACHE_TTL_MS) {
     folgaCache = await queries.getEmployeesOnFolga(today);
@@ -32,14 +37,17 @@ async function getEmployeesOnIntegralFolga(): Promise<Set<number>> {
     folgaCacheDate = today;
     folgaCacheAt = Date.now();
   }
-  const integralIds = new Set<number>();
+  const offIds = new Set<number>();
   for (const [empId, folga] of folgaCache) {
-    if (folga.type === 'integral') integralIds.add(empId);
+    if (folga.type === 'integral') offIds.add(empId);
   }
   for (const [empId, leave] of leaveCache) {
-    if (leave.fullDay) integralIds.add(empId);
+    if (leave.fullDay) offIds.add(empId);
   }
-  return integralIds;
+  for (const empId of (await queries.getHolidayCoverage(today)).employeeIds) {
+    offIds.add(empId);
+  }
+  return offIds;
 }
 
 // Track which reminders have been sent today (resets daily)
@@ -89,7 +97,7 @@ export async function sendEntryReminders(): Promise<void> {
     const records = await queries.getDailyRecordsByDate(today);
     const punchedIds = new Set(records.map(r => r.employee_id));
     const onVacation = await getEmployeesOnVacation();
-    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+    const dayOff = await getEmployeesWithDayOff();
 
     const todayDow = new Date().getUTCDay(); // 0=Sun, 2=Tue, etc.
 
@@ -100,7 +108,7 @@ export async function sendEntryReminders(): Promise<void> {
       if (punchedIds.has(emp.id) || emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'entry')) continue;
       if (onVacation.has(emp.id)) continue;
-      if (onIntegralFolga.has(emp.id)) continue;
+      if (dayOff.has(emp.id)) continue;
       if (emp.exemption_days && emp.exemption_days.includes(todayDow)) continue;
       // Imported by the RH before their first day: nothing to remind yet
       if (isBeforeAdmission(emp, today)) continue;
@@ -146,7 +154,7 @@ export async function sendExitReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
-    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+    const dayOff = await getEmployeesWithDayOff();
 
     // Create map of employee records
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
@@ -157,7 +165,7 @@ export async function sendExitReminders(): Promise<void> {
       if (emp.no_punch_required || emp.is_apprentice || emp.is_intern) continue;
       if (hasReminderBeenSent(emp.id, 'exit')) continue;
       if (onVacation.has(emp.id)) continue;
-      if (onIntegralFolga.has(emp.id)) continue;
+      if (dayOff.has(emp.id)) continue;
       // Loja Sustentável employees exit at 21:00, not 18:00 — skip standard 17:50 reminder
       if (isLojaSustentavelEmployee(emp)) continue;
       // No-lunch employees have no lunch return (punch_2 is their exit) — standard exit check doesn't apply
@@ -198,7 +206,7 @@ export async function sendSaturdayExitReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
-    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+    const dayOff = await getEmployeesWithDayOff();
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
@@ -208,7 +216,7 @@ export async function sendSaturdayExitReminders(): Promise<void> {
       if (emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
       if (onVacation.has(emp.id)) continue;
-      if (onIntegralFolga.has(emp.id)) continue;
+      if (dayOff.has(emp.id)) continue;
       // Skip employees with extended Saturday hours (they get their reminder at 13:50)
       if (hasExtendedSaturday(emp)) continue;
       // Loja Sustentável employees exit at 21:00 on Saturday — not covered by this reminder
@@ -248,7 +256,7 @@ export async function sendSaturdayLateExitReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
-    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+    const dayOff = await getEmployeesWithDayOff();
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
@@ -257,7 +265,7 @@ export async function sendSaturdayLateExitReminders(): Promise<void> {
       if (emp.no_punch_required) continue;
       if (hasReminderBeenSent(emp.id, 'exit_saturday')) continue;
       if (onVacation.has(emp.id)) continue;
-      if (onIntegralFolga.has(emp.id)) continue;
+      if (dayOff.has(emp.id)) continue;
       // Only employees with extended Saturday hours
       if (!hasExtendedSaturday(emp)) continue;
       // Loja Sustentável exits at 21:00 on Saturday — never the 14:00 reminder either
@@ -303,7 +311,7 @@ export async function checkLunchReturnReminders(): Promise<void> {
     const employees = await queries.getAllEmployees();
     const records = await queries.getDailyRecordsByDate(today);
     const onVacation = await getEmployeesOnVacation();
-    const onIntegralFolga = await getEmployeesOnIntegralFolga();
+    const dayOff = await getEmployeesWithDayOff();
 
     const recordMap = new Map(records.map(r => [r.employee_id, r]));
 
@@ -312,7 +320,7 @@ export async function checkLunchReturnReminders(): Promise<void> {
       if (emp.no_punch_required || emp.is_apprentice || emp.is_intern) continue;
       if (hasReminderBeenSent(emp.id, 'lunch_return')) continue;
       if (onVacation.has(emp.id)) continue;
-      if (onIntegralFolga.has(emp.id)) continue;
+      if (dayOff.has(emp.id)) continue;
       // Loja Sustentável employees don't have a lunch break (punch_2 is their exit)
       if (isLojaSustentavelEmployee(emp)) continue;
       // No-lunch employees don't have a lunch break either (punch_2 is their exit)

@@ -11,6 +11,7 @@ jest.mock('../../models/queries', () => ({
   getAllEmployees: jest.fn(),
   updateEmployeeSolidesId: jest.fn(),
   isWorkingDayAsync: jest.fn(),
+  getHolidayCoverage: jest.fn(),
   upsertDailyRecord: jest.fn(),
   getDailyRecord: jest.fn(),
   markAlertSent: jest.fn(),
@@ -35,6 +36,7 @@ beforeEach(() => {
   q.getEmployeesOnFolga.mockResolvedValue(new Map());
   q.getMedicalLeaveCoverage.mockResolvedValue(new Map());
   q.isWorkingDayAsync.mockResolvedValue(true);
+  q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set() });
   q.getAllEmployees.mockResolvedValue([
     { id: 1, name: 'Ana', solides_employee_id: 's1' },
     { id: 2, name: 'Bia', solides_employee_id: 's2' },
@@ -113,6 +115,19 @@ it('a whole-day RH atestado saves the punches as atestado_medico and never alert
   expect(call[0]).toBe(1);
   expect(call[8]).toBe('atestado_medico');
   expect(q.getDailyRecord).not.toHaveBeenCalled();
+});
+
+it('a municipal holiday the employee is listed on: punches saved, no Atraso, no alert; the rest of the team works normally', async () => {
+  fetchMock.mockResolvedValue([...fullDay('s1'), ...fullDay('s2')]); // 7h each → would be "late"
+  q.getDailyRecordsByDate.mockResolvedValue([]);
+  q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set([1]) });
+
+  await syncPunches(DATE); // notifications on: the alert path must not be reached for Ana
+
+  const byEmployee = new Map(q.upsertDailyRecord.mock.calls.map(c => [c[0], c.slice(6)]));
+  expect(byEmployee.get(1)).toEqual([null, null, null]);
+  expect(byEmployee.get(2)).toEqual([420, -60, 'late']);
+  expect(q.getDailyRecord).not.toHaveBeenCalledWith(1, DATE);
 });
 
 it('RH atestado hours come off the expected day (7h worked + 1h atestado = normal)', async () => {

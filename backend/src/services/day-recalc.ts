@@ -36,6 +36,13 @@ export async function recalculateDay(punches: PunchSet, date: string, employee: 
   const folga = (await queries.getEmployeesOnFolga(date)).get(employee.id);
   if (folga?.type === 'integral') return { ...noHours, classification: 'folga' };
 
+  // A municipal holiday the employee is listed on is their day off: labelled Folga,
+  // like the 10:00 check does, so a later folga/férias change over the range keeps
+  // it instead of reopening it as "Ajuste"
+  if ((await queries.getHolidayCoverage(date)).employeeIds.has(employee.id)) {
+    return { ...noHours, classification: 'folga' };
+  }
+
   const result = calculateDailyHoursForEmployee(punches, date, employee, {
     minutesOff: (folga?.type === 'partial' ? folga.hours_off * 60 : 0) + (leave?.hoursOff ?? 0) * 60,
   });
@@ -48,7 +55,7 @@ export async function recalculateDay(punches: PunchSet, date: string, employee: 
 
 /** Classifications the hours calculation produces (as opposed to decisions). */
 const COMPUTED = new Set(['normal', 'late', 'overtime']);
-/** What recalculateDay returns for a day covered by vacation, integral folga or RH atestado. */
+/** What recalculateDay returns for a day covered by vacation, integral folga, RH atestado or a municipal holiday listing the employee. */
 const COVERED = new Set(['folga', 'ferias', 'atestado_medico']);
 
 /**

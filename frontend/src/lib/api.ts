@@ -817,6 +817,8 @@ export interface UnitEmployee {
   folga_type: 'integral' | 'partial' | null;
   /** Whole-day atestado lançado pelo RH */
   is_on_atestado: boolean;
+  /** Day off for a holiday: one for everyone, or a municipal one listing this employee */
+  is_on_holiday: boolean;
   is_exempt_today: boolean;
   absence_decision?: string | null; // gestor's Slack decision (falta, atestado_medico…) for a day without punches
 }

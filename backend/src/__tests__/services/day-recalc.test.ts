@@ -4,6 +4,7 @@ import { calculateDailyHoursForEmployee } from '../../services/hours-calculator'
 
 jest.mock('../../models/queries', () => ({
   isWorkingDayAsync: jest.fn(),
+  getHolidayCoverage: jest.fn(),
   getEmployeesOnVacation: jest.fn(),
   getEmployeesOnFolga: jest.fn(),
   getMedicalLeaveCoverage: jest.fn(),
@@ -25,6 +26,7 @@ function folga(type: 'integral' | 'partial', hours_off: number) {
 beforeEach(() => {
   jest.resetAllMocks();
   q.isWorkingDayAsync.mockResolvedValue(true);
+  q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set() });
   q.getEmployeesOnVacation.mockResolvedValue(new Set());
   q.getEmployeesOnFolga.mockResolvedValue(new Map());
   q.getMedicalLeaveCoverage.mockResolvedValue(new Map());
@@ -62,6 +64,20 @@ describe('recalculateDay', () => {
   it('returns no classification on a holiday registered in the panel', async () => {
     q.isWorkingDayAsync.mockResolvedValue(false);
     expect(await recalculateDay(FULL_DAY, WEEKDAY, EMP)).toEqual({ totalWorkedMinutes: null, differenceMinutes: null, classification: null });
+  });
+
+  it('a municipal holiday is a Folga only for the employees listed on it', async () => {
+    q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set([EMP.id]) });
+    expect(await recalculateDay(HALF_DAY, WEEKDAY, EMP)).toEqual({ totalWorkedMinutes: null, differenceMinutes: null, classification: 'folga' });
+
+    q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set([EMP.id + 1]) });
+    expect((await recalculateDay(FULL_DAY, WEEKDAY, EMP)).classification).toBe('normal');
+  });
+
+  it('vacation wins over a municipal holiday', async () => {
+    q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set([EMP.id]) });
+    q.getEmployeesOnVacation.mockResolvedValue(new Set([EMP.id]));
+    expect((await recalculateDay(FULL_DAY, WEEKDAY, EMP)).classification).toBe('ferias');
   });
 
   it('marks vacation days as ferias', async () => {
@@ -124,6 +140,13 @@ describe('refreshStoredDays', () => {
     q.getEmployeesOnFolga.mockResolvedValue(folga('partial', 4));
     await refreshStoredDays(EMP.id, WEEKDAY, WEEKDAY);
     expect(q.updateDailyRecordPunches).toHaveBeenCalledWith(99, '08:00', '10:00', '14:00', '16:00', 240, 0, 'normal');
+  });
+
+  it("a municipal holiday's Folga (worked anyway) stays Folga when a folga/férias change touches the range", async () => {
+    q.getEmployeeRecordsInRange.mockResolvedValue([record({ punch_1: '08:00', punch_2: '12:00', classification: 'folga' })] as any);
+    q.getHolidayCoverage.mockResolvedValue({ everyone: false, employeeIds: new Set([EMP.id]) });
+    expect(await refreshStoredDays(EMP.id, WEEKDAY, WEEKDAY)).toBe(0);
+    expect(q.updateDailyRecordPunches).not.toHaveBeenCalled();
   });
 
   it('when a folga is removed from a day without punches, goes back to sem_registro', async () => {

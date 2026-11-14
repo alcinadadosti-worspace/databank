@@ -149,7 +149,7 @@ export default function FuncionamentoUnidade() {
                             <span className="text-2xs font-sans font-medium text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded" title={emp.is_intern ? 'Estagiário' : 'Jovem Aprendiz - 4h/dia'}>{emp.is_intern ? 'EST' : 'JA'}</span>
                             {emp.punch_1 && <span title="Entrada">{emp.punch_1}</span>}
                             {emp.punch_2 && <span title="Saida">{emp.punch_2}</span>}
-                            {!emp.punch_1 && (isHoliday
+                            {!emp.punch_1 && (isHoliday || emp.is_on_holiday
                               ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
                               : emp.absence_decision
                                 ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>
@@ -162,7 +162,7 @@ export default function FuncionamentoUnidade() {
                             {emp.punch_2 && <span title="Saida almoco">{emp.punch_2}</span>}
                             {emp.punch_3 && <span title="Retorno almoco">{emp.punch_3}</span>}
                             {emp.punch_4 && <span title="Saida">{emp.punch_4}</span>}
-                            {!emp.punch_1 && (isHoliday
+                            {!emp.punch_1 && (isHoliday || emp.is_on_holiday
                               ? <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
                               : emp.absence_decision
                                 ? <span className={classificationBadge(emp.absence_decision)} title="Decisão registrada pelo gestor no Slack">{classificationLabel(emp.absence_decision)}</span>

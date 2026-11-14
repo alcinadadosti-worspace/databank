@@ -133,6 +133,8 @@ export default function ManagerDashboard() {
                           <span className="text-2xs font-sans font-medium text-teal-600 bg-teal-600/10 px-1.5 py-0.5 rounded" title="Atestado lançado no painel">Atestado</span>
                         ) : emp.is_on_folga && emp.folga_type === 'integral' ? (
                           <span className="text-2xs font-sans font-medium text-blue-400 bg-blue-400/10 px-1.5 py-0.5 rounded">Folga</span>
+                        ) : emp.is_on_holiday && !emp.punch_1 ? (
+                          <span className="text-2xs font-sans font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Feriado</span>
                         ) : emp.is_exempt_today ? (
                           <span className="text-2xs font-sans font-medium text-text-tertiary bg-bg-tertiary px-1.5 py-0.5 rounded">Isento</span>
                         ) : emp.is_apprentice ? (

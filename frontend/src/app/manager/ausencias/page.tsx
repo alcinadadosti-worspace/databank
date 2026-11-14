@@ -162,8 +162,9 @@ export default function ManagerAbsences() {
   }
 
   const singleDay = startDate === endDate;
-  // In a multi-day range, Sundays and holidays would flood the list with false
-  // absences (whole team "absent"), so they are only shown when picked alone.
+  // In a multi-day range, Sundays would flood the list with false absences (whole
+  // team "absent"), so they are only shown when picked alone. Holidays (for everyone
+  // or a municipal one's list) already come back without absences from the backend.
   const visibleDays = singleDay ? days : days.filter(d => !d.isHoliday && !isSunday(d.date));
   const daysWithAbsences = visibleDays.filter(d => d.rows.length > 0);
   const totalAbsences = daysWithAbsences.reduce((sum, d) => sum + d.rows.length, 0);
@@ -203,10 +204,11 @@ export default function ManagerAbsences() {
         </div>
       ) : (
         <>
-          {singleDay && days.length > 0 && (days[0].isHoliday || isSunday(days[0].date)) && (
+          {/* Holidays need no warning: whoever is off for one never shows up as absent */}
+          {singleDay && days.length > 0 && !days[0].isHoliday && isSunday(days[0].date) && (
             <div className="card p-3 border-l-4 border-status-warning">
               <p className="text-sm text-text-secondary">
-                {days[0].isHoliday ? 'Este dia é feriado' : 'Este dia é domingo'} — ausências aqui normalmente não são falta.
+                Este dia é domingo — ausências aqui normalmente não são falta.
               </p>
             </div>
           )}
@@ -217,7 +219,9 @@ export default function ManagerAbsences() {
             <div className="card text-center py-12">
               <p className="text-status-success text-sm font-medium">
                 {singleDay
-                  ? `Todos os colaboradores registraram ponto em ${formatDate(startDate)}`
+                  ? days[0]?.isHoliday
+                    ? `${formatDate(startDate)} é feriado — nenhuma ausência`
+                    : `Todos os colaboradores registraram ponto em ${formatDate(startDate)}`
                   : `Nenhuma ausência entre ${formatDate(startDate)} e ${formatDate(endDate)}`}
               </p>
               {!singleDay && (
