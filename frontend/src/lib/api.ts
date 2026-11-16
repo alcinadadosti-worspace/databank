@@ -120,6 +120,10 @@ export interface ImportLeader {
   kind: 'cards' | 'own' | 'channel';
   own_card: string | null;
   default_secondary_approver_id: number | null;
+  /** The whole team's alerts are covered by someone else (vacation, leave) */
+  alert_cover_name?: string | null;
+  /** Dismissed/merged gestor: only listed as someone's current gestor/substitute, never to pick anew */
+  hidden?: boolean;
 }
 
 export interface SlackSuggestion {
@@ -207,6 +211,58 @@ export async function removeEmployee(employeeId: number, confirmActive = false) 
 
 export async function getSolidesPendencias() {
   return apiFetch<SolidesPendencias>('/api/admin/solides/pendencias', { authType: 'admin' });
+}
+
+// ─── Trocar gestor / loja (RH) ─────────────────────────────────
+
+export interface TransferOptions {
+  employee: {
+    id: number;
+    name: string;
+    /** null in some old script-made registrations */
+    leader_id: number | null;
+    leader_name: string | null;
+    unit_name: string | null;
+    /** Card in Unidades today */
+    card: string | null;
+    secondary_approver_id: number | null;
+    no_punch_required: boolean;
+    journey: ImportJourney;
+    saturday: ImportSaturday;
+    /** This person's alerts go to someone other than the gestor (detour set for the team) */
+    alert_cover_leader_id: number | null;
+    alert_cover_name: string | null;
+  };
+  pending: { adjustments: number; justifications: number };
+  leaders: ImportLeader[];
+  card_defaults: Record<string, { journey: ImportJourney; saturday: ImportSaturday }>;
+}
+
+export interface TransferEmployeePayload {
+  leader_id: number;
+  unit_name: string | null;
+  secondary_approver_id: number | null;
+  saturday: ImportSaturday;
+  /** What the form was built from: the server refuses if the registration changed since */
+  from: {
+    leader_id: number | null;
+    secondary_approver_id: number | null;
+    unit_name: string | null;
+    saturday: ImportSaturday;
+    alert_cover_leader_id: number | null;
+  };
+}
+
+export async function getTransferOptions(employeeId: number) {
+  return apiFetch<TransferOptions>(`/api/admin/employee/${employeeId}/transfer-options`, { authType: 'admin' });
+}
+
+export async function transferEmployee(employeeId: number, payload: TransferEmployeePayload) {
+  return apiFetch<{ success: boolean; message: string }>(`/api/admin/employee/${employeeId}/transfer`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    authType: 'admin',
+  });
 }
 
 // ─── Leaders ───────────────────────────────────────────────────

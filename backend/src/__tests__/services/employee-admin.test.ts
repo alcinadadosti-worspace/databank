@@ -1,8 +1,11 @@
 import {
   buildPanelEmployee, suggestSlackAccounts, computePendencias, buildRosterView, defaultSecondaryApprover,
-  normalizePersonName, computeCardDefaults, type ImportContext,
+  normalizePersonName, computeCardDefaults, buildEmployeeTransfer, currentSaturday, currentJourney,
+  type ImportContext, type TransferContext, type TransferEmployee,
 } from '../../services/employee-admin';
 import type { SolidesRosterEntry } from '../../services/solides-api';
+// Pure helpers (no Firestore): the real card rules
+import { unitChoicesForLeader, resolveUnitName } from '../../models/queries';
 
 function person(overrides: Partial<SolidesRosterEntry> = {}): SolidesRosterEntry {
   return { id: '7187482', name: 'Vitoria Regina Lúcio da Silva', email: 'vitoria@x.com', admissionDate: '2026-10-27', fired: false, recordsPunch: true, ...overrides };
@@ -114,6 +117,125 @@ describe('buildPanelEmployee', () => {
     expect(buildPanelEmployee({ solides_employee_id: '7187482', leader_id: 12, secondary_approver_id: 12 }, ctx())).toMatchObject({ ok: false, status: 400 });
     expect(buildPanelEmployee({ solides_employee_id: '7187482', leader_id: 12, secondary_approver_id: 99 }, ctx())).toMatchObject({ ok: false, status: 400 });
     expect(buildPanelEmployee({ solides_employee_id: '7187482', leader_id: 12, slack_id: 'vitoria' }, ctx())).toMatchObject({ ok: false, status: 400 });
+  });
+});
+
+describe('buildEmployeeTransfer', () => {
+  const SANDRA: TransferEmployee = {
+    id: 32, name: 'Sandra da Conceição Freitas', slack_id: 'U0A1P79UK0T', leader_id: 7, secondary_approver_id: null,
+    unit_name: null, no_punch_required: false, alert_cover_leader_id: null, is_apprentice: false, works_saturday: true,
+  } as TransferEmployee;
+  const TRANSFER_LEADERS = [
+    { id: 3, name: 'Joao Antonio', slack_id: 'U07LP4JSN9K' },
+    { id: 7, name: 'Erick', slack_id: 'UERICK' },
+    { id: 10, name: 'Kemilly', slack_id: 'UKEMILLY' },
+    { id: 11, name: 'Maria Taciane', slack_id: 'UTACIANE' },
+    { id: 12, name: 'Mariane', slack_id: 'UMARIANE' },
+    { id: 18, name: 'Keliany', slack_id: 'UKELIANY' },
+    { id: 14, name: 'Rafaela (desligada)', slack_id: 'URAFAELA' },
+    { id: 15, name: 'Suzana', slack_id: 'USUZANA' },
+    { id: 16, name: 'Sub-líder Marketing', slack_id: 'USUB' },
+  ];
+  const tctx = (employee: Partial<TransferEmployee> = {}): TransferContext => ({
+    employee: { ...SANDRA, ...employee } as TransferEmployee,
+    leaders: TRANSFER_LEADERS,
+    hiddenLeaderIds: [14, 16],
+    unitChoices: unitChoicesForLeader,
+    resolveUnit: resolveUnitName,
+  });
+
+  it('Sandra: Erick (7) → João Antonio (3) is just leader_id; the card follows', () => {
+    expect(buildEmployeeTransfer({ leader_id: 3 }, tctx())).toEqual({
+      ok: true,
+      update: { leader_id: 3, unit_name: null },
+      card_before: 'Supervisoras Penedo',
+      card_after: 'Supervisoras de base',
+    });
+  });
+
+  it('an alert detour of the old team is removed on a move, kept otherwise', () => {
+    const moved = buildEmployeeTransfer({ leader_id: 3 }, tctx({ alert_cover_leader_id: 12 }));
+    expect(moved.ok && moved.update).toEqual({ leader_id: 3, unit_name: null, alert_cover_leader_id: null });
+    const subOnly = buildEmployeeTransfer({ leader_id: 7, secondary_approver_id: 3 }, tctx({ alert_cover_leader_id: 12 }));
+    expect(subOnly.ok && subOnly.update).toEqual({ secondary_approver_id: 3 });
+  });
+
+  it('a gestor with several stores needs one of theirs (unless the person does not punch)', () => {
+    expect(buildEmployeeTransfer({ leader_id: 11 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 11, unit_name: 'Loja Penedo' }, tctx())).toMatchObject({ ok: false, status: 400 });
+    const ok = buildEmployeeTransfer({ leader_id: 11, unit_name: 'Loja Teotonio Vilela', secondary_approver_id: 10 }, tctx());
+    expect(ok).toMatchObject({ ok: true, update: { leader_id: 11, unit_name: 'Loja Teotonio Vilela', secondary_approver_id: 10 }, card_after: 'Loja Teotonio Vilela' });
+    const noPunch = buildEmployeeTransfer({ leader_id: 11 }, tctx({ no_punch_required: true }));
+    expect(noPunch.ok && noPunch.update).toEqual({ leader_id: 11, unit_name: null });
+  });
+
+  it('a stale store of the old gestor is cleared when moving to a gestor with a single card', () => {
+    const check = buildEmployeeTransfer({ leader_id: 12, unit_name: 'Loja Coruripe' }, tctx({ leader_id: 11, unit_name: 'Loja Coruripe' }));
+    expect(check).toMatchObject({ ok: true, update: { leader_id: 12, unit_name: null }, card_before: 'Loja Coruripe', card_after: 'Loja Penedo' });
+  });
+
+  it('same gestor, other store: only unit_name changes', () => {
+    const emp = { name: 'Bruna Soares Siqueira', leader_id: 18, unit_name: 'Loja Palmeira dos Indios' };
+    const check = buildEmployeeTransfer({ leader_id: 18, unit_name: 'Loja Sustentável Palmeira' }, tctx(emp));
+    expect(check).toMatchObject({ ok: true, update: { unit_name: 'Loja Sustentável Palmeira' }, card_before: 'Loja Palmeira dos Indios' });
+    expect(check.ok && Object.keys(check.update)).toEqual(['unit_name']);
+  });
+
+  it('same gestor and card: the stored unit_name is left alone', () => {
+    const emp = { leader_id: 12, unit_name: 'Loja Penedo' };
+    const check = buildEmployeeTransfer({ leader_id: 12, secondary_approver_id: 10 }, tctx(emp));
+    expect(check.ok && check.update).toEqual({ secondary_approver_id: 10 });
+    expect(buildEmployeeTransfer({ leader_id: 12 }, tctx(emp))).toMatchObject({ ok: false, status: 400 }); // nothing changed
+    expect(buildEmployeeTransfer({ leader_id: 7 }, tctx())).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('Saturday: written only when it changes; apprentice and Loja Sustentável rules hold', () => {
+    const until14 = buildEmployeeTransfer({ leader_id: 12, saturday: 'ate_14' }, tctx());
+    expect(until14.ok && until14.update).toEqual({ leader_id: 12, unit_name: null, works_saturday: true, saturday_minutes: 360 });
+    const off = buildEmployeeTransfer({ leader_id: 7, saturday: 'nao_trabalha' }, tctx());
+    expect(off.ok && off.update).toEqual({ works_saturday: false, saturday_minutes: 240 });
+    const same = buildEmployeeTransfer({ leader_id: 3, saturday: 'ate_12' }, tctx());
+    expect(same.ok && same.update).toEqual({ leader_id: 3, unit_name: null });
+    expect(buildEmployeeTransfer({ leader_id: 3, saturday: 'ate_14' }, tctx({ is_apprentice: true }))).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 3, saturday: 'sempre' }, tctx())).toMatchObject({ ok: false, status: 400 });
+    const rotation = { name: 'Eduarda Pereira Costa Silva', leader_id: 18, schedule_type: 'loja_sustentavel' as const };
+    expect(buildEmployeeTransfer({ leader_id: 18, unit_name: 'Loja Palmeira dos Indios', saturday: 'nao_trabalha' }, tctx(rotation)))
+      .toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('current journey and Saturday come from the fields, else the legacy lists', () => {
+    expect(currentSaturday({ name: 'Anny Karoline Andrade Santos', is_apprentice: false, works_saturday: true } as any)).toBe('ate_14');
+    expect(currentSaturday({ name: 'X', is_apprentice: false, works_saturday: true, saturday_minutes: 240 } as any)).toBe('ate_12');
+    expect(currentSaturday({ name: 'X', is_apprentice: false, works_saturday: false, saturday_minutes: 360 } as any)).toBe('nao_trabalha');
+    expect(currentJourney({ name: 'Eduarda Pereira Costa Silva', is_apprentice: false } as any)).toBe('loja_sustentavel');
+    expect(currentJourney({ name: 'X', is_apprentice: true } as any)).toBe('aprendiz');
+  });
+
+  it('someone without a gestor (old script registrations) can get one', () => {
+    const check = buildEmployeeTransfer({ leader_id: 3 }, tctx({ leader_id: null as any }));
+    expect(check).toMatchObject({ ok: true, update: { leader_id: 3, unit_name: null }, card_before: null, card_after: 'Supervisoras de base' });
+  });
+
+  it('a hidden gestor/substitute the person already has may stay, but is never newly chosen', () => {
+    // Under the merged Marketing sub-leader (16): only the Saturday changes, gestor kept
+    const keep = buildEmployeeTransfer({ leader_id: 16, saturday: 'nao_trabalha' }, tctx({ leader_id: 16 }));
+    expect(keep.ok && keep.update).toEqual({ works_saturday: false, saturday_minutes: 240 });
+    const keepSub = buildEmployeeTransfer({ leader_id: 3, secondary_approver_id: 14 }, tctx({ secondary_approver_id: 14 }));
+    expect(keepSub.ok && keepSub.update).toEqual({ leader_id: 3, unit_name: null });
+    expect(buildEmployeeTransfer({ leader_id: 16 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 3, secondary_approver_id: 14 }, tctx())).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('refuses unknown/hidden gestores, a substitute equal to the gestor and the person as their own gestor', () => {
+    expect(buildEmployeeTransfer({ leader_id: 14 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 99 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({}, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 3, secondary_approver_id: 3 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 3, secondary_approver_id: 99 }, tctx())).toMatchObject({ ok: false, status: 400 });
+    // Erick is also an employee: he can't be put under himself
+    const erick = { id: 20, name: 'Erick Café Santos Júnior', slack_id: 'UERICK', leader_id: 1 };
+    expect(buildEmployeeTransfer({ leader_id: 7 }, tctx(erick))).toMatchObject({ ok: false, status: 400 });
+    expect(buildEmployeeTransfer({ leader_id: 3, secondary_approver_id: 7 }, tctx(erick))).toMatchObject({ ok: false, status: 400 });
   });
 });
 

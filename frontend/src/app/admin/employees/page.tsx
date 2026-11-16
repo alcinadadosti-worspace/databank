@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getEmployees, getLeaders, type Employee } from '@/lib/api';
 import SolidesImportModal from '@/components/SolidesImportModal';
 import RemoveEmployeeModal from '@/components/RemoveEmployeeModal';
+import TransferEmployeeModal from '@/components/TransferEmployeeModal';
 import SolidesPendencias from '@/components/SolidesPendencias';
 
 export default function AdminEmployees() {
@@ -15,6 +16,7 @@ export default function AdminEmployees() {
   // undefined = closed; '' = open with search; an id = open on that Sólides person
   const [importing, setImporting] = useState<string | undefined>(undefined);
   const [removing, setRemoving] = useState<{ id: number; name: string } | null>(null);
+  const [transferring, setTransferring] = useState<{ id: number; name: string } | null>(null);
   const [notice, setNotice] = useState('');
   const [pendenciasKey, setPendenciasKey] = useState(0);
 
@@ -38,6 +40,7 @@ export default function AdminEmployees() {
   function afterChange(message: string) {
     setImporting(undefined);
     setRemoving(null);
+    setTransferring(null);
     setNotice(message);
     setPendenciasKey(k => k + 1); // the pendências changed: ask to verify again
     load();
@@ -108,13 +111,22 @@ export default function AdminEmployees() {
               <div key={emp.id} className="card p-3 space-y-1.5">
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-sm font-medium text-text-primary">{emp.name}</p>
-                  <button
-                    type="button"
-                    onClick={() => { setNotice(''); setRemoving({ id: emp.id, name: emp.name }); }}
-                    className="text-xs text-red-500 hover:text-red-600 shrink-0"
-                  >
-                    Remover
-                  </button>
+                  <div className="flex gap-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => { setNotice(''); setTransferring({ id: emp.id, name: emp.name }); }}
+                      className="text-xs text-accent-primary hover:underline"
+                    >
+                      Trocar gestor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setNotice(''); setRemoving({ id: emp.id, name: emp.name }); }}
+                      className="text-xs text-red-500 hover:text-red-600"
+                    >
+                      Remover
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-text-secondary">Gestor: {emp.leader_name || '—'}</p>
                 <p className="text-xs text-text-muted">Setor: {emp.sector || '—'}</p>
@@ -144,7 +156,14 @@ export default function AdminEmployees() {
                     <td className="px-4 py-3 text-text-secondary">{emp.leader_name || '—'}</td>
                     <td className="px-4 py-3 text-text-muted text-xs">{emp.sector || '—'}</td>
                     <td className="px-4 py-3 text-text-muted font-mono text-xs">{emp.slack_id || '—'}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => { setNotice(''); setTransferring({ id: emp.id, name: emp.name }); }}
+                        className="text-xs text-accent-primary hover:underline mr-4"
+                      >
+                        Trocar gestor
+                      </button>
                       <button
                         type="button"
                         onClick={() => { setNotice(''); setRemoving({ id: emp.id, name: emp.name }); }}
@@ -165,6 +184,13 @@ export default function AdminEmployees() {
         <SolidesImportModal
           initialSolidesId={importing || undefined}
           onClose={() => setImporting(undefined)}
+          onSaved={afterChange}
+        />
+      )}
+      {transferring && (
+        <TransferEmployeeModal
+          employee={transferring}
+          onClose={() => setTransferring(null)}
           onSaved={afterChange}
         />
       )}

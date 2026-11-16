@@ -355,6 +355,120 @@ export function buildPanelEmployee(body: any, ctx: ImportContext): ImportCheck {
   };
 }
 
+// ─── Troca de gestor / loja (RH) ────────────────────────────────────────────
+
+type ScheduleEmployee = Pick<Employee, 'name' | 'is_apprentice' | 'works_saturday' | 'saturday_minutes' | 'schedule_type'>;
+
+/** The journey someone has today, in the import form's terms */
+export function currentJourney(emp: ScheduleEmployee): Journey {
+  if (emp.is_apprentice) return 'aprendiz';
+  if (isLojaSustentavelEmployee(emp)) return 'loja_sustentavel';
+  return isNoLunchEmployee(emp) ? 'sem_almoco' : 'padrao';
+}
+
+/** The Saturday someone has today (field when set, otherwise the legacy lists) */
+export function currentSaturday(emp: ScheduleEmployee): SaturdayOption {
+  if (emp.works_saturday === false) return 'nao_trabalha';
+  return getSaturdayMinutes(emp) > WORK_SCHEDULE.EXPECTED_SATURDAY_MINUTES ? 'ate_14' : 'ate_12';
+}
+
+export type TransferEmployee = Pick<Employee,
+  'id' | 'name' | 'slack_id' | 'leader_id' | 'secondary_approver_id' | 'unit_name' | 'no_punch_required' |
+  'alert_cover_leader_id' | 'is_apprentice' | 'works_saturday' | 'saturday_minutes' | 'schedule_type'>;
+
+export interface TransferContext {
+  /** Read fresh from Firestore (not the 30-min cache) */
+  employee: TransferEmployee;
+  /** Every gestor, hidden ones included */
+  leaders: Pick<Leader, 'id' | 'name' | 'slack_id'>[];
+  /** Dismissed/merged gestores: can't be newly chosen, but the person's current ones may stay */
+  hiddenLeaderIds: readonly number[];
+  unitChoices: (leaderId: number) => { required: boolean; options: string[] };
+  resolveUnit: (emp: { name: string; leader_id: number | null; unit_name?: string | null }) => string | null;
+}
+
+/** Only the fields that change are written */
+export interface EmployeeTransferUpdate {
+  leader_id?: number;
+  unit_name?: string | null;
+  secondary_approver_id?: number | null;
+  /** An alert detour set for the old team doesn't follow the person to the new one */
+  alert_cover_leader_id?: null;
+  works_saturday?: boolean;
+  saturday_minutes?: number;
+}
+
+export type TransferCheck =
+  | { ok: true; update: EmployeeTransferUpdate; card_before: string | null; card_after: string | null }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Turns the "Trocar gestor" form into the registration change, re-checking it
+ * server-side. Moving is just `leader_id` (alerts, approvals, pending requests and the
+ * card follow it); the store is asked only when the new gestor has several cards.
+ * Journey and Slack never change here.
+ */
+export function buildEmployeeTransfer(body: any, ctx: TransferContext): TransferCheck {
+  const emp = ctx.employee;
+  const fail = (status: number, error: string): TransferCheck => ({ ok: false, status, error });
+
+  // A hidden gestor can't be newly chosen; keeping the one the person already has is fine
+  const findLeader = (id: number, current: number | null | undefined) => (Number.isInteger(id)
+    ? ctx.leaders.find(l => l.id === id && (!ctx.hiddenLeaderIds.includes(id) || id === current))
+    : undefined);
+
+  const leaderId = Number(body?.leader_id);
+  const leader = findLeader(leaderId, emp.leader_id);
+  if (!leader) return fail(400, 'Escolha o gestor');
+  if (emp.slack_id && leader.slack_id === emp.slack_id) return fail(400, `${emp.name} não pode ser gestor(a) de si mesmo(a)`);
+
+  let secondary: number | null = null;
+  if (body?.secondary_approver_id !== null && body?.secondary_approver_id !== undefined && body?.secondary_approver_id !== '' && body?.secondary_approver_id !== 0) {
+    secondary = Number(body.secondary_approver_id);
+    const sub = findLeader(secondary, emp.secondary_approver_id);
+    if (!sub) return fail(400, 'Gestor substituto inválido');
+    if (secondary === leaderId) return fail(400, 'O gestor substituto deve ser outra pessoa');
+    if (emp.slack_id && sub.slack_id === emp.slack_id) return fail(400, `${emp.name} não pode ser substituto(a) de si mesmo(a)`);
+  }
+
+  const choices = ctx.unitChoices(leaderId);
+  const unitRaw = typeof body?.unit_name === 'string' ? body.unit_name.trim() : '';
+  let unitName: string | null = null;
+  if (choices.required) {
+    if (unitRaw && choices.options.includes(unitRaw)) unitName = unitRaw;
+    else if (emp.no_punch_required !== true) return fail(400, 'Escolha a loja/unidade');
+  }
+
+  const saturdayBefore = currentSaturday(emp);
+  let saturday: SaturdayOption = saturdayBefore;
+  if (body?.saturday !== undefined && body?.saturday !== null && body?.saturday !== '') {
+    if (!(SATURDAYS as readonly string[]).includes(body.saturday)) return fail(400, 'Opção de sábado inválida');
+    saturday = body.saturday;
+  }
+  if (saturday !== saturdayBefore) {
+    if (isLojaSustentavelEmployee(emp)) return fail(400, 'No rodízio da Loja Sustentável o sábado faz parte da escala de 12h e não muda por aqui');
+    if (emp.is_apprentice && saturday === 'ate_14') return fail(400, 'Jovem aprendiz não trabalha sábado até 14h');
+  }
+
+  const leaderChanged = leaderId !== emp.leader_id;
+  const cardBefore = ctx.resolveUnit(emp);
+  const cardAfter = ctx.resolveUnit({ name: emp.name, leader_id: leaderId, unit_name: unitName });
+
+  const update: EmployeeTransferUpdate = {};
+  if (leaderChanged) update.leader_id = leaderId;
+  // Same gestor and same card: the stored unit_name (e.g. from the Nov/2026 migration) stays as it is
+  if (leaderChanged || cardAfter !== cardBefore) update.unit_name = unitName;
+  if (secondary !== (emp.secondary_approver_id ?? null)) update.secondary_approver_id = secondary;
+  if (leaderChanged && emp.alert_cover_leader_id) update.alert_cover_leader_id = null;
+  if (saturday !== saturdayBefore) {
+    update.works_saturday = saturday !== 'nao_trabalha';
+    update.saturday_minutes = saturday === 'ate_14' ? 360 : 240;
+  }
+
+  if (Object.keys(update).length === 0) return fail(400, 'Nada mudou: escolha outro gestor, loja, substituto ou sábado');
+  return { ok: true, update, card_before: cardBefore, card_after: cardAfter };
+}
+
 // ─── Pendências Sólides × Databank ──────────────────────────────────────────
 
 interface EmployeeRef { id: number; name: string; leader_name: string; solides_id: string | null }

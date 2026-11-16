@@ -7,6 +7,7 @@ import { recalculateDay } from '../services/day-recalc';
 import {
   getSolidesRoster, listSlackUsers, suggestSlackAccounts, buildRosterView, defaultSecondaryApprover,
   buildPanelEmployee, computePendencias, computeCardDefaults,
+  buildEmployeeTransfer, currentJourney, currentSaturday,
 } from '../services/employee-admin';
 
 const router = Router();
@@ -313,6 +314,37 @@ router.get('/employees', async (_req: Request, res: Response) => {
 
 const SOLIDES_UNAVAILABLE = 'Não consegui consultar a Sólides agora. Tente de novo em alguns minutos.';
 
+/**
+ * The gestores the RH can choose (import and "Trocar gestor"), with their cards.
+ * Hidden (dismissed/merged) gestores are left out, except `keepHidden` — the person's
+ * current gestor/substitute in "Trocar gestor", flagged `hidden` so they're only kept.
+ */
+function leaderOptions(leaders: queries.Leader[], employees: queries.Employee[], keepHidden: (number | null | undefined)[] = []) {
+  const byId = new Map(leaders.map(l => [l.id, l]));
+  const isHidden = (id: number) => queries.HIDDEN_LEADER_IDS.includes(id);
+  return leaders
+    .filter(l => !isHidden(l.id) || keepHidden.includes(l.id))
+    .map(l => {
+      const units = queries.unitChoicesForLeader(l.id);
+      const defaultSecondary = defaultSecondaryApprover(l.id, employees);
+      return {
+        id: l.id,
+        name: l.name,
+        sector: l.sector,
+        units,
+        // cards = several stores; own = their own card; channel = no card (Canal VD/Loja heads)
+        kind: queries.UNIT_OPTIONS_BY_LEADER[l.id] ? 'cards' : units.required ? 'channel' : 'own',
+        own_card: units.required ? null : queries.resolveUnitName({ name: '', leader_id: l.id }),
+        // A hidden gestor can't be chosen, so it's never suggested
+        default_secondary_approver_id: defaultSecondary !== null && isHidden(defaultSecondary) ? null : defaultSecondary,
+        // The whole team's alerts are covered by someone else (vacation, leave)
+        alert_cover_name: l.cover_leader_id ? byId.get(l.cover_leader_id)?.name ?? null : null,
+        hidden: isHidden(l.id),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** GET /api/admin/solides/roster - Active Sólides people (with "already registered") + gestores for the import form */
 router.get('/solides/roster', async (_req: Request, res: Response) => {
   let roster;
@@ -327,22 +359,7 @@ router.get('/solides/roster', async (_req: Request, res: Response) => {
     const [employees, leaders] = await Promise.all([queries.getAllEmployees(), queries.getAllLeaders()]);
     res.json({
       people: buildRosterView(roster, employees),
-      leaders: leaders
-        .filter(l => !queries.HIDDEN_LEADER_IDS.includes(l.id))
-        .map(l => {
-          const units = queries.unitChoicesForLeader(l.id);
-          return {
-            id: l.id,
-            name: l.name,
-            sector: l.sector,
-            units,
-            // cards = several stores; own = their own card; channel = no card (Canal VD/Loja heads)
-            kind: queries.UNIT_OPTIONS_BY_LEADER[l.id] ? 'cards' : units.required ? 'channel' : 'own',
-            own_card: units.required ? null : queries.resolveUnitName({ name: '', leader_id: l.id }),
-            default_secondary_approver_id: defaultSecondaryApprover(l.id, employees),
-          };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      leaders: leaderOptions(leaders, employees),
       card_defaults: computeCardDefaults(employees, queries.resolveUnitName),
     });
   } catch (error) {
@@ -506,6 +523,125 @@ router.delete('/employee/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[admin] Error deleting employee:', error);
     res.status(500).json({ error: 'Failed to delete employee' });
+  }
+});
+
+// ─── Trocar gestor / loja pelo painel do RH (nothing is sent to anyone) ─────
+
+const SATURDAY_TEXT: Record<string, string> = { ate_12: 'até 12h', ate_14: 'até 14h', nao_trabalha: 'não trabalha' };
+
+/** GET /api/admin/employee/:id/transfer-options - Current gestor/store/substitute/Saturday + the gestores to choose from */
+router.get('/employee/:id/transfer-options', async (req: Request, res: Response) => {
+  try {
+    const employeeId = parseInt(req.params.id as string, 10);
+    if (isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid employee ID' });
+      return;
+    }
+    const employee = await queries.getEmployeeFresh(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: 'Colaborador não encontrado' });
+      return;
+    }
+    const [employees, leaders, summary] = await Promise.all([
+      queries.getAllEmployees(), queries.getAllLeaders(), queries.getEmployeeRemovalSummary(employee),
+    ]);
+    const leaderName = (id: number | null | undefined) => (id ? leaders.find(l => l.id === id)?.name ?? `gestor ${id}` : null);
+    res.json({
+      employee: {
+        id: employee.id,
+        name: employee.name,
+        // Some old script-made registrations have no gestor
+        leader_id: employee.leader_id ?? null,
+        leader_name: leaderName(employee.leader_id),
+        unit_name: employee.unit_name ?? null,
+        card: queries.resolveUnitName(employee),
+        secondary_approver_id: employee.secondary_approver_id ?? null,
+        no_punch_required: employee.no_punch_required === true,
+        journey: currentJourney(employee),
+        saturday: currentSaturday(employee),
+        alert_cover_leader_id: employee.alert_cover_leader_id ?? null,
+        alert_cover_name: leaderName(employee.alert_cover_leader_id),
+      },
+      pending: { adjustments: summary.pending_adjustments, justifications: summary.pending_justifications },
+      leaders: leaderOptions(leaders, employees, [employee.leader_id, employee.secondary_approver_id]),
+      card_defaults: computeCardDefaults(employees, queries.resolveUnitName),
+    });
+  } catch (error) {
+    console.error('[admin] Error loading transfer options:', error);
+    res.status(500).json({ error: 'Falha ao carregar os dados do colaborador' });
+  }
+});
+
+/** POST /api/admin/employee/:id/transfer - Moves someone to another gestor/store. No Slack message is sent. */
+router.post('/employee/:id/transfer', async (req: Request, res: Response) => {
+  try {
+    const employeeId = parseInt(req.params.id as string, 10);
+    if (isNaN(employeeId)) {
+      res.status(400).json({ error: 'Invalid employee ID' });
+      return;
+    }
+    const employee = await queries.getEmployeeFresh(employeeId);
+    if (!employee) {
+      res.status(404).json({ error: 'Colaborador não encontrado' });
+      return;
+    }
+    // The form was built from `from` (what the RH saw): if the registration changed since,
+    // the RH must look again — otherwise the form's Saturday would undo someone else's change
+    const from = req.body?.from ?? {};
+    const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null);
+    if (!same(from.leader_id, employee.leader_id)
+      || !same(from.secondary_approver_id, employee.secondary_approver_id)
+      || !same(from.unit_name, employee.unit_name)
+      || !same(from.alert_cover_leader_id, employee.alert_cover_leader_id)
+      || from.saturday !== currentSaturday(employee)) {
+      res.status(409).json({ error: 'O cadastro dessa pessoa mudou enquanto a tela estava aberta. Feche e abra de novo.' });
+      return;
+    }
+
+    const allLeaders = await queries.getAllLeaders();
+    const check = buildEmployeeTransfer(req.body, {
+      employee,
+      leaders: allLeaders,
+      hiddenLeaderIds: queries.HIDDEN_LEADER_IDS,
+      unitChoices: queries.unitChoicesForLeader,
+      resolveUnit: queries.resolveUnitName,
+    });
+    if (!check.ok) {
+      res.status(check.status).json({ error: check.error });
+      return;
+    }
+
+    // Same registration that was checked above: the transaction refuses if any field moved since
+    await queries.transferEmployee(employeeId, employee, { ...check.update });
+
+    const name = (id: number | null | undefined) => (id ? allLeaders.find(l => l.id === id)?.name ?? `gestor ${id}` : '-');
+    const u = check.update;
+    const changes: string[] = [];
+    if (u.leader_id !== undefined) changes.push(`gestor ${name(employee.leader_id)} → ${name(u.leader_id)}`);
+    if (check.card_before !== check.card_after) changes.push(`card ${check.card_before ?? '(nenhum)'} → ${check.card_after ?? '(nenhum)'}`);
+    if (u.secondary_approver_id !== undefined) changes.push(`substituto ${name(employee.secondary_approver_id)} → ${name(u.secondary_approver_id)}`);
+    if (u.works_saturday !== undefined) {
+      const after = !u.works_saturday ? 'nao_trabalha' : u.saturday_minutes === 360 ? 'ate_14' : 'ate_12';
+      changes.push(`sábado ${SATURDAY_TEXT[currentSaturday(employee)]} → ${SATURDAY_TEXT[after]}`);
+    }
+    if (u.alert_cover_leader_id === null) changes.push(`desvio de alertas para ${name(employee.alert_cover_leader_id)} removido`);
+    // The change is already saved: a failed log must not tell the RH it wasn't
+    try {
+      await queries.logAudit('EMPLOYEE_TRANSFERRED', 'employee', employeeId,
+        `Alterado pelo painel do RH: ${employee.name} — ${changes.join('; ')}`);
+    } catch (error) {
+      console.error('[admin] Transfer saved but the audit log failed:', error);
+    }
+
+    res.json({ success: true, message: `${employee.name}: ${changes.join('; ')}.` });
+  } catch (error) {
+    if ((error as Error)?.name === 'EmployeeChangedError') {
+      res.status(409).json({ error: (error as Error).message });
+      return;
+    }
+    console.error('[admin] Error transferring employee:', error);
+    res.status(500).json({ error: 'Falha ao trocar o gestor' });
   }
 });
 

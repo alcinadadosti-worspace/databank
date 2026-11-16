@@ -424,6 +424,48 @@ export async function updateEmployeeLeader(employeeId: number, leaderId: number)
   invalidateCaches();
 }
 
+/** The registration straight from Firestore — the 30-min cache may predate a script's change */
+export async function getEmployeeFresh(employeeId: number): Promise<Employee | undefined> {
+  const doc = await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).get();
+  return doc.exists ? (doc.data() as Employee) : undefined;
+}
+
+/** Thrown when the registration changed between opening the form and saving it */
+export class EmployeeChangedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'EmployeeChangedError';
+  }
+}
+
+/** Everything the "Trocar gestor" change is computed from */
+const TRANSFER_GUARD_FIELDS = [
+  'leader_id', 'secondary_approver_id', 'unit_name', 'alert_cover_leader_id',
+  'works_saturday', 'saturday_minutes', 'schedule_type', 'is_apprentice', 'no_punch_required',
+] as const;
+
+/**
+ * Applies the RH panel's "Trocar gestor" change, only if none of the fields it was
+ * computed from changed since `expected` was read (one transaction).
+ */
+export async function transferEmployee(
+  employeeId: number,
+  expected: Employee,
+  update: Record<string, unknown>,
+): Promise<void> {
+  const ref = getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId));
+  await getDb().runTransaction(async (tx) => {
+    const doc = await tx.get(ref);
+    if (!doc.exists) throw new EmployeeChangedError('Colaborador não encontrado');
+    const now = doc.data() as Employee;
+    if (TRANSFER_GUARD_FIELDS.some(f => (now[f] ?? null) !== (expected[f] ?? null))) {
+      throw new EmployeeChangedError('O cadastro dessa pessoa mudou enquanto a tela estava aberta. Feche e abra de novo.');
+    }
+    tx.update(ref, update);
+  });
+  invalidateCaches();
+}
+
 export async function updateEmployeeSlackId(employeeId: number, slackId: string) {
   await getDb().collection(COLLECTIONS.EMPLOYEES).doc(String(employeeId)).update({
     slack_id: slackId,

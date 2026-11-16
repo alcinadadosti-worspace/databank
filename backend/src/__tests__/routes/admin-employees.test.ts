@@ -12,6 +12,8 @@ jest.mock('../../models/queries', () => ({
   getAllEmployees: jest.fn(),
   getAllLeaders: jest.fn(),
   getEmployeeById: jest.fn(),
+  getEmployeeFresh: jest.fn(),
+  transferEmployee: jest.fn(),
   insertEmployeeFromPanel: jest.fn(),
   getEmployeeRemovalSummary: jest.fn(),
   removeEmployeeKeepingHistory: jest.fn(),
@@ -239,6 +241,115 @@ describe('removal', () => {
     expect(confirmed.status).toBe(200);
     expect(q.removeEmployeeKeepingHistory).toHaveBeenCalledWith(130);
     expect(q.logAudit).toHaveBeenCalledWith('EMPLOYEE_DELETED', 'employee', 130, expect.stringContaining('ainda ativo na Sólides'));
+  });
+});
+
+describe('trocar gestor', () => {
+  const SANDRA = {
+    id: 32, name: 'Sandra da Conceição Freitas', slack_id: 'U0A1P79UK0T', leader_id: 12, secondary_approver_id: null,
+    unit_name: null, no_punch_required: false, alert_cover_leader_id: 10, is_apprentice: false, works_saturday: true,
+  };
+  const FROM = { leader_id: 12, secondary_approver_id: null, unit_name: null, saturday: 'ate_12', alert_cover_leader_id: 10 };
+
+  beforeEach(() => {
+    q.getEmployeeFresh.mockResolvedValue({ ...SANDRA } as any);
+    q.getEmployeeRemovalSummary.mockResolvedValue({ daily_records: 90, folgas: 0, vacation_schedules: 0, pending_justifications: 1, pending_adjustments: 2, also_leader: null });
+    q.resolveUnitName.mockImplementation((e: any) => (e.leader_id === 12 ? 'Loja Penedo' : e.unit_name ?? null));
+  });
+
+  it('only the RH reaches it', async () => {
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 10, from: FROM }, gestorToken)).status).toBe(403);
+    expect(q.transferEmployee).not.toHaveBeenCalled();
+  });
+
+  it('options: current registration (fresh read), pending requests and the gestores', async () => {
+    const res = await call('GET', '/employee/32/transfer-options');
+    expect(res.status).toBe(200);
+    const body: any = await res.json();
+    expect(body.employee).toMatchObject({
+      id: 32, leader_id: 12, leader_name: 'Mariane Santos Sousa', card: 'Loja Penedo', journey: 'padrao', saturday: 'ate_12',
+      alert_cover_name: 'Kemilly Rafaelly Souza Silva',
+    });
+    expect(body.pending).toEqual({ adjustments: 2, justifications: 1 });
+    expect(body.leaders.map((l: any) => l.id)).not.toContain(14);
+    expect(q.getEmployeeFresh).toHaveBeenCalledWith(32);
+  });
+
+  it('moves, writes only what changed, logs it — no Slack message', async () => {
+    const res = await call('POST', '/employee/32/transfer', { leader_id: 11, unit_name: 'Loja Coruripe', secondary_approver_id: 10, from: FROM });
+    expect(res.status).toBe(200);
+    // The transaction is guarded by the same fresh registration the change was computed from
+    expect(q.transferEmployee).toHaveBeenCalledWith(32, expect.objectContaining({ id: 32, leader_id: 12, alert_cover_leader_id: 10 }), {
+      leader_id: 11, unit_name: 'Loja Coruripe', secondary_approver_id: 10, alert_cover_leader_id: null,
+    });
+    const log = (q.logAudit as jest.Mock).mock.calls[0];
+    expect(log.slice(0, 3)).toEqual(['EMPLOYEE_TRANSFERRED', 'employee', 32]);
+    expect(log[3]).toContain('Mariane Santos Sousa → Maria Taciane Pereira Barbosa');
+    expect(log[3]).toContain('card Loja Penedo → Loja Coruripe');
+    expect(log[3]).toContain('desvio de alertas para Kemilly Rafaelly Souza Silva removido');
+  });
+
+  it('the registration changed since the form opened → 409, nothing written', async () => {
+    const res = await call('POST', '/employee/32/transfer', { leader_id: 11, unit_name: 'Loja Coruripe', from: { ...FROM, leader_id: 7 } });
+    expect(res.status).toBe(409);
+    expect(q.transferEmployee).not.toHaveBeenCalled();
+    expect(q.logAudit).not.toHaveBeenCalled();
+  });
+
+  it('Saturday or alert detour changed by someone else since the form opened → 409', async () => {
+    q.getEmployeeFresh.mockResolvedValue({ ...SANDRA, saturday_minutes: 360 } as any); // now until 14h
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 10, saturday: 'ate_12', from: FROM })).status).toBe(409);
+    q.getEmployeeFresh.mockResolvedValue({ ...SANDRA, alert_cover_leader_id: 12 } as any);
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 10, saturday: 'ate_12', from: FROM })).status).toBe(409);
+    expect(q.transferEmployee).not.toHaveBeenCalled();
+  });
+
+  it('someone without a gestor (leader_id null) can be given one', async () => {
+    q.getEmployeeFresh.mockResolvedValue({ ...SANDRA, leader_id: null, alert_cover_leader_id: null } as any);
+    const options: any = await (await call('GET', '/employee/32/transfer-options')).json();
+    expect(options.employee.leader_id).toBeNull();
+    const res = await call('POST', '/employee/32/transfer', {
+      leader_id: 12, saturday: 'ate_12', from: { ...FROM, leader_id: null, alert_cover_leader_id: null },
+    });
+    expect(res.status).toBe(200);
+    expect(q.transferEmployee).toHaveBeenCalledWith(32, expect.anything(), { leader_id: 12, unit_name: null });
+  });
+
+  it('hidden gestores: never suggested nor offered, except as the current one', async () => {
+    q.getAllEmployees.mockResolvedValue([{ ...TEAM_11[0], secondary_approver_id: 14 }, { ...TEAM_11[1], secondary_approver_id: 14 }] as any);
+    q.getEmployeeFresh.mockResolvedValue({ ...SANDRA, secondary_approver_id: 14 } as any);
+    const body: any = await (await call('GET', '/employee/32/transfer-options')).json();
+    expect(body.leaders.find((l: any) => l.id === 11).default_secondary_approver_id).toBeNull();
+    expect(body.leaders.find((l: any) => l.id === 14)).toMatchObject({ hidden: true });
+    const roster: any = await (await call('GET', '/solides/roster')).json();
+    expect(roster.leaders.map((l: any) => l.id)).not.toContain(14);
+  });
+
+  it('the change is saved even if the audit log fails afterwards', async () => {
+    q.logAudit.mockRejectedValue(new Error('firestore down'));
+    const res = await call('POST', '/employee/32/transfer', { leader_id: 10, saturday: 'ate_12', from: FROM });
+    expect(res.status).toBe(200);
+    expect(q.transferEmployee).toHaveBeenCalled();
+  });
+
+  it('a change found inside the transaction → 409, not logged', async () => {
+    q.transferEmployee.mockRejectedValue(Object.assign(new Error('O cadastro dessa pessoa mudou'), { name: 'EmployeeChangedError' }));
+    const res = await call('POST', '/employee/32/transfer', { leader_id: 10, from: FROM });
+    expect(res.status).toBe(409);
+    expect(q.logAudit).not.toHaveBeenCalled();
+  });
+
+  it('invalid choices → 400, nothing written', async () => {
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 14, from: FROM })).status).toBe(400);  // hidden gestor
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 11, from: FROM })).status).toBe(400);  // store missing
+    expect((await call('POST', '/employee/32/transfer', { leader_id: 12, from: FROM })).status).toBe(400);  // nothing changed
+    expect(q.transferEmployee).not.toHaveBeenCalled();
+  });
+
+  it('unknown employee → 404', async () => {
+    q.getEmployeeFresh.mockResolvedValue(undefined);
+    expect((await call('POST', '/employee/999/transfer', { leader_id: 10, from: FROM })).status).toBe(404);
+    expect((await call('GET', '/employee/999/transfer-options')).status).toBe(404);
   });
 });
 
